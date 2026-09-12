@@ -5,9 +5,10 @@ import { check } from "./errors.js";
 import { venueTimezone } from "./config.js";
 
 export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string}
-export interface Booking {id:string;court_id:string;court_name:string;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:"confirmed"|"completed"|"cancelled";notes:string;created_by:string;created_at:string;cancel_reason:string;paid:number}
+export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
+export interface Booking {id:string;court_id:string;court_name:string;customer_id:string|null;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:BookingStatus;source:"staff"|"online";hold_expires_at:number|null;notes:string;created_by:string|null;created_at:string;cancel_reason:string;paid:number}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
-export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;note:string;created_at:string;created_by:string}
+export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
 export function localClock(value:Date=new Date()){
   const parts=new Intl.DateTimeFormat("en-CA",{timeZone:venueTimezone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(value);
   const part=(name:string)=>parts.find(p=>p.type===name)!.value;
@@ -50,7 +51,7 @@ export function saveCourt(input:unknown,actor:string,id?:string){
       check(!maintenances().some(m=>m.court_id===id&&m.date>=now.date&&(m.start_time<data.opens_at||m.end_time>data.closes_at)),409,"Jam operasional bertentangan dengan maintenance.");
       db.prepare("UPDATE courts SET name=?,hourly_rate=?,opens_at=?,closes_at=?,active=? WHERE id=?").run(data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),id);
     }else{
-      id=randomUUID();db.prepare("INSERT INTO courts VALUES (?,?,?,?,?,?,?)").run(id,data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),new Date().toISOString());
+      id=randomUUID();db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at) VALUES (?,?,?,?,?,?,?)").run(id,data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),new Date().toISOString());
     }
     audit(actor,existing?"court.update":"court.create",id!);return courts().find(c=>c.id===id)!;
   });
@@ -68,7 +69,7 @@ export function createMaintenance(input:unknown,actor:string){
   const data=maintenanceSchema.parse(input);
   return transaction(()=>{
     schedule(data.court_id,data.date,data.start_time,data.end_time);const id=randomUUID();
-    db.prepare("INSERT INTO maintenance VALUES (?,?,?,?,?,?)").run(id,data.court_id,data.date,data.start_time,data.end_time,data.reason);
+    db.prepare("INSERT INTO maintenance (id,court_id,date,start_time,end_time,reason) VALUES (?,?,?,?,?,?)").run(id,data.court_id,data.date,data.start_time,data.end_time,data.reason);
     audit(actor,"maintenance.create",id);return maintenances(data.date).find(m=>m.id===id)!;
   });
 }
@@ -106,7 +107,7 @@ export function recordPayment(id:string,input:unknown,actor:string){
       check(data.amount<=booking.paid,400,"Pengembalian melebihi pembayaran yang diterima.");
       check(data.note.length>=3,400,"Isi catatan pengembalian.");
     }
-    db.prepare("INSERT INTO payments VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());
+    db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());
     audit(actor,data.kind,data.id);return {booking:getBooking(id),payments:payments(id)};
   });
 }

@@ -67,6 +67,83 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 1").get()) transaction
   }
   db.prepare("INSERT INTO migrations VALUES (1, ?)").run(now);
 });
+
+const overlapGuard = (self: boolean) => `
+  SELECT RAISE(ABORT,'schedule_conflict') WHERE EXISTS(SELECT 1 FROM bookings WHERE ${self ? "id<>NEW.id AND " : ""}court_id=NEW.court_id AND date=NEW.date AND status IN ('pending','confirmed','completed') AND NOT (status='pending' AND hold_expires_at<=unixepoch()) AND start_time<NEW.end_time AND end_time>NEW.start_time);
+  SELECT RAISE(ABORT,'schedule_conflict') WHERE EXISTS(SELECT 1 FROM maintenance WHERE court_id=NEW.court_id AND date=NEW.date AND start_time<NEW.end_time AND end_time>NEW.start_time);`;
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 2").get()) {
+  db.exec("PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON;");
+  try {
+    transaction(() => {
+      db.exec(`
+        CREATE TABLE customers (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL);
+        CREATE UNIQUE INDEX customers_phone ON customers (phone);
+        CREATE TABLE otp_codes (phone TEXT PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL);
+
+        CREATE TABLE bookings_v2 (
+          id TEXT PRIMARY KEY,
+          court_id TEXT NOT NULL REFERENCES courts(id),
+          customer_id TEXT REFERENCES customers(id),
+          customer TEXT NOT NULL, phone TEXT NOT NULL,
+          date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL,
+          total INTEGER NOT NULL CHECK(total > 0),
+          status TEXT NOT NULL CHECK(status IN ('pending','confirmed','completed','cancelled','expired')),
+          source TEXT NOT NULL DEFAULT 'staff' CHECK(source IN ('staff','online')),
+          hold_expires_at INTEGER,
+          notes TEXT NOT NULL DEFAULT '',
+          created_by TEXT,
+          created_at TEXT NOT NULL,
+          cancel_reason TEXT NOT NULL DEFAULT '',
+          CHECK ((source='staff' AND created_by IS NOT NULL) OR (source='online' AND customer_id IS NOT NULL)),
+          CHECK (status<>'pending' OR hold_expires_at IS NOT NULL)
+        );
+        INSERT INTO bookings_v2 (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at,cancel_reason)
+          SELECT id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at,cancel_reason FROM bookings;
+        DROP TABLE bookings;
+        ALTER TABLE bookings_v2 RENAME TO bookings;
+        CREATE INDEX bookings_schedule ON bookings (court_id,date,start_time,end_time);
+        CREATE INDEX bookings_hold ON bookings (status,hold_expires_at);
+        CREATE INDEX bookings_customer ON bookings (customer_id);
+
+        CREATE TABLE payments_v2 (
+          id TEXT PRIMARY KEY,
+          booking_id TEXT NOT NULL REFERENCES bookings(id),
+          amount INTEGER NOT NULL CHECK(amount > 0),
+          kind TEXT NOT NULL CHECK(kind IN ('payment','refund')),
+          method TEXT NOT NULL CHECK(method IN ('cash','transfer','qris','va','ewallet','card')),
+          source TEXT NOT NULL DEFAULT 'staff' CHECK(source IN ('staff','gateway')),
+          gateway_ref TEXT,
+          note TEXT NOT NULL DEFAULT '',
+          created_by TEXT,
+          created_at TEXT NOT NULL,
+          CHECK (source='gateway' OR created_by IS NOT NULL)
+        );
+        INSERT INTO payments_v2 (id,booking_id,amount,kind,method,note,created_by,created_at)
+          SELECT id,booking_id,amount,kind,method,note,created_by,created_at FROM payments;
+        DROP TABLE payments;
+        ALTER TABLE payments_v2 RENAME TO payments;
+        CREATE INDEX payments_booking ON payments (booking_id);
+        CREATE UNIQUE INDEX payments_gateway_ref ON payments (gateway_ref) WHERE gateway_ref IS NOT NULL;
+
+        DROP TABLE sessions;
+        CREATE TABLE sessions (id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, subject_type TEXT NOT NULL CHECK(subject_type IN ('staff','customer')), expires_at INTEGER NOT NULL);
+
+        DROP TRIGGER maintenance_overlap;
+        CREATE TRIGGER booking_overlap_insert BEFORE INSERT ON bookings WHEN NEW.status IN ('pending','confirmed','completed') BEGIN${overlapGuard(false)}
+        END;
+        CREATE TRIGGER booking_overlap_confirm BEFORE UPDATE OF status ON bookings WHEN OLD.status='pending' AND NEW.status IN ('confirmed','completed') BEGIN${overlapGuard(true)}
+        END;
+        CREATE TRIGGER maintenance_overlap BEFORE INSERT ON maintenance BEGIN${overlapGuard(false)}
+        END;
+      `);
+      const violations = db.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length) throw new Error(`Migrasi 2 menyisakan ${violations.length} pelanggaran foreign key.`);
+      db.prepare("INSERT INTO migrations VALUES (2, ?)").run(new Date().toISOString());
+    });
+  } finally {
+    db.exec("PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON;");
+  }
+}
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

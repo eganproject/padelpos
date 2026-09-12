@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 
 const directory = mkdtempSync(path.join(tmpdir(), "padelix-api-test-"));
 process.env.DATA_DIR = directory;
@@ -166,5 +167,88 @@ test("legacy JSON is migrated once and original files are preserved",()=>{
   } finally {
     assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-migration-test-"));
     rmSync(legacy,{recursive:true,force:true});
+  }
+});
+
+const schemaV1 = `
+  CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+  CREATE TABLE users (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
+  CREATE TABLE roles (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
+  CREATE TABLE menus (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
+  CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
+  CREATE TABLE courts (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, hourly_rate INTEGER NOT NULL CHECK(hourly_rate > 0), opens_at TEXT NOT NULL, closes_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
+  CREATE TABLE bookings (id TEXT PRIMARY KEY, court_id TEXT NOT NULL REFERENCES courts(id), customer TEXT NOT NULL, phone TEXT NOT NULL, date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, total INTEGER NOT NULL CHECK(total > 0), status TEXT NOT NULL CHECK(status IN ('confirmed','completed','cancelled')), notes TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL, cancel_reason TEXT NOT NULL DEFAULT '');
+  CREATE INDEX bookings_schedule ON bookings(court_id,date,start_time,end_time);
+  CREATE TABLE maintenance (id TEXT PRIMARY KEY, court_id TEXT NOT NULL REFERENCES courts(id), date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, reason TEXT NOT NULL);
+  CREATE TABLE payments (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL REFERENCES bookings(id), amount INTEGER NOT NULL CHECK(amount > 0), kind TEXT NOT NULL CHECK(kind IN ('payment','refund')), method TEXT NOT NULL CHECK(method IN ('cash','transfer','qris')), note TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE INDEX payments_booking ON payments(booking_id);
+  CREATE TABLE audit_log (id INTEGER PRIMARY KEY, actor_id TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT NOT NULL, created_at TEXT NOT NULL);
+  CREATE TRIGGER maintenance_overlap BEFORE INSERT ON maintenance BEGIN
+    SELECT RAISE(ABORT, 'schedule_conflict') WHERE EXISTS(SELECT 1 FROM bookings WHERE court_id=NEW.court_id AND date=NEW.date AND status <> 'cancelled' AND start_time < NEW.end_time AND end_time > NEW.start_time);
+  END;
+  INSERT INTO migrations VALUES (1, '2026-01-01T00:00:00Z');
+`;
+
+test("migrasi v1 ke v2 mempertahankan data lama dan memberlakukan aturan hold", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "padelix-v2-test-"));
+  const file = path.join(directory, "padelix.sqlite");
+  const stamp = "2026-01-01T00:00:00Z";
+  const legacy = new DatabaseSync(file);
+  legacy.exec(schemaV1);
+  legacy.prepare("INSERT INTO courts VALUES (?,?,?,?,?,?,?)").run("c1", "Court A", 300000, "06:00", "24:00", 1, stamp);
+  legacy.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+    .run("b1", "c1", "Budi", "081234567890", "2030-01-10", "09:00", "10:00", 300000, "confirmed", "catatan lama", "staff-1", stamp);
+  legacy.prepare("INSERT INTO payments VALUES (?,?,?,?,?,?,?,?)").run("p1", "b1", 150000, "payment", "cash", "DP", "staff-1", stamp);
+  legacy.close();
+
+  try {
+    const run = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", "const {db}=await import('./src/store.ts');db.close();"], { env: { ...process.env, DATA_DIR: directory }, encoding: "utf8" });
+    assert.equal(run.status, 0, run.stderr);
+
+    const db2 = new DatabaseSync(file);
+    db2.exec("PRAGMA foreign_keys = ON");
+    const one = (sql: string) => db2.prepare(sql).get() as Record<string, unknown>;
+    const rejects = (work: () => void, fragment: string) => {
+      try { work(); return `tidak menolak apa pun (harapan: ${fragment})`; }
+      catch (error) { const message = (error as Error).message; return message.includes(fragment) ? "" : `pesan tidak sesuai: ${message}`; }
+    };
+    const insert = (id: string, start: string, end: string, status: string, extra: { hold?: number; source?: string; createdBy?: string | null; customerId?: string } = {}) => () =>
+      db2.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at,hold_expires_at,source,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(id, "c1", "X", "081234567890", "2030-02-01", start, end, 300000, status, "", extra.createdBy === undefined ? "staff-1" : extra.createdBy, stamp, extra.hold ?? null, extra.source ?? "staff", extra.customerId ?? null);
+
+    assert.equal(one("SELECT version FROM migrations WHERE version=2").version, 2, "migrasi 2 harus tercatat");
+    const kept = one("SELECT * FROM bookings WHERE id='b1'");
+    assert.equal(kept.notes, "catatan lama");
+    assert.equal(kept.status, "confirmed");
+    assert.equal(kept.source, "staff", "booking lama harus dianggap dibuat staf");
+    assert.equal(kept.customer_id, null);
+    assert.equal(kept.hold_expires_at, null);
+    assert.equal(one("SELECT * FROM payments WHERE id='p1'").amount, 150000);
+    assert.equal(one("SELECT * FROM payments WHERE id='p1'").source, "staff");
+    assert.equal(db2.prepare("PRAGMA foreign_key_check").all().length, 0, "migrasi tidak boleh menyisakan foreign key menggantung");
+
+    const active = Math.floor(Date.now() / 1000) + 600, lapsed = Math.floor(Date.now() / 1000) - 1;
+    insert("h1", "09:00", "10:00", "pending", { hold: active })();
+    assert.equal(rejects(insert("h2", "09:30", "10:30", "confirmed"), "schedule_conflict"), "", "hold yang masih aktif harus memblokir booking lain");
+    insert("h3", "11:00", "12:00", "pending", { hold: lapsed })();
+    insert("h4", "11:00", "12:00", "confirmed")();
+    assert.equal(rejects(() => db2.prepare("UPDATE bookings SET status='confirmed' WHERE id='h3'").run(), "schedule_conflict"), "", "hold kedaluwarsa yang slotnya sudah direbut tidak boleh dikonfirmasi");
+    db2.prepare("UPDATE bookings SET status='confirmed' WHERE id='h1'").run();
+    assert.equal(one("SELECT status FROM bookings WHERE id='h1'").status, "confirmed", "hold yang masih sah harus bisa dikonfirmasi");
+
+    insert("e1", "13:00", "14:00", "expired")();
+    insert("e2", "13:00", "14:00", "confirmed")();
+
+    assert.equal(rejects(insert("x1", "15:00", "16:00", "pending"), "CHECK"), "", "pending wajib punya hold_expires_at");
+    assert.equal(rejects(insert("x2", "16:00", "17:00", "confirmed", { source: "online", createdBy: null }), "CHECK"), "", "booking online wajib punya customer_id");
+    assert.equal(rejects(insert("x3", "17:00", "18:00", "menunggu"), "CHECK"), "", "status di luar daftar harus ditolak");
+
+    const gateway = (id: string, ref: string) => () => db2.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,source,gateway_ref,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, "b1", 1000, "payment", "ewallet", "gateway", ref, "", null, stamp);
+    gateway("pg1", "MID-123")();
+    assert.equal(rejects(gateway("pg2", "MID-123"), "UNIQUE"), "", "gateway_ref ganda harus ditolak demi idempotensi webhook");
+    db2.close();
+  } finally {
+    assert.ok(path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep + "padelix-v2-test-"));
+    rmSync(directory, { recursive: true, force: true });
   }
 });
