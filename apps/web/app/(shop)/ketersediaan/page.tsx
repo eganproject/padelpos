@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { money } from "@/lib/api";
+import { VenueMap } from "@/components/venue-map";
 import { minute, timeSlots } from "@/lib/operations";
 import {
   addDays, fetchAvailability, formatDay, priceFor, rangeIsFree, venueNow,
@@ -22,6 +23,9 @@ function AvailabilityView() {
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<Selection | null>(null);
   const [duration, setDuration] = useState(60);
+  const blocks = useRef(new Map<string, HTMLElement>());
+
+  const focusCourt = (courtId: string) => blocks.current.get(courtId)?.scrollIntoView({ behavior: "smooth", block: "center" });
 
   useEffect(() => {
     const now = venueNow();
@@ -68,6 +72,17 @@ function AvailabilityView() {
         </div>
       </div>
 
+      {data && data.courts.length > 0 && (
+        <>
+          <VenueMap venue={data.venue} courts={data.courts} selected={picked?.courtId} onSelect={focusCourt} />
+          <div className="venue-map-legend">
+            <span><i className="open" />Banyak slot kosong</span>
+            <span><i className="few" />Tinggal sedikit</span>
+            <span><i className="full" />Penuh</span>
+          </div>
+        </>
+      )}
+
       <div className="shop-legend">
         <span><i className="free" />Tersedia</span>
         <span><i className="pick" />Pilihan Anda</span>
@@ -83,7 +98,11 @@ function AvailabilityView() {
         data.courts.map(({ court, slots }) => {
           const free = slots.filter(slot => slot.state === "available").length;
           return (
-            <article className="shop-court-block" key={court.id}>
+            <article
+              className="shop-court-block"
+              key={court.id}
+              ref={node => { if (node) blocks.current.set(court.id, node); else blocks.current.delete(court.id); }}
+            >
               <header>
                 <h3>{court.name}</h3>
                 <span className="rate">{money(court.hourly_rate)} / jam</span>

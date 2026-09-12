@@ -129,3 +129,23 @@ html:has(.shop-page),html:has(.shop-page) body{background:#fbfbf6}
   .shop-summary .shop-cta{width:100%}
 }
 @media(prefers-reduced-motion:reduce){.shop-cta,.shop-ghost{transition:none}}
+
+/* Denah venue di halaman pelanggan */
+.venue-map{position:relative;width:100%;max-width:760px;margin:0 auto 22px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);background-image:linear-gradient(#1b220c08 1px,transparent 1px),linear-gradient(90deg,#1b220c08 1px,transparent 1px);background-size:6% 6%;box-shadow:var(--shadow)}
+.venue-map-court{position:absolute;border:2px solid;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px;cursor:pointer;overflow:hidden;text-align:center;background:var(--surface);transition:transform .12s}
+.venue-map-court:hover{transform:scale(1.02)}
+.venue-map-court b{font-size:13px;line-height:1.2;word-break:break-word}
+.venue-map-court small{font-size:11px;opacity:.85}
+.venue-map-court .net{position:absolute;left:10%;right:10%;top:50%;height:2px;background:currentColor;opacity:.3}
+.venue-map-court.open{border-color:#7fae2a;background:var(--brand-wash);color:var(--brand-deep)}
+.venue-map-court.few{border-color:#ddb14a;background:var(--care-wash);color:#8a6110}
+.venue-map-court.full{border-color:#e0b6a8;background:var(--busy-wash);color:#9d4227;cursor:default}
+.venue-map-court.full:hover{transform:none}
+.venue-map-court.selected{box-shadow:0 0 0 3px #c8ff3d99;z-index:2}
+.venue-map-court:focus-visible{outline:2px solid var(--brand-deep);outline-offset:2px}
+.venue-map-legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;font-size:13px;color:var(--ink-faint);margin-bottom:26px}
+.venue-map-legend i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:7px;vertical-align:-1px;border:1px solid}
+.venue-map-legend i.open{border-color:#7fae2a;background:var(--brand-wash)}
+.venue-map-legend i.few{border-color:#ddb14a;background:var(--care-wash)}
+.venue-map-legend i.full{border-color:#e0b6a8;background:var(--busy-wash)}
+@media(max-width:720px){.venue-map-court b{font-size:11px}.venue-map-court small{font-size:10px}}

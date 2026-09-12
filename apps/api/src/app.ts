@@ -9,6 +9,7 @@ import dashboardRoutes from "./routes/dashboard.js";
 import accessRoutes from "./routes/access.js";
 import profileRoutes from "./routes/profile.js";
 import operationsRoutes from "./routes/operations.js";
+import publicRoutes from "./routes/public.js";
 import { HttpError } from "./errors.js";
 
 export const app=express();
@@ -33,6 +34,7 @@ app.use("/api/dashboard",dashboardRoutes);
 app.use("/api/access",accessRoutes);
 app.use("/api/profile",profileRoutes);
 app.use("/api/operations",operationsRoutes);
+app.use("/api/public",publicRoutes);
 app.get("/api/health",(_req,res)=>res.json({status:"ok",service:"padelix-api"}));
 app.use((_req,res)=>res.status(404).json({message:"Endpoint tidak ditemukan."}));
 app.use((error:unknown,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{

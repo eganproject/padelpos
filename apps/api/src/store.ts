@@ -144,6 +144,37 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 2").get()) {
     db.exec("PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON;");
   }
 }
+
+/** Satuan kanvas layout: 1 unit = 0,1 meter. Lapangan padel standar 10 x 20 m = 100 x 200 unit. */
+export const defaultVenue = { width: 600, height: 400, grid: 10 };
+export type VenueLayout = typeof defaultVenue;
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 3").get()) transaction(() => {
+  db.exec(`
+    ALTER TABLE courts ADD COLUMN layout_x INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE courts ADD COLUMN layout_y INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE courts ADD COLUMN layout_w INTEGER NOT NULL DEFAULT 100;
+    ALTER TABLE courts ADD COLUMN layout_h INTEGER NOT NULL DEFAULT 200;
+    CREATE TABLE settings (key TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
+  `);
+  db.prepare("INSERT INTO settings VALUES ('venue', ?)").run(JSON.stringify(defaultVenue));
+
+  // Lapangan yang sudah ada dijajarkan agar langsung terlihat rapi di editor.
+  const placed = db.prepare("SELECT id FROM courts ORDER BY name").all() as { id: string }[];
+  placed.forEach((court, index) => db.prepare("UPDATE courts SET layout_x=?, layout_y=? WHERE id=?").run(40 + index * 140, 60, court.id));
+
+  const stamp = new Date().toISOString();
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "layout")) {
+    // Sisipkan setelah Courts, lalu geser urutan menu administrasi di bawahnya.
+    for (const menu of menus) if (menu.order >= 4) menu.order += 1;
+    menus.push({ id: "layout", name: "Layout Venue", path: "/admin/layout", icon: "LayoutGrid", group: "Workspace", order: 4, active: true, createdAt: stamp });
+    saveCollection("menus", menus);
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("layout")) role.menuIds.push("layout");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (3, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

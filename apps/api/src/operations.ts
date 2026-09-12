@@ -1,10 +1,10 @@
 ﻿import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { db,transaction,audit } from "./store.js";
+import { db,transaction,audit,defaultVenue,type VenueLayout } from "./store.js";
 import { check } from "./errors.js";
 import { venueTimezone } from "./config.js";
 
-export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string}
+export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number}
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
 export interface Booking {id:string;court_id:string;court_name:string;customer_id:string|null;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:BookingStatus;source:"staff"|"online";hold_expires_at:number|null;notes:string;created_by:string|null;created_at:string;cancel_reason:string;paid:number}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
@@ -15,6 +15,7 @@ export function localClock(value:Date=new Date()){
   return {date:`${part("year")}-${part("month")}-${part("day")}`,time:`${part("hour")}:${part("minute")}`,timezone:venueTimezone};
 }
 export const minutes=(time:string)=>Number(time.slice(0,2))*60+Number(time.slice(3));
+export const clockLabel=(value:number)=>`${String(Math.floor(value/60)).padStart(2,"0")}:${String(value%60).padStart(2,"0")}`;
 export const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
 export const timeSchema=z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/,"Jam harus menggunakan interval 30 menit.");
 const closeSchema=z.union([timeSchema,z.literal("24:00")]);
@@ -112,3 +113,68 @@ export function recordPayment(id:string,input:unknown,actor:string){
   });
 }
 
+
+// --- Layout venue ----------------------------------------------------------
+// Satuan kanvas: 1 unit = 0,1 meter. Tidak ada rotasi; lapangan mendatar dibuat
+// dengan menukar lebar dan tinggi, sehingga kotak selalu sejajar sumbu dan
+// pemeriksaan tumpang tindih tetap sederhana dan benar.
+export const venueSchema=z.object({width:z.number().int().min(200).max(5000),height:z.number().int().min(200).max(5000),grid:z.number().int().min(5).max(50)});
+export const layoutSchema=z.object({
+  venue:venueSchema,
+  courts:z.array(z.object({id:z.string().min(1),x:z.number().int().min(0).max(5000),y:z.number().int().min(0).max(5000),w:z.number().int().min(20).max(2000),h:z.number().int().min(20).max(2000)})).max(60),
+});
+export function getVenue():VenueLayout{
+  const row=db.prepare("SELECT document FROM settings WHERE key='venue'").get() as {document:string}|undefined;
+  return row?JSON.parse(row.document) as VenueLayout:defaultVenue;
+}
+export function layout(){return {venue:getVenue(),courts:courts()}}
+const overlaps=(a:{x:number;y:number;w:number;h:number},b:{x:number;y:number;w:number;h:number})=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+export function saveLayout(input:unknown,actor:string){
+  const data=layoutSchema.parse(input);
+  return transaction(()=>{
+    const all=courts();
+    for(const item of data.courts)check(all.some(c=>c.id===item.id),404,"Ada lapangan yang tidak ditemukan. Muat ulang halaman.");
+    // Lapangan yang tidak ikut dikirim tetap menempati ruang, jadi ikut divalidasi.
+    const named=all.map(court=>{
+      const moved=data.courts.find(item=>item.id===court.id);
+      const box=moved?{x:moved.x,y:moved.y,w:moved.w,h:moved.h}:{x:court.layout_x,y:court.layout_y,w:court.layout_w,h:court.layout_h};
+      check(box.x+box.w<=data.venue.width&&box.y+box.h<=data.venue.height,400,`Posisi ${court.name} keluar dari area venue.`);
+      return {...box,name:court.name};
+    });
+    for(let i=0;i<named.length;i++)for(let j=i+1;j<named.length;j++)
+      check(!overlaps(named[i],named[j]),409,`${named[i].name} dan ${named[j].name} saling menimpa. Geser salah satunya.`);
+    db.prepare("UPDATE settings SET document=? WHERE key='venue'").run(JSON.stringify(data.venue));
+    for(const item of data.courts)db.prepare("UPDATE courts SET layout_x=?,layout_y=?,layout_w=?,layout_h=? WHERE id=?").run(item.x,item.y,item.w,item.h,item.id);
+    audit(actor,"layout.update","venue");return layout();
+  });
+}
+export function removeCourt(id:string,actor:string){transaction(()=>{
+  const court=courts().find(c=>c.id===id);check(court,404,"Lapangan tidak ditemukan.");
+  const used=db.prepare("SELECT count(*) n FROM bookings WHERE court_id=?").get(id) as {n:number};
+  check(!used.n,409,"Lapangan ini sudah memiliki riwayat booking. Nonaktifkan saja agar data lama tetap utuh.");
+  db.prepare("DELETE FROM maintenance WHERE court_id=?").run(id);
+  db.prepare("DELETE FROM courts WHERE id=?").run(id);
+  audit(actor,"court.delete",id);
+})}
+
+// --- Ketersediaan publik ---------------------------------------------------
+// Sengaja tidak memuat nama, telepon, atau catatan pemesan.
+export type PublicSlot={start:string;end:string;state:"available"|"booked"|"maintenance"|"past"};
+export function publicAvailability(date:string){
+  const now=localClock();
+  const active=courts().filter(c=>c.active);
+  const taken=bookings(date).filter(b=>b.status==="confirmed"||b.status==="completed"||(b.status==="pending"&&(b.hold_expires_at??0)*1000>Date.now()));
+  const care=maintenances(date);
+  const courtsOut=active.map(court=>{
+    const slots:PublicSlot[]=[];
+    for(let value=minutes(court.opens_at);value+30<=minutes(court.closes_at);value+=30){
+      const start=clockLabel(value),end=clockLabel(value+30);
+      const busy=taken.some(b=>b.court_id===court.id&&b.start_time<=start&&b.end_time>start);
+      const fixing=care.some(m=>m.court_id===court.id&&m.start_time<=start&&m.end_time>start);
+      const past=date<now.date||(date===now.date&&start<now.time);
+      slots.push({start,end,state:busy?"booked":fixing?"maintenance":past?"past":"available"});
+    }
+    return {court:{id:court.id,name:court.name,hourly_rate:court.hourly_rate,opens_at:court.opens_at,closes_at:court.closes_at,layout:{x:court.layout_x,y:court.layout_y,w:court.layout_w,h:court.layout_h}},slots};
+  });
+  return {date,today:now.date,time:now.time,timezone:now.timezone,venue:getVenue(),courts:courtsOut};
+}

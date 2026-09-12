@@ -18,17 +18,18 @@ const day = (offset: number) => {
   return date.toISOString().slice(0, 10);
 };
 
+// Posisi denah dalam unit kanvas (1 unit = 0,1 m), dijajarkan agar langsung rapi di editor.
 const courts = [
-  { name: "Center Court", hourly_rate: 350000, opens_at: "06:00", closes_at: "23:00" },
-  { name: "Court 2", hourly_rate: 300000, opens_at: "06:00", closes_at: "23:00" },
-  { name: "Court 3 (Outdoor)", hourly_rate: 250000, opens_at: "07:00", closes_at: "21:00" },
+  { name: "Center Court", hourly_rate: 350000, opens_at: "06:00", closes_at: "23:00", x: 40, y: 60 },
+  { name: "Court 2", hourly_rate: 300000, opens_at: "06:00", closes_at: "23:00", x: 180, y: 60 },
+  { name: "Court 3 (Outdoor)", hourly_rate: 250000, opens_at: "07:00", closes_at: "21:00", x: 320, y: 60 },
 ];
 
 transaction(() => {
   const ids = courts.map(court => {
     const id = randomUUID();
-    db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at) VALUES (?,?,?,?,?,?,?)")
-      .run(id, court.name, court.hourly_rate, court.opens_at, court.closes_at, 1, new Date().toISOString());
+    db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at,layout_x,layout_y,layout_w,layout_h) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, court.name, court.hourly_rate, court.opens_at, court.closes_at, 1, new Date().toISOString(), court.x, court.y, 100, 200);
     return { id, ...court };
   });
 

@@ -78,7 +78,7 @@ router.delete("/roles/:id",(req:AuthRequest,res)=>{transaction(()=>{
   check(!getUsers().some(u=>u.role===role.slug),400,"Role masih digunakan.");
   saveRoles(roles.filter(r=>r.id!==role.id));audit(req.auth!.sub,"role.delete",role.id);
 });res.status(204).send()});
-const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",courts:"/admin/courts",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
+const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",courts:"/admin/courts",layout:"/admin/layout",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
 const menuSchema=z.object({name:z.string().trim().min(2).max(40),path:z.string().regex(/^\/admin(?:\/[a-z0-9-]+)*$/),icon:z.string().min(2).max(40),group:z.string().min(2).max(40),order:z.number().int().min(0),active:z.boolean()});
 router.post("/menus",(req:AuthRequest,res)=>{
   const data=menuSchema.parse(req.body);

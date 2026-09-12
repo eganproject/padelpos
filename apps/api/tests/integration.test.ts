@@ -137,6 +137,46 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/access/roles/admin","PUT",{name:"Admin",slug:"admin",description:"test",menuIds:[]},admin)).status,400);
       assert.equal((await request("/access/menus/users","DELETE",undefined,admin)).status,400);
     });
+    await t.test("layout venue: hanya peran berhak, tolak tumpang tindih dan yang keluar area",async()=>{
+      assert.equal((await request("/operations/layout","GET",undefined,staff)).status,403,"peran tanpa menu layout harus ditolak");
+      const before=await request("/operations/layout","GET",undefined,admin);
+      assert.equal(before.status,200);
+      const venue=before.data.venue;
+      assert.ok(venue.width>0&&venue.height>0&&venue.grid>0);
+      const extra=await request("/operations/courts","POST",{name:"Court B",hourly_rate:250000,opens_at:"06:00",closes_at:"22:00",active:true},admin);
+      assert.equal(extra.status,201);
+      const a=courtId,b=extra.data.court.id;
+      assert.equal((await request("/operations/layout","PUT",{venue,courts:[{id:a,x:0,y:0,w:100,h:200},{id:b,x:50,y:0,w:100,h:200}]},admin)).status,409,"dua lapangan yang menimpa harus ditolak");
+      assert.equal((await request("/operations/layout","PUT",{venue,courts:[{id:a,x:venue.width-10,y:0,w:100,h:200}]},admin)).status,400,"lapangan yang keluar area harus ditolak");
+      assert.equal((await request("/operations/layout","PUT",{venue,courts:[{id:"tidak-ada",x:0,y:0,w:100,h:200}]},admin)).status,404);
+      const saved=await request("/operations/layout","PUT",{venue:{...venue,width:800},courts:[{id:a,x:10,y:20,w:100,h:200},{id:b,x:200,y:20,w:200,h:100}]},admin);
+      assert.equal(saved.status,200);
+      const after=await request("/operations/layout","GET",undefined,admin);
+      assert.equal(after.data.venue.width,800);
+      const first=after.data.courts.find((c:{id:string})=>c.id===a),second=after.data.courts.find((c:{id:string})=>c.id===b);
+      assert.equal(first.layout_x,10);assert.equal(first.layout_y,20);
+      assert.equal(second.layout_w,200);assert.equal(second.layout_h,100,"menukar lebar dan tinggi menggantikan rotasi");
+      assert.equal((await request("/operations/courts/"+b,"DELETE",undefined,admin)).status,204,"lapangan tanpa booking boleh dihapus");
+      assert.equal((await request("/operations/courts/"+a,"DELETE",undefined,admin)).status,409,"lapangan yang punya riwayat booking harus dipertahankan");
+    });
+    await t.test("endpoint publik membuka jadwal tanpa membocorkan data pemesan",async()=>{
+      const open=await request("/public/availability?date="+tomorrow,"GET");
+      assert.equal(open.status,200,"halaman pelanggan tidak memerlukan sesi");
+      const body=JSON.stringify(open.data);
+      assert.ok(!body.includes("Test Customer"),"nama pemesan tidak boleh ikut terkirim");
+      assert.ok(!body.includes("081234567891"),"nomor telepon pemesan tidak boleh ikut terkirim");
+      assert.ok(!body.includes("Test booking"),"catatan booking tidak boleh ikut terkirim");
+      assert.ok(open.data.courts.length>0);
+      const centre=open.data.courts.find((entry:{court:{id:string}})=>entry.court.id===courtId);
+      assert.ok(centre.court.layout,"layout harus ikut agar denah bisa digambar pelanggan");
+      assert.ok(centre.slots.some((slot:{state:string})=>slot.state==="booked"),"slot terisi harus terlihat sebagai sudah dipesan");
+      assert.ok(centre.slots.every((slot:{start:string})=>slot.start>=centre.court.opens_at));
+      assert.equal((await request("/public/availability?date=2000-01-01","GET")).status,400,"tanggal lampau ditolak");
+      assert.equal((await request("/public/availability?date=2099-01-01","GET")).status,400,"jadwal terlalu jauh ke depan ditolak");
+      const venue=await request("/public/venue","GET");
+      assert.equal(venue.status,200);
+      assert.ok(venue.data.venue.width>0&&venue.data.courts.length>0);
+    });
     await t.test("password change revokes previous sessions; logout revokes server session",async()=>{
       const second=(await request("/auth/login","POST",{email:adminData.email,password:adminData.password})).cookie;
       const changed=await request("/profile/password","PUT",{currentPassword:adminData.password,newPassword:"NewStrongPass123"},admin);

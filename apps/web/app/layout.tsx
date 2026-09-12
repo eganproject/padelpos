@@ -5,6 +5,7 @@ import "./globals.css";
 import "./admin-ui.css";
 import "./management.css";
 import "./operations.css";
+import "./layout-editor.css";
 import "./shop.css";
 
 // Variabel ini sudah lama dirujuk seluruh CSS, tetapi fontnya belum pernah dimuat.

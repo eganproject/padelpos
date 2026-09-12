@@ -1,0 +1,50 @@
+/* Editor denah venue di panel admin. Memakai token tema admin agar mode terang ikut bekerja. */
+.venue-editor{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+.venue-toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px}
+.venue-toolbar .grow{margin-left:auto;display:flex;gap:9px;align-items:center}
+.venue-num{display:flex;flex-direction:column;gap:6px}
+.venue-num label{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.venue-num input,.venue-num select{height:40px;width:104px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);padding:0 10px;font-size:13px;outline:0}
+.venue-num input:focus,.venue-num select:focus{border-color:var(--lime)}
+.venue-dirty{font-size:11px;color:var(--orange);display:flex;align-items:center;gap:7px}
+
+.venue-stage{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:16px;overflow:auto}
+.venue-canvas{position:relative;width:100%;border:1px dashed var(--line);border-radius:8px;background-color:var(--panel2);background-image:linear-gradient(var(--venue-grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--venue-grid-line) 1px,transparent 1px);touch-action:none;user-select:none}
+:root{--venue-grid-line:#ffffff0f}
+html[data-theme="light"]{--venue-grid-line:#1118270f}
+
+.venue-court{position:absolute;border:2px solid var(--lime);border-radius:6px;background:#c8ff3d1f;color:var(--text);cursor:grab;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:4px;text-align:center;overflow:hidden}
+.venue-court:active{cursor:grabbing}
+.venue-court b{font-size:11px;line-height:1.2;word-break:break-word}
+.venue-court small{font-size:9px;color:var(--muted)}
+.venue-court:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.venue-court.selected{border-color:var(--cyan);background:#4de4ed24;box-shadow:0 0 0 3px #4de4ed33}
+.venue-court.inactive{border-style:dashed;opacity:.6}
+.venue-court.clash{border-color:var(--orange);background:#ff9c5133}
+.venue-court .net{position:absolute;left:8%;right:8%;top:50%;height:2px;background:currentColor;opacity:.35}
+
+.venue-side{display:flex;flex-direction:column;gap:12px}
+.venue-side .settings-card{padding:16px}
+.venue-side h3{font-family:var(--font-space);font-size:14px;margin:0 0 4px}
+.venue-side p.hint{font-size:11px;color:var(--muted);margin:0 0 12px;line-height:1.6}
+.venue-grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.venue-side label{display:flex;flex-direction:column;gap:6px;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:700}
+.venue-side label input,.venue-side label select{height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);padding:0 10px;font-size:13px;outline:0;text-transform:none;letter-spacing:0;font-weight:400}
+.venue-side label input:focus{border-color:var(--lime)}
+.venue-side .row-buttons{display:flex;gap:8px;margin-top:12px}
+.venue-side .row-buttons button{flex:1;height:38px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px}
+.venue-side .row-buttons button:hover{border-color:var(--lime)}
+.venue-side .row-buttons button.danger{color:#ff8f6b;border-color:#5a3226}
+.venue-side .row-buttons button:disabled{opacity:.5;cursor:not-allowed}
+
+.venue-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}
+.venue-list button{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;border:1px solid transparent;background:var(--panel2);color:var(--text);font-size:12px;cursor:pointer;text-align:left}
+.venue-list button.on{border-color:var(--cyan);background:#4de4ed14}
+.venue-list button i{width:9px;height:9px;border-radius:3px;background:var(--lime);flex:none}
+.venue-list button i.off{background:var(--muted)}
+.venue-list button span{margin-left:auto;color:var(--muted);font-size:10px}
+
+@media(max-width:1000px){
+  .venue-editor{grid-template-columns:1fr}
+  .venue-toolbar .grow{margin-left:0;width:100%}
+}

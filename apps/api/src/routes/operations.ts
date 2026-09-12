@@ -9,6 +9,9 @@ router.get("/context",requireAnyMenu(["bookings","courts"]),(req,res)=>{
 router.get("/courts",requireMenu("courts"),(_req,res)=>res.json({courts:ops.courts(),maintenance:ops.maintenances().filter(m=>m.date>=ops.localClock().date),...ops.localClock()}));
 router.post("/courts",requireMenu("courts"),(req:AuthRequest,res)=>res.status(201).json({court:ops.saveCourt(req.body,req.auth!.sub)}));
 router.put("/courts/:id",requireMenu("courts"),(req:AuthRequest,res)=>res.json({court:ops.saveCourt(req.body,req.auth!.sub,String(req.params.id))}));
+router.delete("/courts/:id",requireMenu("courts"),(req:AuthRequest,res)=>{ops.removeCourt(String(req.params.id),req.auth!.sub);res.status(204).send()});
+router.get("/layout",requireMenu("layout"),(_req,res)=>res.json(ops.layout()));
+router.put("/layout",requireMenu("layout"),(req:AuthRequest,res)=>res.json(ops.saveLayout(req.body,req.auth!.sub)));
 router.post("/maintenance",requireMenu("courts"),(req:AuthRequest,res)=>res.status(201).json({maintenance:ops.createMaintenance(req.body,req.auth!.sub)}));
 router.delete("/maintenance/:id",requireMenu("courts"),(req:AuthRequest,res)=>{ops.removeMaintenance(String(req.params.id),req.auth!.sub);res.status(204).send()});
 router.get("/bookings",requireMenu("bookings"),(req,res)=>{

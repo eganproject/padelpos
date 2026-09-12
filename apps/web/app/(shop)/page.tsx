@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ArrowRight, CalendarDays, Clock3, Sparkles } from "lucide-react";
 import { money } from "@/lib/api";
-import { addDays, fetchCourts, formatShortDay, venueNow, type ShopCourt } from "@/lib/shop";
+import { addDays, fetchVenue, formatShortDay, venueNow, type ShopCourt } from "@/lib/shop";
 
 export default function ShopLandingPage() {
   const router = useRouter();
@@ -18,7 +18,7 @@ export default function ShopLandingPage() {
     const now = venueNow();
     setToday(now.date);
     setDate(now.date);
-    void fetchCourts().then(setCourts);
+    void fetchVenue().then(data => setCourts(data.courts)).catch(() => setCourts([]));
   }, []);
 
   const quickDays = today ? [0, 1, 2].map(offset => addDays(today, offset)) : [];
