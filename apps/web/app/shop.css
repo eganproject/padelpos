@@ -149,3 +149,17 @@ html:has(.shop-page),html:has(.shop-page) body{background:#fbfbf6}
 .venue-map-legend i.few{border-color:#ddb14a;background:var(--care-wash)}
 .venue-map-legend i.full{border-color:#e0b6a8;background:var(--busy-wash)}
 @media(max-width:720px){.venue-map-court b{font-size:11px}.venue-map-court small{font-size:10px}}
+
+/* Elemen informasi pada denah pelanggan: latar, tidak dapat diklik. */
+.venue-map-feature{position:absolute;z-index:1;border:1px dashed;border-radius:7px;display:flex;align-items:center;justify-content:center;padding:3px;overflow:hidden;text-align:center;font-size:12px;font-weight:600;line-height:1.2;pointer-events:none}
+.venue-map-feature span{word-break:break-word}
+.venue-map-court{z-index:2}
+.venue-map-feature.kind-jalan{border-color:#b9bfc6;background:#f1f3f5;color:#6b7480}
+.venue-map-feature.kind-kantin{border-color:#e3b477;background:#fdf3e6;color:#8a5410}
+.venue-map-feature.kind-tempat-duduk{border-color:#8fd6da;background:#eaf9fa;color:#136f76}
+.venue-map-feature.kind-toilet{border-color:#9ed3b4;background:#eef8f2;color:#2c6b45}
+.venue-map-feature.kind-parkir{border-color:#aeb5d4;background:#f0f1f8;color:#414a78}
+.venue-map-feature.kind-resepsionis{border-color:#c5aef0;background:#f5f0fd;color:#5a3a9c}
+.venue-map-feature.kind-loker{border-color:#d5b795;background:#faf3ea;color:#754c25}
+.venue-map-feature.kind-lainnya{border-color:#c3c8cc;background:#f3f5f6;color:#565d63}
+@media(max-width:720px){.venue-map-feature{font-size:10px}}

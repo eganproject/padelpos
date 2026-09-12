@@ -50,6 +50,20 @@ transaction(() => {
   db.prepare("INSERT INTO maintenance (id,court_id,date,start_time,end_time,reason) VALUES (?,?,?,?,?,?)")
     .run(randomUUID(), ids[2].id, day(1), "09:00", "11:00", "Perawatan rumput sintetis");
 
+  // Elemen penjelas denah: hanya informasi, tidak memengaruhi jadwal.
+  const decor: [string, string, number, number, number, number][] = [
+    ["jalan", "", 40, 280, 380, 30],
+    ["resepsionis", "", 40, 330, 70, 40],
+    ["kantin", "Kantin & lounge", 130, 330, 120, 60],
+    ["tempat-duduk", "Tribun penonton", 270, 330, 90, 50],
+    ["toilet", "", 380, 330, 50, 40],
+    ["parkir", "", 450, 60, 110, 200],
+  ];
+  for (const [kind, label, x, y, w, h] of decor) {
+    db.prepare("INSERT INTO venue_features (id,kind,label,x,y,w,h,created_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run(randomUUID(), kind, label, x, y, w, h, new Date().toISOString());
+  }
+
   console.log(`Data contoh dibuat: ${ids.length} lapangan, ${reservations.length} booking, 1 maintenance.`);
   console.log(`Tanggal yang terisi: ${day(0)} (hari ini), ${day(1)}, ${day(2)}.`);
 });

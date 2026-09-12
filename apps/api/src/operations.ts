@@ -119,15 +119,23 @@ export function recordPayment(id:string,input:unknown,actor:string){
 // dengan menukar lebar dan tinggi, sehingga kotak selalu sejajar sumbu dan
 // pemeriksaan tumpang tindih tetap sederhana dan benar.
 export const venueSchema=z.object({width:z.number().int().min(200).max(5000),height:z.number().int().min(200).max(5000),grid:z.number().int().min(5).max(50)});
+/** Jenis elemen penjelas. Menambah jenis cukup di sini, tanpa migrasi. */
+export const featureKinds=["jalan","kantin","tempat-duduk","toilet","parkir","resepsionis","loker","lainnya"] as const;
+export type FeatureKind=typeof featureKinds[number];
+export interface VenueFeature {id:string;kind:FeatureKind;label:string;x:number;y:number;w:number;h:number;created_at:string}
+const boxSchema={x:z.number().int().min(0).max(5000),y:z.number().int().min(0).max(5000),w:z.number().int().min(10).max(5000),h:z.number().int().min(10).max(5000)};
 export const layoutSchema=z.object({
   venue:venueSchema,
-  courts:z.array(z.object({id:z.string().min(1),x:z.number().int().min(0).max(5000),y:z.number().int().min(0).max(5000),w:z.number().int().min(20).max(2000),h:z.number().int().min(20).max(2000)})).max(60),
+  courts:z.array(z.object({id:z.string().min(1),...boxSchema,w:z.number().int().min(20).max(2000),h:z.number().int().min(20).max(2000)})).max(60),
+  // Daftar lengkap: elemen yang tidak ikut terkirim dianggap dihapus.
+  features:z.array(z.object({id:z.string().min(1).max(64),kind:z.enum(featureKinds),label:z.string().trim().max(40).default(""),...boxSchema})).max(80).optional(),
 });
 export function getVenue():VenueLayout{
   const row=db.prepare("SELECT document FROM settings WHERE key='venue'").get() as {document:string}|undefined;
   return row?JSON.parse(row.document) as VenueLayout:defaultVenue;
 }
-export function layout(){return {venue:getVenue(),courts:courts()}}
+export function features(){return db.prepare("SELECT * FROM venue_features ORDER BY created_at,id").all() as unknown as VenueFeature[]}
+export function layout(){return {venue:getVenue(),courts:courts(),features:features()}}
 const overlaps=(a:{x:number;y:number;w:number;h:number},b:{x:number;y:number;w:number;h:number})=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 export function saveLayout(input:unknown,actor:string){
   const data=layoutSchema.parse(input);
@@ -143,8 +151,20 @@ export function saveLayout(input:unknown,actor:string){
     });
     for(let i=0;i<named.length;i++)for(let j=i+1;j<named.length;j++)
       check(!overlaps(named[i],named[j]),409,`${named[i].name} dan ${named[j].name} saling menimpa. Geser salah satunya.`);
+    // Elemen penjelas hanya dijaga agar tetap di dalam area. Saling menimpa
+    // dibiarkan, karena menaruh kursi di dalam area lounge itu wajar dan
+    // elemen ini tidak memengaruhi jadwal sama sekali.
+    for(const item of data.features??[])
+      check(item.x+item.w<=data.venue.width&&item.y+item.h<=data.venue.height,400,`Elemen ${item.label||item.kind} keluar dari area venue.`);
+
     db.prepare("UPDATE settings SET document=? WHERE key='venue'").run(JSON.stringify(data.venue));
     for(const item of data.courts)db.prepare("UPDATE courts SET layout_x=?,layout_y=?,layout_w=?,layout_h=? WHERE id=?").run(item.x,item.y,item.w,item.h,item.id);
+    if(data.features){
+      const keep=new Set(data.features.map(item=>item.id));
+      for(const existing of features())if(!keep.has(existing.id))db.prepare("DELETE FROM venue_features WHERE id=?").run(existing.id);
+      const upsert=db.prepare("INSERT INTO venue_features (id,kind,label,x,y,w,h,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,label=excluded.label,x=excluded.x,y=excluded.y,w=excluded.w,h=excluded.h");
+      for(const item of data.features)upsert.run(item.id,item.kind,item.label,item.x,item.y,item.w,item.h,new Date().toISOString());
+    }
     audit(actor,"layout.update","venue");return layout();
   });
 }
@@ -176,5 +196,5 @@ export function publicAvailability(date:string){
     }
     return {court:{id:court.id,name:court.name,hourly_rate:court.hourly_rate,opens_at:court.opens_at,closes_at:court.closes_at,layout:{x:court.layout_x,y:court.layout_y,w:court.layout_w,h:court.layout_h}},slots};
   });
-  return {date,today:now.date,time:now.time,timezone:now.timezone,venue:getVenue(),courts:courtsOut};
+  return {date,today:now.date,time:now.time,timezone:now.timezone,venue:getVenue(),features:features(),courts:courtsOut};
 }

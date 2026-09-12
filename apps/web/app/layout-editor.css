@@ -48,3 +48,43 @@ html[data-theme="light"]{--venue-grid-line:#1118270f}
   .venue-editor{grid-template-columns:1fr}
   .venue-toolbar .grow{margin-left:0;width:100%}
 }
+
+/* Elemen informasi pada editor: digambar di belakang lapangan, gaya lebih tenang. */
+.venue-feature{position:absolute;z-index:1;border:1px dashed;border-radius:6px;display:flex;align-items:center;justify-content:center;padding:3px;cursor:grab;overflow:hidden;text-align:center;font-size:10px;font-weight:600;line-height:1.2}
+.venue-feature:active{cursor:grabbing}
+.venue-feature span{word-break:break-word}
+.venue-feature.selected{border-style:solid;box-shadow:0 0 0 3px #4de4ed33}
+.venue-feature:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.venue-court{z-index:2}
+
+.venue-kinds{display:flex;flex-wrap:wrap;gap:6px}
+.venue-kinds button{height:30px;padding:0 10px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--text);font-size:11px;cursor:pointer}
+.venue-kinds button:hover{border-color:var(--lime)}
+.venue-list button i.dot{border-radius:3px}
+.venue-side label select{height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);padding:0 10px;font-size:13px;outline:0;text-transform:none;letter-spacing:0;font-weight:400}
+
+/* Warna per jenis, dipakai bersama oleh kotak di kanvas dan titik di daftar. */
+.kind-jalan{border-color:#8b95a1;background:#8b95a11f;color:#aab4c0}
+.kind-kantin{border-color:#e0913f;background:#e0913f1f;color:#f0b877}
+.kind-tempat-duduk{border-color:#4de4ed;background:#4de4ed1a;color:#8df1f6}
+.kind-toilet{border-color:#6fbf8f;background:#6fbf8f1f;color:#9bd8b3}
+.kind-parkir{border-color:#7d87b8;background:#7d87b81f;color:#a6aed6}
+.kind-resepsionis{border-color:#a578ff;background:#a578ff1f;color:#c4a5ff}
+.kind-loker{border-color:#b98a5e;background:#b98a5e1f;color:#d6ab84}
+.kind-lainnya{border-color:#8a9299;background:#8a92991f;color:#b0b7bd}
+.venue-list button i.dot.kind-jalan{background:#8b95a1}
+.venue-list button i.dot.kind-kantin{background:#e0913f}
+.venue-list button i.dot.kind-tempat-duduk{background:#4de4ed}
+.venue-list button i.dot.kind-toilet{background:#6fbf8f}
+.venue-list button i.dot.kind-parkir{background:#7d87b8}
+.venue-list button i.dot.kind-resepsionis{background:#a578ff}
+.venue-list button i.dot.kind-loker{background:#b98a5e}
+.venue-list button i.dot.kind-lainnya{background:#8a9299}
+html[data-theme="light"] .kind-jalan{color:#525c68}
+html[data-theme="light"] .kind-kantin{color:#8a5410}
+html[data-theme="light"] .kind-tempat-duduk{color:#136f76}
+html[data-theme="light"] .kind-toilet{color:#2c6b45}
+html[data-theme="light"] .kind-parkir{color:#414a78}
+html[data-theme="light"] .kind-resepsionis{color:#5a3a9c}
+html[data-theme="light"] .kind-loker{color:#754c25}
+html[data-theme="light"] .kind-lainnya{color:#4d545a}

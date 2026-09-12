@@ -1,16 +1,16 @@
 import { api } from "./api";
 import { minute } from "./operations";
+import type { Venue, VenueFeature } from "./venue";
 
 export const venueTimezone = "Asia/Jakarta";
 export const slotMinutes = 30;
 
 export type SlotState = "available" | "booked" | "maintenance" | "past";
 export type CourtBox = { x: number; y: number; w: number; h: number };
-export type Venue = { width: number; height: number; grid: number };
 export type ShopCourt = { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; layout: CourtBox };
 export type ShopSlot = { start: string; end: string; state: SlotState };
 export type CourtAvailability = { court: ShopCourt; slots: ShopSlot[] };
-export type Availability = { date: string; today: string; time: string; timezone: string; venue: Venue; courts: CourtAvailability[] };
+export type Availability = { date: string; today: string; time: string; timezone: string; venue: Venue; features: VenueFeature[]; courts: CourtAvailability[] };
 
 /** Dipakai sebelum data server tiba, hanya untuk menebak tanggal awal. */
 export function venueNow() {
@@ -45,4 +45,6 @@ export function rangeIsFree(slots: ShopSlot[], start: string, duration: number) 
 }
 
 export const fetchAvailability = (date: string) => api<Availability>(`/public/availability?date=${encodeURIComponent(date)}`);
-export const fetchVenue = () => api<{ venue: Venue; timezone: string; today: string; courts: ShopCourt[] }>("/public/venue");
+export const fetchVenue = () => api<{ venue: Venue; features: VenueFeature[]; timezone: string; today: string; courts: ShopCourt[] }>("/public/venue");
+
+export type { Venue, VenueFeature } from "./venue";

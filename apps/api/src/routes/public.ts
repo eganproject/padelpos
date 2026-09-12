@@ -23,7 +23,7 @@ const requestedDate = (value: unknown) => {
 
 router.get("/venue", (_req, res) => {
   const data = ops.publicAvailability(ops.localClock().date);
-  res.json({ venue: data.venue, timezone: data.timezone, today: data.today, courts: data.courts.map(entry => entry.court) });
+  res.json({ venue: data.venue, features: data.features, timezone: data.timezone, today: data.today, courts: data.courts.map(entry => entry.court) });
 });
 
 router.get("/availability", (req, res) => res.json(ops.publicAvailability(requestedDate(req.query.date))));

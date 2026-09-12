@@ -175,6 +175,26 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 3").get()) transaction
   }
   db.prepare("INSERT INTO migrations VALUES (3, ?)").run(stamp);
 });
+
+/**
+ * Elemen penjelas pada denah: jalan, kantin, tempat duduk, dan sejenisnya.
+ * Sifatnya hanya informasi, tidak dapat dipesan, dan tidak memengaruhi jadwal.
+ * `kind` sengaja tanpa CHECK agar menambah jenis baru tidak memaksa membangun
+ * ulang tabel; daftar jenis yang sah dijaga di lapisan validasi.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 4").get()) transaction(() => {
+  db.exec(`
+    CREATE TABLE venue_features (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      label TEXT NOT NULL DEFAULT '',
+      x INTEGER NOT NULL, y INTEGER NOT NULL,
+      w INTEGER NOT NULL CHECK(w > 0), h INTEGER NOT NULL CHECK(h > 0),
+      created_at TEXT NOT NULL
+    );
+  `);
+  db.prepare("INSERT INTO migrations VALUES (4, ?)").run(new Date().toISOString());
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

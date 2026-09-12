@@ -159,6 +159,28 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/operations/courts/"+b,"DELETE",undefined,admin)).status,204,"lapangan tanpa booking boleh dihapus");
       assert.equal((await request("/operations/courts/"+a,"DELETE",undefined,admin)).status,409,"lapangan yang punya riwayat booking harus dipertahankan");
     });
+    await t.test("elemen informasi denah: tersimpan, boleh bertumpuk, wajib di dalam area",async()=>{
+      const before=await request("/operations/layout","GET",undefined,admin);
+      const venue=before.data.venue,courts=before.data.courts.map((c:{id:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number})=>({id:c.id,x:c.layout_x,y:c.layout_y,w:c.layout_w,h:c.layout_h}));
+      const kantin={id:randomUUID(),kind:"kantin",label:"Kantin & lounge",x:0,y:300,w:120,h:60};
+      const kursi={id:randomUUID(),kind:"tempat-duduk",label:"",x:40,y:320,w:60,h:30};
+      const ditolak=await request("/operations/layout","PUT",{venue,courts,features:[{...kantin,x:venue.width-10,w:120}]},admin);
+      assert.equal(ditolak.status,400,"elemen yang keluar area harus ditolak");
+      assert.equal((await request("/operations/layout","PUT",{venue,courts,features:[{...kantin,kind:"kolam-renang"}]},admin)).status,400,"jenis di luar daftar harus ditolak");
+      // Bertumpuk sengaja diizinkan: elemen ini hanya keterangan, bukan jadwal.
+      const disimpan=await request("/operations/layout","PUT",{venue,courts,features:[kantin,kursi]},admin);
+      assert.equal(disimpan.status,200,"dua elemen yang bertumpuk harus tetap boleh disimpan");
+      assert.equal(disimpan.data.features.length,2);
+      const tersimpan=disimpan.data.features.find((f:{id:string})=>f.id===kantin.id);
+      assert.equal(tersimpan.label,"Kantin & lounge");assert.equal(tersimpan.kind,"kantin");
+      // Daftar bersifat lengkap: yang tidak dikirim berarti dihapus.
+      const dikurangi=await request("/operations/layout","PUT",{venue,courts,features:[kantin]},admin);
+      assert.equal(dikurangi.data.features.length,1,"elemen yang tidak ikut dikirim harus terhapus");
+      assert.equal(dikurangi.data.features[0].id,kantin.id);
+      // Menghilangkan kunci features sama sekali tidak boleh menghapus apa pun.
+      const tanpaKunci=await request("/operations/layout","PUT",{venue,courts},admin);
+      assert.equal(tanpaKunci.data.features.length,1,"tanpa kunci features, elemen lama harus dipertahankan");
+    });
     await t.test("endpoint publik membuka jadwal tanpa membocorkan data pemesan",async()=>{
       const open=await request("/public/availability?date="+tomorrow,"GET");
       assert.equal(open.status,200,"halaman pelanggan tidak memerlukan sesi");
@@ -176,6 +198,8 @@ test("operational workflow, concurrency, permissions and durable storage", async
       const venue=await request("/public/venue","GET");
       assert.equal(venue.status,200);
       assert.ok(venue.data.venue.width>0&&venue.data.courts.length>0);
+      assert.ok(Array.isArray(venue.data.features)&&venue.data.features.length>0,"elemen informasi harus ikut agar denah pelanggan lengkap");
+      assert.ok(Array.isArray(open.data.features),"ketersediaan harian juga membawa elemen informasi");
     });
     await t.test("password change revokes previous sessions; logout revokes server session",async()=>{
       const second=(await request("/auth/login","POST",{email:adminData.email,password:adminData.password})).cookie;

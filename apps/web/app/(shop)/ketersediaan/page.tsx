@@ -74,7 +74,7 @@ function AvailabilityView() {
 
       {data && data.courts.length > 0 && (
         <>
-          <VenueMap venue={data.venue} courts={data.courts} selected={picked?.courtId} onSelect={focusCourt} />
+          <VenueMap venue={data.venue} courts={data.courts} features={data.features} selected={picked?.courtId} onSelect={focusCourt} />
           <div className="venue-map-legend">
             <span><i className="open" />Banyak slot kosong</span>
             <span><i className="few" />Tinggal sedikit</span>
