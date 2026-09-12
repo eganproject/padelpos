@@ -17,8 +17,8 @@ export default function LoginPage() {
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setLoading(true);
     try {
-      const data = await api<{ token: string; user: User }>("/auth/login", { method: "POST", body: JSON.stringify(form) });
-      saveSession(data.token, data.user);
+      const data = await api<{ user: User }>("/auth/login", { method: "POST", body: JSON.stringify(form) });
+      saveSession(data.user);
       toast.success(`Selamat datang, ${data.user.name}`);
       router.push("/admin");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Gagal masuk"); }

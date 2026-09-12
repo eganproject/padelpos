@@ -19,7 +19,8 @@ app.use(cors({origin,credentials:true}));
 app.use((req,res,next)=>{
   if(!["GET","HEAD","OPTIONS"].includes(req.method)){
     if(req.headers.origin&&req.headers.origin!==origin)return res.status(403).json({message:"Asal permintaan tidak diizinkan."});
-    if(!req.is("application/json"))return res.status(415).json({message:"Gunakan application/json."});
+    // req.is() bernilai null untuk request tanpa body (mis. DELETE); tolak hanya body ber-tipe salah.
+    if(req.is("application/json")===false)return res.status(415).json({message:"Gunakan application/json."});
   }
   next();
 });

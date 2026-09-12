@@ -7,8 +7,7 @@ export async function api<T>(path:string,options:RequestInit={}):Promise<T>{
   if(!response.ok)throw new ApiError(data.message||"Terjadi kesalahan.",response.status);
   return data as T;
 }
-export function saveSession(_token:unknown,user:User){
-  localStorage.removeItem("padelix_token");
+export function saveSession(user:User){
   localStorage.setItem("padelix_user",JSON.stringify(user));
   window.dispatchEvent(new Event("padelix:user-changed"));
 }
