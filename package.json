@@ -1,0 +1,21 @@
+{
+  "name": "padelix-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n WEB,API -c cyan,magenta \"npm run dev -w apps/web\" \"npm run dev -w apps/api\"",
+    "build": "npm run build -w apps/web && npm run build -w apps/api",
+    "start": "concurrently -n WEB,API -c cyan,magenta \"npm run start -w apps/web\" \"npm run start -w apps/api\"",
+    "lint": "npm run lint -w apps/web && npm run lint -w apps/api",
+    "test": "npm run test -w apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=24.14.0"
+  }
+}

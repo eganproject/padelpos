@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+.env
+*.log
+apps/api/data/*.json
+!apps/api/data/.gitkeep
+
+apps/api/data/*.sqlite*
+apps/api/data/backups/
+*.tsbuildinfo
+playwright-report/
+test-results/

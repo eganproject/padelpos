@@ -1,0 +1,170 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+
+const directory = mkdtempSync(path.join(tmpdir(), "padelix-api-test-"));
+process.env.DATA_DIR = directory;
+process.env.NODE_ENV = "test";
+process.env.CLIENT_URL = "http://localhost:3000";
+process.env.VENUE_TIMEZONE = "Asia/Jakarta";
+process.env.BOOTSTRAP_TOKEN = "";
+const { app } = await import("../src/app.js");
+const { db } = await import("../src/store.js");
+const { localClock } = await import("../src/operations.js");
+
+test("operational workflow, concurrency, permissions and durable storage", async t => {
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const address = server.address() as { port:number };
+  const base = `http://127.0.0.1:${address.port}/api`;
+  async function request(url:string, method="GET", body?:unknown, cookie="", origin="http://localhost:3000") {
+    const response = await fetch(base+url, {method, headers:{"Content-Type":"application/json", Cookie:cookie, Origin:origin}, ...(body!==undefined?{body:JSON.stringify(body)}:{})});
+    const data = response.status===204?null:await response.json();
+    return {status:response.status, data, cookie:response.headers.get("set-cookie")?.split(";")[0]||"", headers:response.headers};
+  }
+  const adminData={name:"Test Admin",email:"admin@example.test",phone:"081234567890",password:"StrongPass123"};
+  let admin="", staff="",courtId="",bookingId="",staffId="";
+  const tomorrowDate=new Date(localClock().date+"T12:00:00Z"); tomorrowDate.setUTCDate(tomorrowDate.getUTCDate()+1);
+  const tomorrow=tomorrowDate.toISOString().slice(0,10);
+  const court={name:"Centre Court",hourly_rate:300000,opens_at:"06:00",closes_at:"24:00",active:true};
+  const booking=(overrides={})=>({court_id:courtId,customer:"Test Customer",phone:"081234567891",date:tomorrow,start_time:"09:00",end_time:"10:30",notes:"Test booking",...overrides});
+  const payment=(amount:number,kind="payment",overrides={})=>({id:randomUUID(),amount,kind,method:"transfer",note:kind==="refund"?"Booking cancelled":"",...overrides});
+  try {
+    await t.test("admin bootstrap closes registration and uses HttpOnly cookies",async()=>{
+      assert.equal((await request("/auth/setup")).data.available,true);
+      const result=await request("/auth/register","POST",adminData);
+      assert.equal(result.status,201); admin=result.cookie;
+      assert.ok(result.headers.get("set-cookie")?.includes("HttpOnly"));assert.equal(result.data.token,undefined);
+      assert.equal(result.data.user.passwordHash,undefined);
+      assert.equal((await request("/auth/register","POST",{...adminData,email:"another@example.test"})).status,403);
+      assert.equal((await request("/auth/login","POST",{email:adminData.email,password:"wrong"})).status,401);
+      assert.equal((await request("/operations/courts")).status,401);
+      assert.equal((await request("/operations/courts","POST",court,admin,"https://untrusted.example")).status,403);
+    });
+    await t.test("staff cannot grant permissions even when menu access is assigned",async()=>{
+      const result=await request("/access/users","POST",{...adminData,email:"staff@example.test",name:"Test Staff",role:"staff"},admin);
+      assert.equal(result.status,201);staffId=result.data.user.id;
+      staff=(await request("/auth/login","POST",{email:"staff@example.test",password:adminData.password})).cookie;
+      assert.equal((await request("/access/overview","GET",undefined,staff)).status,403);
+      const role=await request("/access/roles/staff","PUT",{name:"Operator",slug:"staff",description:"test",menuIds:["dashboard","bookings","courts","profile","users","roles"]},admin);
+      assert.equal(role.status,200);
+      assert.equal((await request("/access/users","POST",{...adminData,email:"intruder@example.test",role:"admin"},staff)).status,403);
+      assert.equal((await request("/access/users/"+staffId,"PUT",{name:"Test Staff",email:"staff@example.test",phone:"081234567890",role:"staff"},admin)).status,200);
+    });
+    await t.test("court validation and integer pricing",async()=>{
+      assert.equal((await request("/operations/courts","POST",{...court,closes_at:"05:00"},admin)).status,400);
+      assert.equal((await request("/operations/courts","POST",{...court,hourly_rate:-1},admin)).status,400);
+      const result=await request("/operations/courts","POST",court,staff);
+      assert.equal(result.status,201);courtId=result.data.court.id;
+      assert.equal((await request("/operations/courts","POST",{...court,name:"centre court"},admin)).status,409);
+      assert.equal((await request("/operations/bookings","POST",booking({start_time:"05:30",end_time:"06:30"}),staff)).status,400);
+      assert.equal((await request("/operations/bookings","POST",booking({date:"2026-02-30"}),staff)).status,400);
+      assert.equal((await request("/operations/bookings","POST",booking({date:"2000-01-01"}),staff)).status,400);
+      assert.equal((await request("/operations/bookings","POST",booking({start_time:"09:15"}),staff)).status,400);
+    });
+    await t.test("simultaneous overlapping requests: only one booking is accepted",async()=>{
+      const results=await Promise.all([request("/operations/bookings","POST",booking({total:1}),staff),request("/operations/bookings","POST",booking(),staff)]);
+      assert.deepEqual(results.map(r=>r.status).sort(),[201,409]);
+      const result=results.find(r=>r.status===201)!;bookingId=result.data.booking.id;
+      assert.equal(result.data.booking.total,450000);
+      assert.equal((await request("/operations/bookings","POST",booking({start_time:"10:00",end_time:"11:00"}),staff)).status,409);
+      assert.equal((await request("/operations/bookings","POST",booking({start_time:"10:30",end_time:"11:00"}),staff)).status,201);
+    });
+    await t.test("maintenance blocks bookings and preserves existing reservations",async()=>{
+      const maintenance={court_id:courtId,date:tomorrow,start_time:"09:30",end_time:"10:00",reason:"Repair net"};
+      assert.equal((await request("/operations/maintenance","POST",maintenance,staff)).status,409);
+      const result=await request("/operations/maintenance","POST",{...maintenance,start_time:"12:00",end_time:"13:00"},staff);
+      assert.equal(result.status,201);
+      assert.equal((await request("/operations/bookings","POST",booking({start_time:"12:30",end_time:"13:30"}),staff)).status,409);
+      assert.equal((await request("/operations/maintenance/"+result.data.maintenance.id,"DELETE",undefined,staff)).status,204);
+      assert.equal((await request("/operations/courts/"+courtId,"PUT",{...court,active:false},staff)).status,409);
+      assert.equal((await request("/operations/courts/"+courtId,"PUT",{...court,opens_at:"10:00"},staff)).status,409);
+      assert.equal((await request("/operations/courts/"+courtId,"PUT",{...court,hourly_rate:400000},staff)).status,200);
+      assert.equal((await request("/operations/bookings/"+bookingId,"GET",undefined,staff)).data.booking.total,450000);
+    });
+    await t.test("partial payments, retry idempotency and overpayment prevention",async()=>{
+      const entry=payment(150000);
+      const first=await request(`/operations/bookings/${bookingId}/payments`,"POST",entry,staff);
+      assert.equal(first.status,201);assert.equal(first.data.booking.paid,150000);
+      const retry=await request(`/operations/bookings/${bookingId}/payments`,"POST",entry,staff);
+      assert.equal(retry.data.booking.paid,150000);assert.equal(retry.data.payments.length,1);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`,"POST",{...entry,amount:150001},staff)).status,409);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`,"POST",payment(300001),staff)).status,400);
+      const results=await Promise.all([request(`/operations/bookings/${bookingId}/payments`,"POST",payment(300000),staff),request(`/operations/bookings/${bookingId}/payments`,"POST",payment(300000),staff)]);
+      assert.deepEqual(results.map(r=>r.status).sort(),[201,400]);
+      assert.equal((await request(`/operations/bookings/${bookingId}/status`,"PATCH",{status:"completed"},staff)).status,409);
+    });
+    await t.test("cancellation releases schedule and refunds are separate, bounded records",async()=>{
+      assert.equal((await request(`/operations/bookings/${bookingId}/status`,"PATCH",{status:"cancelled"},staff)).status,400);
+      assert.equal((await request(`/operations/bookings/${bookingId}/status`,"PATCH",{status:"cancelled",reason:"Customer requested"},staff)).status,200);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`,"POST",payment(1),staff)).status,409);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`,"POST",payment(450001,"refund"),staff)).status,400);
+      const refund=await request(`/operations/bookings/${bookingId}/payments`,"POST",payment(450000,"refund"),staff);
+      assert.equal(refund.status,201);assert.equal(refund.data.booking.paid,0);assert.equal(refund.data.payments.length,3);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`,"POST",payment(1,"refund"),staff)).status,400);
+      assert.equal((await request("/operations/bookings","POST",booking(),staff)).status,201);
+    });
+    await t.test("dashboard uses recorded payments and database survives a new connection",async()=>{
+      const summary=await request("/dashboard/summary","GET",undefined,admin);
+      assert.equal(summary.status,200);assert.equal(summary.data.revenueToday,0);assert.equal(summary.data.refundsDue,0);
+      assert.equal(summary.data.bookingsToday,0);assert.equal(summary.data.daily.length,7);assert.equal(summary.data.courts.length,1);
+      const child=spawnSync(process.execPath,["--input-type=module","-e","import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(process.env.TEST_DB);console.log(db.prepare('SELECT count(*) n FROM bookings').get().n);db.close();"],{env:{...process.env,TEST_DB:path.join(directory,"padelix.sqlite")},encoding:"utf8"});
+      assert.equal(child.status,0,child.stderr);assert.equal(Number(child.stdout.trim()),3);
+    });
+    await t.test("completion requires elapsed time and full payment",async()=>{
+      const result=await request("/operations/bookings","POST",booking({start_time:"15:00",end_time:"16:00"}),staff),id=result.data.booking.id;
+      const yesterday=new Date(localClock().date+"T12:00:00Z");yesterday.setUTCDate(yesterday.getUTCDate()-1);
+      db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),id);
+      assert.equal((await request(`/operations/bookings/${id}/status`,"PATCH",{status:"completed"},staff)).status,409);
+      assert.equal((await request(`/operations/bookings/${id}/payments`,"POST",payment(400000),staff)).status,201);
+      assert.equal((await request(`/operations/bookings/${id}/status`,"PATCH",{status:"completed"},staff)).status,200);
+      assert.equal((await request(`/operations/bookings/${id}/status`,"PATCH",{status:"cancelled",reason:"Too late"},staff)).status,409);
+      assert.equal((await request("/dashboard/summary","GET",undefined,admin)).data.revenueToday,400000);
+    });
+    await t.test("role rename updates users and reserved admin access remains protected",async()=>{
+      const role=await request("/access/roles","POST",{name:"Cashier",slug:"cashier",description:"cashier",menuIds:["bookings","profile"]},admin);
+      assert.equal(role.status,201);
+      await request("/access/users/"+staffId,"PUT",{name:"Test Staff",email:"staff@example.test",phone:"081234567890",role:"cashier"},admin);
+      assert.equal((await request("/access/roles/"+role.data.role.id,"PUT",{name:"Cashier new",slug:"cashier-new",description:"cashier",menuIds:["bookings","profile"]},admin)).status,200);
+      assert.equal((await request("/auth/me","GET",undefined,staff)).data.user.role,"cashier-new");
+      assert.equal((await request("/operations/courts","GET",undefined,staff)).status,403);
+      assert.equal((await request("/operations/context","GET",undefined,staff)).status,200);
+      assert.equal((await request("/access/roles/admin","PUT",{name:"Admin",slug:"admin",description:"test",menuIds:[]},admin)).status,400);
+      assert.equal((await request("/access/menus/users","DELETE",undefined,admin)).status,400);
+    });
+    await t.test("password change revokes previous sessions; logout revokes server session",async()=>{
+      const second=(await request("/auth/login","POST",{email:adminData.email,password:adminData.password})).cookie;
+      const changed=await request("/profile/password","PUT",{currentPassword:adminData.password,newPassword:"NewStrongPass123"},admin);
+      assert.equal(changed.status,200);
+      assert.equal((await request("/auth/me","GET",undefined,second)).status,401);
+      assert.equal((await request("/auth/me","GET",undefined,admin)).status,401);
+      admin=changed.cookie;assert.equal((await request("/auth/me","GET",undefined,admin)).status,200);
+      assert.equal((await request("/auth/logout","POST",{},admin)).status,204);
+      assert.equal((await request("/auth/me","GET",undefined,admin)).status,401);
+    });
+  } finally {
+    await new Promise<void>(resolve=>server.close(()=>resolve()));db.close();
+    assert.ok(path.resolve(directory).startsWith(path.resolve(tmpdir())+path.sep+"padelix-api-test-"));
+    rmSync(directory,{recursive:true,force:true});
+  }
+});
+
+test("legacy JSON is migrated once and original files are preserved",()=>{
+  const legacy=mkdtempSync(path.join(tmpdir(),"padelix-migration-test-"));
+  const user={id:"legacy-user",name:"Legacy",email:"legacy@example.test",phone:"081234567890",passwordHash:"existing-hash",role:"admin",createdAt:"2026-01-01T00:00:00Z"};
+  const original=JSON.stringify([user]);writeFileSync(path.join(legacy,"users.json"),original);
+  const script="const {getUsers,db}=await import('./src/store.ts');console.log(JSON.stringify(getUsers()));db.close();";
+  try {
+    const run=()=>spawnSync(process.execPath,["--import","tsx","--input-type=module","-e",script],{env:{...process.env,DATA_DIR:legacy},encoding:"utf8"});
+    const first=run();assert.equal(first.status,0,first.stderr);assert.deepEqual(JSON.parse(first.stdout.trim()),[user]);
+    writeFileSync(path.join(legacy,"users.json"),"[]");
+    const second=run();assert.equal(second.status,0,second.stderr);assert.deepEqual(JSON.parse(second.stdout.trim()),[user]);
+  } finally {
+    assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-migration-test-"));
+    rmSync(legacy,{recursive:true,force:true});
+  }
+});
