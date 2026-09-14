@@ -39,18 +39,24 @@ function renumber(courtId: string, ids: string[]) {
   ids.forEach((id, position) => update.run(position, id, courtId));
 }
 
-export function addPhoto(courtId: string, contentType: string | undefined, body: unknown, actor: string) {
+/** Validasi berkas foto kiriman admin (lapangan maupun item tambahan). */
+export function checkImage(contentType: string | undefined, body: unknown): PhotoType {
   const type = photoTypes.find(item => item === contentType?.split(";")[0].trim().toLowerCase());
   check(type, 415, "Format foto harus JPG, PNG, atau WebP.");
   check(Buffer.isBuffer(body) && body.length > 0, 400, "Berkas foto kosong.");
   check(signatures[type](body), 400, "Isi berkas bukan foto yang valid.");
+  return type;
+}
+
+export function addPhoto(courtId: string, contentType: string | undefined, body: unknown, actor: string) {
+  const type = checkImage(contentType, body);
   return transaction(() => {
     check(db.prepare("SELECT 1 FROM courts WHERE id=?").get(courtId), 404, "Lapangan tidak ditemukan.");
     const existing = courtPhotos(courtId);
     check(existing.length < maxPhotosPerCourt, 409, `Maksimal ${maxPhotosPerCourt} foto per lapangan. Hapus salah satu terlebih dahulu.`);
     const id = randomUUID();
     db.prepare("INSERT INTO court_photos (id,court_id,mime,data,bytes,position,created_at) VALUES (?,?,?,?,?,?,?)")
-      .run(id, courtId, type, body, body.length, existing.length, new Date().toISOString());
+      .run(id, courtId, type, body as Buffer, (body as Buffer).length, existing.length, new Date().toISOString());
     audit(actor, "court.photo.add", id);
     return courtPhotos(courtId);
   });
@@ -76,6 +82,8 @@ export function orderPhotos(courtId: string, input: unknown, actor: string) {
   });
 }
 
+/** Foto lapangan atau foto item tambahan; keduanya memakai id acak sehingga tidak bisa tertukar. */
 export function photoFile(id: string) {
-  return db.prepare("SELECT mime,data FROM court_photos WHERE id=?").get(id) as { mime: PhotoType; data: Uint8Array } | undefined;
+  return (db.prepare("SELECT mime,data FROM court_photos WHERE id=?").get(id)
+    ?? db.prepare("SELECT photo_mime mime,photo_data data FROM addons WHERE photo_id=?").get(id)) as { mime: PhotoType; data: Uint8Array } | undefined;
 }

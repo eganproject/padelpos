@@ -3,7 +3,25 @@ import { requireAnyMenu,requireMenu,type AuthRequest } from "../auth.js";
 import * as ops from "../operations.js";
 import * as content from "../content.js";
 import { addPhoto,maxPhotoSize,orderPhotos,photoIndex,photoTypes,removePhoto } from "../photos.js";
+import * as addons from "../addons.js";
+import { z } from "zod";
 const router=Router();
+const windowQuery=z.object({date:ops.dateSchema,start:ops.timeSchema,end:z.union([ops.timeSchema,z.literal("24:00")]),booking:z.string().min(1).max(64).optional()})
+  .refine(v=>v.start<v.end,"Jam selesai harus setelah jam mulai.");
+router.get("/addons",requireMenu("addons"),(_req,res)=>res.json({addons:addons.manageAddons(),summary:addons.addonSummary(),...ops.localClock()}));
+router.post("/addons",requireMenu("addons"),(req:AuthRequest,res)=>res.status(201).json({addon:addons.saveAddon(req.body,req.auth!.sub)}));
+router.put("/addons/order",requireMenu("addons"),(req:AuthRequest,res)=>res.json({addons:addons.orderAddons(req.body,req.auth!.sub)}));
+// Pilihan untuk formulir booking: staf kasir cukup punya akses booking.
+router.get("/addons/options",requireAnyMenu(["bookings","addons"]),(req,res)=>{
+  const query=windowQuery.parse(req.query);
+  res.json({addons:addons.addonOptions({date:query.date,start:query.start,end:query.end},query.booking)});
+});
+router.put("/addons/:id",requireMenu("addons"),(req:AuthRequest,res)=>res.json({addon:addons.saveAddon(req.body,req.auth!.sub,String(req.params.id))}));
+router.delete("/addons/:id",requireMenu("addons"),(req:AuthRequest,res)=>{addons.removeAddon(String(req.params.id),req.auth!.sub);res.status(204).send()});
+router.post("/addons/:id/photo",requireMenu("addons"),express.raw({type:[...photoTypes],limit:maxPhotoSize}),(req:AuthRequest,res)=>res.status(201).json({addon:addons.setAddonPhoto(String(req.params.id),req.get("content-type"),req.body,req.auth!.sub)}));
+router.delete("/addons/:id/photo",requireMenu("addons"),(req:AuthRequest,res)=>res.json({addon:addons.removeAddonPhoto(String(req.params.id),req.auth!.sub)}));
+router.get("/addons/:id/stock",requireMenu("addons"),(req,res)=>res.json({moves:addons.stockMoves(String(req.params.id))}));
+router.post("/addons/:id/stock",requireMenu("addons"),(req:AuthRequest,res)=>res.status(201).json(addons.adjustStock(String(req.params.id),req.body,req.auth!.sub)));
 router.get("/context",requireAnyMenu(["bookings","courts"]),(req,res)=>{
   const date=req.query.date===undefined?ops.localClock().date:ops.dateSchema.parse(req.query.date);
   res.json({courts:ops.courts(),maintenance:ops.maintenances(date),price_rules:ops.priceRules(),schedule:ops.bookings(date).filter(b=>b.status!=="cancelled").map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
@@ -38,7 +56,9 @@ router.get("/bookings",requireMenu("bookings"),(req,res)=>{
   res.json({bookings:ops.bookings(date),...ops.localClock()});
 });
 router.post("/bookings",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json({booking:ops.createBooking(req.body,req.auth!.sub)}));
-router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id)})});
+router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id),addons:addons.bookingAddons(booking.id)})});
 router.patch("/bookings/:id/status",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.changeBookingStatus(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/payments",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json(ops.recordPayment(String(req.params.id),req.body,req.auth!.sub)));
+router.put("/bookings/:id/addons",requireMenu("bookings"),(req:AuthRequest,res)=>res.json(ops.updateBookingAddons(String(req.params.id),req.body,req.auth!.sub)));
+router.patch("/bookings/:id/addons/returned",requireMenu("bookings"),(req:AuthRequest,res)=>res.json(ops.returnBookingAddons(String(req.params.id),req.body,req.auth!.sub)));
 export default router;

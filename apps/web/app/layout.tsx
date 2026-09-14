@@ -10,6 +10,7 @@ import "./admin-polish.css";
 import "./admin-content.css";
 import "./shop.css";
 import "./shop-content.css";
+import "./addons.css";
 
 // Variabel ini sudah lama dirujuk seluruh CSS, tetapi fontnya belum pernah dimuat.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });

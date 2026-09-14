@@ -1,0 +1,158 @@
+/* Sewa & tambahan: panel admin, tambahan di booking, dan pilihan di halaman pelanggan. */
+
+/* Foto atau ikon item */
+.addon-thumb{flex:none;width:44px;height:44px;border-radius:10px;display:grid;place-items:center;overflow:hidden;background:var(--panel2);border:1px solid var(--line);color:var(--lime)}
+.addon-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+
+/* Katalog admin */
+.addon-metrics{margin-bottom:6px}
+.addon-cell{display:flex;align-items:center;gap:12px;min-width:0}
+.addon-cell>div{min-width:0}
+.addon-table tr.inactive td:not(.actions){opacity:.6}
+.addon-type{display:inline-flex;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;border:1px solid var(--line);white-space:nowrap}
+.addon-type.sewa{color:#7cc4ff;border-color:#7cc4ff44}
+.addon-type.jual{color:var(--lime);border-color:#c8ff3d44}
+.addon-type.layanan{color:#d6a6ff;border-color:#d6a6ff44}
+.addon-stock{display:inline-flex;align-items:center;gap:5px;font-weight:600;white-space:nowrap}
+.addon-stock.low{color:var(--orange)}
+.addon-stock.unlimited{color:var(--muted);font-weight:400}
+.addon-overdue{color:var(--orange);font-weight:700}
+.addon-alert{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px}
+.addon-alert .ops-link{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-weight:600}
+
+/* Formulir item */
+.addon-type-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.addon-type-picker button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border:1px solid #30383a;border-radius:10px;background:#0c1012;color:var(--muted);text-align:left;cursor:pointer}
+.addon-type-picker button b{color:var(--text);font-size:13px}
+.addon-type-picker button small{font-size:11px;line-height:1.45}
+.addon-type-picker button[aria-pressed=true]{border-color:#7e9832;background:#c8ff3d10}
+.addon-type-picker button[aria-pressed=true] b{color:var(--lime)}
+.addon-photo-field{display:flex;align-items:center;gap:14px}
+.addon-photo-field>.addon-thumb{width:84px;height:84px;border-radius:12px;color:var(--muted)}
+.addon-photo-field>div{display:flex;flex-direction:column;gap:6px}
+.addon-photo-actions{display:flex;flex-wrap:wrap;gap:8px}
+
+/* Stok */
+.stock-now{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.stock-now small{display:block;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.stock-now strong{font:700 30px var(--font-space)}
+.stock-form{display:flex;flex-direction:column;gap:14px;padding-bottom:6px}
+.stock-form>button{align-self:flex-start}
+.stock-preview{font-size:13px;color:var(--muted)}
+.stock-preview b{color:var(--text);font-size:15px}
+.stock-preview.invalid b{color:#ff8a80}
+.stock-delta{white-space:nowrap}
+.stock-delta small{margin-left:6px;font-weight:400;color:var(--muted)}
+.stock-delta.plus{color:var(--lime)}
+.stock-delta.minus{color:#ff8a80}
+
+/* Pilihan tambahan di formulir booking */
+.ops-modal .modal-subhead small{margin-left:6px;font-weight:400;font-size:12px}
+.addon-editor{display:flex;flex-direction:column;gap:10px}
+.addon-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.addon-lines li{display:grid;grid-template-columns:auto minmax(0,1fr) auto 96px;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.addon-lines li.chosen{border-color:#7e983288;background:#c8ff3d08}
+.addon-lines .addon-thumb{width:38px;height:38px;border-radius:9px}
+.addon-lines .info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.addon-lines .info b{font-size:13px}
+.addon-lines .info small{font-size:11px;color:var(--muted)}
+.addon-lines .info em{font-style:normal;font-size:11px;font-weight:600;color:var(--orange)}
+.addon-lines .info em.out{color:#ff8a80}
+.addon-lines strong{text-align:right;font-size:13px;white-space:nowrap}
+.qty-stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
+.qty-stepper button{width:32px;height:32px;display:grid;place-items:center;border:0;background:transparent;color:var(--text);cursor:pointer;padding:0}
+.qty-stepper button:hover:not(:disabled){background:#ffffff12}
+.qty-stepper output{min-width:28px;text-align:center;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
+.addon-custom{display:grid;grid-template-columns:minmax(0,1fr) 130px auto;align-items:end;gap:8px}
+.addon-custom button{height:42px}
+
+/* Detail booking */
+.ops-addons{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px}
+.ops-addons .ops-card-head h3{margin:0}
+.addon-summary-lines{list-style:none;margin:0;padding:0}
+.addon-summary-lines li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.addon-summary-lines li:first-child{padding-top:0}
+.addon-summary-lines li>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.addon-summary-lines small{font-size:11px;color:var(--muted)}
+.addon-summary-lines strong{white-space:nowrap}
+.addon-return-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:3px}
+.addon-return{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;color:var(--orange);background:#ff9c5114}
+.addon-return.done{color:var(--lime);background:#c8ff3d12}
+.ops-link-button{background:none;border:0;padding:0;color:var(--lime);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.addon-edit-actions{display:flex;justify-content:flex-end;gap:8px}
+.addon-return-all{align-self:flex-start}
+
+@media(max-width:600px){
+  .addon-type-picker{grid-template-columns:1fr}
+  .addon-lines li{grid-template-columns:auto minmax(0,1fr) auto}
+  .addon-lines li strong{grid-column:2/-1;text-align:left}
+  .addon-lines li strong:empty{display:none}
+  .addon-custom{grid-template-columns:minmax(0,1fr) 110px}
+  .addon-custom button{grid-column:1/-1}
+  .addon-alert .ops-link{margin-left:0}
+}
+
+/* Tema terang admin */
+html[data-theme="light"] .addon-thumb{background:#f1f6e8;border-color:#dde2dc;color:#4d6b0a}
+html[data-theme="light"] .addon-type.sewa{color:#1f5f94;border-color:#9cc7ee}
+html[data-theme="light"] .addon-type.jual{color:#4d6b0a;border-color:#b9dd6e}
+html[data-theme="light"] .addon-type.layanan{color:#6b3fa0;border-color:#cfb3ec}
+html[data-theme="light"] .addon-stock.low,html[data-theme="light"] .addon-overdue{color:#9a5410}
+html[data-theme="light"] .addon-type-picker button{background:#f8faf7;border-color:#d8ded8}
+html[data-theme="light"] .addon-type-picker button[aria-pressed=true]{background:#eef8d9;border-color:#9fcc45}
+html[data-theme="light"] .addon-type-picker button[aria-pressed=true] b{color:#3f5a08}
+html[data-theme="light"] .stock-now,html[data-theme="light"] .addon-lines li{background:#f8faf7;border-color:#dde2dc}
+html[data-theme="light"] .addon-lines li.chosen{background:#f2f9e3;border-color:#b9dd6e}
+html[data-theme="light"] .addon-lines .info em{color:#9a5410}
+html[data-theme="light"] .stock-delta.plus,html[data-theme="light"] .ops-link-button{color:#4d6b0a}
+html[data-theme="light"] .qty-stepper{background:#fff;border-color:#d8ded8}
+html[data-theme="light"] .qty-stepper button:hover:not(:disabled){background:#f1f4ee}
+html[data-theme="light"] .addon-return{color:#9a5410;background:#fdf0e1}
+html[data-theme="light"] .addon-return.done{color:#4d6b0a;background:#eef8d9}
+
+/* Halaman pelanggan: ringkasan pesanan */
+.shop-summary .what span.extras{margin-top:2px;font-size:13px;font-weight:600;color:var(--brand-deep)}
+.shop-summary-addons{grid-column:1/-1;order:5;flex-basis:100%;border-top:1px dashed var(--line);padding-top:12px}
+.shop-addons-toggle{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font-size:14px;font-weight:600;cursor:pointer;text-align:left}
+.shop-addons-toggle:hover{border-color:#b9c3ad}
+.shop-addons-toggle>svg:first-child{flex:none;color:var(--brand-deep)}
+.shop-addons-toggle .chevron{flex:none;color:var(--ink-faint);transition:transform .2s}
+.shop-summary-addons.open .shop-addons-toggle .chevron{transform:rotate(180deg)}
+.shop-addon-picker{margin-top:12px;max-height:min(44vh,420px);overflow:auto;overscroll-behavior:contain;padding:2px 4px 2px 0}
+.shop-addon-note{margin:0 0 10px;font-size:13px;color:var(--ink-faint)}
+.shop-addon-picker ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:8px}
+.shop-addon-picker li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.shop-addon-picker li.chosen{border-color:#b9dd6e;background:var(--brand-wash)}
+.shop-addon-picker .info{display:flex;flex-direction:column;gap:1px;min-width:0}
+.shop-addon-picker .info b{font-size:14px;line-height:1.35}
+.shop-addon-picker .info small{font-size:13px;color:var(--ink-soft)}
+.shop-addon-picker .info em{font-style:normal;font-size:12px;font-weight:600;color:#8a6110}
+.shop-addon-picker .info em.out{color:#9d4227}
+.shop-summary .addon-thumb,.shop-addons .addon-thumb{background:var(--brand-wash);border-color:transparent;color:var(--brand-deep)}
+.shop-addon-picker li.chosen .addon-thumb{background:var(--surface)}
+.shop-addon-picker .qty-stepper{background:var(--surface);border-color:var(--line);border-radius:10px}
+.shop-addon-picker .qty-stepper button{width:38px;height:38px;color:var(--ink)}
+.shop-addon-picker .qty-stepper button:hover:not(:disabled){background:var(--line-soft)}
+.shop-addon-picker .qty-stepper output{min-width:24px;font-size:15px}
+
+/* Halaman pelanggan: katalog di beranda */
+.shop-addons{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.shop-addons li{display:flex;align-items:flex-start;gap:14px;padding:16px;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.shop-addons .addon-thumb.large{width:64px;height:64px;border-radius:12px}
+.shop-addons .addon-thumb.large svg{width:26px;height:26px}
+.shop-addons .body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.shop-addons .body>small{font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--ink-faint)}
+.shop-addons .body b{font-size:16px;line-height:1.35}
+.shop-addons .body p{margin:2px 0 0;font-size:14px;line-height:1.5;color:var(--ink-soft)}
+.shop-addons .price{margin-top:6px;font-family:var(--font-space);font-weight:700;font-size:17px}
+.shop-addons .price small{font-family:var(--font-inter);font-weight:500;font-size:13px;color:var(--ink-faint)}
+.shop-addons em.out{font-style:normal;font-size:13px;font-weight:600;color:#9d4227}
+
+@media(max-width:600px){
+  .shop-addons-toggle{width:100%}
+  .shop-addons-toggle span{flex:1}
+  .shop-addon-picker ul{grid-template-columns:minmax(0,1fr)}
+  .shop-addon-picker{max-height:min(40vh,360px)}
+  .shop-addons li{padding:14px}
+}
+@media(prefers-reduced-motion:reduce){.shop-addons-toggle .chevron{transition:none}}

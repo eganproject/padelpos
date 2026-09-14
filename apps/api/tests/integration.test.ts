@@ -280,6 +280,104 @@ test("operational workflow, concurrency, permissions and durable storage", async
       const info=await request("/public/info","GET");
       assert.equal(info.data.courts.find((c:{id:string})=>c.id===courtId).photos[0],reversed[1],"sampul pindah ke foto berikutnya");
     });
+    await t.test("sewa & tambahan: stok sewa per jam, stok jual, tagihan, pengembalian, dan pembatalan",async()=>{
+      assert.ok((await request("/auth/navigation","GET",undefined,admin)).data.menus.some((m:{id:string})=>m.id==="addons"),"menu tambahan tersedia untuk admin");
+      const courtA=(await request("/operations/courts","POST",{name:"Court Sewa A",hourly_rate:200000,opens_at:"06:00",closes_at:"23:00",active:true},admin)).data.court.id;
+      const courtB=(await request("/operations/courts","POST",{name:"Court Sewa B",hourly_rate:200000,opens_at:"06:00",closes_at:"23:00",active:true},admin)).data.court.id;
+      const item=(overrides={})=>({name:"Sewa raket",category:"raket",type:"sewa",pricing:"per_booking",price:30000,stock:2,low_stock:0,max_per_booking:2,description:"",active:true,online:true,...overrides});
+      assert.equal((await request("/operations/addons","POST",item(),staff)).status,403,"peran tanpa menu tambahan tidak boleh mengubah katalog");
+      assert.equal((await request("/operations/addons","POST",item({price:-1}),admin)).status,400);
+      assert.equal((await request("/operations/addons","POST",item({type:"jual",pricing:"per_hour"}),admin)).status,400,"barang jual tidak dihitung per jam");
+      const raket=(await request("/operations/addons","POST",item(),admin)).data.addon;
+      assert.equal((await request("/operations/addons","POST",item({name:"sewa RAKET"}),admin)).status,409);
+      const bolaData=item({name:"Bola padel",category:"bola",type:"jual",stock:5,low_stock:2,max_per_booking:10});
+      const bola=(await request("/operations/addons","POST",bolaData,admin)).data.addon;
+      const pelatih=(await request("/operations/addons","POST",item({name:"Pelatih",category:"pelatih",type:"layanan",pricing:"per_hour",price:200000,stock:1,max_per_booking:1,online:false}),admin)).data.addon;
+      const slot=(court:string,start:string,end:string,addons:unknown[]=[])=>({court_id:court,customer:"Penyewa Uji",phone:"081234567899",date:tomorrow,start_time:start,end_time:end,notes:"",addons});
+
+      const first=await request("/operations/bookings","POST",slot(courtA,"12:00","13:00",[{addon_id:raket.id,quantity:2},{addon_id:bola.id,quantity:3}]),staff);
+      assert.equal(first.status,201,"kasir dengan akses booking boleh menambahkan tambahan");
+      assert.equal(first.data.booking.court_total,200000);
+      assert.equal(first.data.booking.total,200000+2*30000+3*30000);
+      assert.equal((await request("/operations/bookings","POST",slot(courtB,"12:00","13:00",[{addon_id:raket.id,quantity:3}]),staff)).status,400,"melebihi batas per booking");
+      const clash=await request("/operations/bookings","POST",slot(courtB,"12:30","13:30",[{addon_id:raket.id,quantity:1}]),staff);
+      assert.equal(clash.status,409,"raket yang sedang dipakai booking lain tidak boleh disewakan ganda");
+      assert.match(clash.data.message,/tersisa 0/);
+      const listed=(await request("/operations/bookings","GET",undefined,staff)).data.bookings;
+      assert.ok(!listed.some((b:{court_id:string;start_time:string})=>b.court_id===courtB&&b.start_time==="12:30"),"booking yang gagal karena stok tidak boleh tersimpan sebagian");
+      const later=await request("/operations/bookings","POST",slot(courtB,"13:00","14:30",[{addon_id:raket.id,quantity:2},{addon_id:pelatih.id,quantity:1}]),staff);
+      assert.equal(later.status,201,"raket tersedia lagi setelah jam main booking sebelumnya");
+      assert.equal(later.data.booking.total,300000+60000+300000,"pelatih per jam dikali durasi 1,5 jam");
+
+      const options=await request(`/operations/addons/options?date=${tomorrow}&start=12:00&end=13:00`,"GET",undefined,staff);
+      assert.equal(options.status,200);
+      const available=(list:{id:string;available:number|null}[],id:string)=>list.find(a=>a.id===id)?.available;
+      assert.equal(available(options.data.addons,raket.id),0);
+      assert.equal(available(options.data.addons,bola.id),2,"stok bola terpotong 3");
+      const own=await request(`/operations/addons/options?date=${tomorrow}&start=12:00&end=13:00&booking=${first.data.booking.id}`,"GET",undefined,staff);
+      assert.equal(available(own.data.addons,raket.id),2,"barang milik booking sendiri dihitung tersedia saat mengubah");
+      const pub=await request(`/public/addons?date=${tomorrow}&start=12:00&end=13:00`,"GET");
+      assert.equal(pub.status,200);
+      assert.ok(!pub.data.addons.some((a:{id:string})=>a.id===pelatih.id),"item yang tidak tampil online disembunyikan dari pelanggan");
+      assert.equal(available(pub.data.addons,raket.id),0);
+      assert.ok(!JSON.stringify(pub.data).includes("Penyewa Uji"));
+
+      const bookingId=first.data.booking.id;
+      const lines=(await request(`/operations/bookings/${bookingId}`,"GET",undefined,staff)).data.addons as {id:string;addon_id:string}[];
+      const raketLine=lines.find(l=>l.addon_id===raket.id)!,bolaLine=lines.find(l=>l.addon_id===bola.id)!;
+      const edit=(body:unknown,id=bookingId)=>request(`/operations/bookings/${id}/addons`,"PUT",body,staff);
+      assert.equal((await edit({lines:[{id:raketLine.id,quantity:2},{id:bolaLine.id,quantity:3},{addon_id:bola.id,quantity:1}]})).status,400,"item yang sama tidak boleh dua baris");
+      assert.equal((await edit({lines:[{id:raketLine.id,quantity:2},{id:bolaLine.id,quantity:6}]})).status,409,"stok bola tidak cukup");
+      assert.equal((await request(`/operations/addons/${bola.id}`,"PUT",{...bolaData,stock:2,price:50000},admin)).status,200);
+      const changed=await edit({lines:[{id:bolaLine.id,quantity:1},{name:"Ganti grip",unit_price:15000,quantity:1}]});
+      assert.equal(changed.status,200);
+      assert.equal(changed.data.booking.total,200000+30000+15000,"raket dihapus, bola tetap harga lama, biaya lain ikut ditagih");
+      const stockOf=async(id:string)=>(await request("/operations/addons","GET",undefined,admin)).data.addons.find((a:{id:string})=>a.id===id).stock;
+      assert.equal(await stockOf(bola.id),4,"mengurangi bola mengembalikan stok");
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`,"POST",payment(240000),staff)).status,201);
+      assert.equal((await edit({lines:[]})).status,409,"tagihan tidak boleh turun di bawah pembayaran yang diterima");
+
+      assert.equal((await request(`/operations/addons/${bola.id}/stock`,"POST",{reason:"rusak",quantity:1,note:""},admin)).status,400,"barang rusak wajib diberi keterangan");
+      assert.equal((await request(`/operations/addons/${bola.id}/stock`,"POST",{reason:"rusak",quantity:9,note:"Kempes"},admin)).status,400);
+      const opname=await request(`/operations/addons/${bola.id}/stock`,"POST",{reason:"koreksi",quantity:2,note:"Hitung fisik"},admin);
+      assert.equal(opname.status,201);assert.equal(opname.data.addon.stock,2);
+      assert.deepEqual(opname.data.moves.map((m:{reason:string})=>m.reason),["koreksi","kembali","terpakai","awal"]);
+      assert.ok((await request("/operations/addons","GET",undefined,admin)).data.summary.low_stock.some((a:{id:string})=>a.id===bola.id),"stok di batas minimum masuk daftar menipis");
+
+      const sale=await request("/operations/bookings","POST",slot(courtA,"15:00","16:00",[{addon_id:bola.id,quantity:2}]),staff);
+      assert.equal(sale.status,201);
+      assert.equal((await request("/operations/bookings","POST",slot(courtA,"16:00","17:00",[{addon_id:bola.id,quantity:1}]),staff)).status,409,"stok habis");
+      assert.equal((await request(`/operations/bookings/${sale.data.booking.id}/status`,"PATCH",{status:"cancelled",reason:"Batal main"},staff)).status,200);
+      assert.equal(await stockOf(bola.id),2,"pembatalan mengembalikan stok barang jual");
+      assert.equal((await edit({lines:[]},sale.data.booking.id)).status,409,"booking yang dibatalkan tidak dapat diubah");
+      assert.equal((await request(`/operations/bookings/${sale.data.booking.id}`,"GET",undefined,staff)).data.addons.length,1,"baris tetap tersimpan sebagai riwayat");
+
+      const laterId=later.data.booking.id;
+      const laterLines=(await request(`/operations/bookings/${laterId}`,"GET",undefined,staff)).data.addons as {id:string;addon_id:string;returned_at:string|null}[];
+      const rent=laterLines.find(l=>l.addon_id===raket.id)!,coach=laterLines.find(l=>l.addon_id===pelatih.id)!;
+      assert.equal((await request(`/operations/bookings/${laterId}/addons/returned`,"PATCH",{line_ids:[coach.id],returned:true},staff)).status,400,"hanya barang sewa yang dikembalikan");
+      const yesterday=new Date(localClock().date+"T12:00:00Z");yesterday.setUTCDate(yesterday.getUTCDate()-1);
+      db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),laterId);
+      assert.ok((await request("/operations/addons","GET",undefined,admin)).data.summary.unreturned.some((l:{id:string})=>l.id===rent.id),"raket dari jadwal yang sudah lewat masuk daftar belum kembali");
+      const returned=await request(`/operations/bookings/${laterId}/addons/returned`,"PATCH",{line_ids:[rent.id],returned:true},staff);
+      assert.equal(returned.status,200);
+      assert.ok(returned.data.addons.find((l:{id:string})=>l.id===rent.id).returned_at);
+      assert.ok(!(await request("/operations/addons","GET",undefined,admin)).data.summary.unreturned.some((l:{id:string})=>l.id===rent.id));
+      assert.equal((await request("/dashboard/summary","GET",undefined,admin)).data.addons.unreturned,0);
+
+      assert.equal((await request(`/operations/addons/${bola.id}`,"DELETE",undefined,admin)).status,409,"item yang sudah dipakai tidak boleh dihapus");
+      assert.equal((await request(`/operations/addons/${raket.id}`,"PUT",{...item(),type:"jual"},admin)).status,409,"jenis tidak boleh diubah setelah dipakai");
+      const handuk=(await request("/operations/addons","POST",item({name:"Handuk",category:"handuk"}),admin)).data.addon;
+      const png=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.alloc(32,2)]);
+      const uploaded=await fetch(`${base}/operations/addons/${handuk.id}/photo`,{method:"POST",headers:{"Content-Type":"image/png",Cookie:admin,Origin:"http://localhost:3000"},body:new Uint8Array(png)});
+      assert.equal(uploaded.status,201);
+      const photoId=(await uploaded.json()).addon.photo_id;
+      assert.ok(Buffer.from(await (await fetch(`${base}/public/photos/${photoId}`)).arrayBuffer()).equals(png),"foto item memakai endpoint foto publik");
+      const order=(await request("/operations/addons","GET",undefined,admin)).data.addons.map((a:{id:string})=>a.id).reverse();
+      assert.deepEqual((await request("/operations/addons/order","PUT",{ids:order},admin)).data.addons.map((a:{id:string})=>a.id),order);
+      assert.equal((await request(`/operations/addons/${handuk.id}`,"DELETE",undefined,admin)).status,204,"item yang belum dipakai boleh dihapus");
+      assert.ok((await request("/public/info","GET")).data.addons.some((a:{id:string})=>a.id===raket.id),"katalog ikut di info publik");
+    });
     await t.test("info venue, kebijakan, dan FAQ: tervalidasi dan tampil di endpoint publik",async()=>{
       const empty=await request("/public/info","GET");
       assert.equal(empty.status,200);assert.equal(empty.data.info.address,"");assert.deepEqual(empty.data.faqs,[]);

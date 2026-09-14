@@ -1,4 +1,5 @@
 import type { ShopCourt } from "./shop";
+import type { AddonOption } from "./addons";
 
 /** Sama dengan daftar di API (apps/api/src/content.ts). */
 export const facilityKinds = ["parkir", "toilet", "kamar-bilas", "musala", "kantin", "ruang-tunggu", "wifi", "loker", "sewa-raket", "sewa-bola", "pelatih", "p3k"] as const;
@@ -21,7 +22,7 @@ export type Policies = {
   cancellation_note: string; terms: string; updated_at: string | null;
 };
 export type Faq = { id: string; question: string; answer: string };
-export type PublicInfo = { info: VenueInfo; policies: Policies; faqs: Faq[]; courts: ShopCourt[] };
+export type PublicInfo = { info: VenueInfo; policies: Policies; faqs: Faq[]; courts: ShopCourt[]; addons: AddonOption[] };
 
 export const environmentLabel: Record<"indoor" | "outdoor", string> = { indoor: "Indoor", outdoor: "Outdoor" };
 export const photoUrl = (id: string) => `/api/public/photos/${encodeURIComponent(id)}`;

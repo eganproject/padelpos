@@ -4,6 +4,7 @@ import { z } from "zod";
 import * as ops from "../operations.js";
 import { content } from "../content.js";
 import { photoFile } from "../photos.js";
+import { publicAddons } from "../addons.js";
 import { check } from "../errors.js";
 
 const router = Router();
@@ -39,10 +40,19 @@ router.get("/venue", (_req, res) => {
 
 router.get("/availability", (req, res) => res.json(ops.publicAvailability(requestedDate(req.query.date))));
 
-/** Profil, kontak, fasilitas, kebijakan, dan FAQ venue. */
+/** Profil, kontak, fasilitas, kebijakan, FAQ, dan katalog sewa & tambahan. */
 router.get("/info", (_req, res) => {
   const { info, policies, faqs } = content();
-  res.json({ info, policies, faqs: faqs.items, courts: ops.publicCourts() });
+  res.json({ info, policies, faqs: faqs.items, courts: ops.publicCourts(), addons: publicAddons() });
+});
+
+/** Sewa & tambahan. Dengan tanggal dan jam, `available` menghitung barang yang dipakai booking lain. */
+router.get("/addons", (req, res) => {
+  if (req.query.date === undefined) return res.json({ addons: publicAddons() });
+  const date = requestedDate(req.query.date);
+  const { start, end } = z.object({ start: ops.timeSchema, end: z.union([ops.timeSchema, z.literal("24:00")]) })
+    .refine(v => v.start < v.end, "Jam selesai harus setelah jam mulai.").parse(req.query);
+  res.json({ addons: publicAddons({ date, start, end }) });
 });
 
 export default router;

@@ -23,8 +23,8 @@ if(trustProxy)app.set("trust proxy",/^\d+$/.test(trustProxy)?Number(trustProxy):
 app.use(helmet());
 const origin=process.env.CLIENT_URL||"http://localhost:3000";
 app.use(cors({origin,credentials:true}));
-/** Satu-satunya endpoint yang menerima berkas biner: unggah foto lapangan. */
-const photoUpload=/^\/api\/operations\/courts\/[^/]+\/photos$/;
+/** Endpoint yang menerima berkas biner: unggah foto lapangan dan foto item tambahan. */
+const photoUpload=/^\/api\/operations\/(?:courts\/[^/]+\/photos|addons\/[^/]+\/photo)$/;
 app.use((req,res,next)=>{
   if(!["GET","HEAD","OPTIONS"].includes(req.method)){
     if(req.headers.origin&&req.headers.origin!==origin)return res.status(403).json({message:"Asal permintaan tidak diizinkan."});

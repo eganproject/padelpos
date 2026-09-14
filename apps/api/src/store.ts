@@ -294,6 +294,78 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 7").get()) transaction
   db.prepare("UPDATE venue_features SET floor_id = ?").run(id);
   db.prepare("INSERT INTO migrations VALUES (7, ?)").run(new Date().toISOString());
 });
+
+/**
+ * Sewa & tambahan (raket, bola, pelatih, dsb.) yang ditagihkan bersama booking.
+ * `bookings.total` tetap total tagihan; `court_total` menyimpan porsi sewa lapangan agar tambahan
+ * dapat diubah tanpa menghitung ulang tarif lapangan. Stok barang jual dicatat per mutasi.
+ * Menu disisipkan setelah Lapangan dan diberikan ke role yang sudah mengelola lapangan.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 8").get()) transaction(() => {
+  db.exec(`
+    CREATE TABLE addons (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      category TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('sewa','jual','layanan')),
+      pricing TEXT NOT NULL CHECK(pricing IN ('per_booking','per_hour')),
+      price INTEGER NOT NULL CHECK(price >= 0),
+      stock INTEGER CHECK(stock IS NULL OR stock >= 0),
+      low_stock INTEGER NOT NULL DEFAULT 0 CHECK(low_stock >= 0),
+      max_per_booking INTEGER NOT NULL CHECK(max_per_booking BETWEEN 1 AND 99),
+      description TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      online INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL,
+      photo_id TEXT UNIQUE,
+      photo_mime TEXT CHECK(photo_mime IS NULL OR photo_mime IN ('image/jpeg','image/png','image/webp')),
+      photo_data BLOB,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE booking_addons (
+      id TEXT PRIMARY KEY,
+      booking_id TEXT NOT NULL REFERENCES bookings(id),
+      addon_id TEXT REFERENCES addons(id),
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN ('sewa','jual','layanan','lainnya')),
+      pricing TEXT NOT NULL CHECK(pricing IN ('per_booking','per_hour')),
+      unit_price INTEGER NOT NULL CHECK(unit_price >= 0),
+      quantity INTEGER NOT NULL CHECK(quantity > 0),
+      subtotal INTEGER NOT NULL CHECK(subtotal >= 0),
+      returned_at TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX booking_addons_booking ON booking_addons (booking_id);
+    CREATE INDEX booking_addons_addon ON booking_addons (addon_id);
+    CREATE TABLE addon_stock_moves (
+      id TEXT PRIMARY KEY,
+      addon_id TEXT NOT NULL REFERENCES addons(id) ON DELETE CASCADE,
+      delta INTEGER NOT NULL,
+      reason TEXT NOT NULL CHECK(reason IN ('awal','restok','koreksi','rusak','terpakai','kembali')),
+      note TEXT NOT NULL DEFAULT '',
+      booking_id TEXT REFERENCES bookings(id),
+      stock_after INTEGER NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX addon_stock_moves_addon ON addon_stock_moves (addon_id, created_at);
+    ALTER TABLE bookings ADD COLUMN court_total INTEGER;
+    UPDATE bookings SET court_total = total;
+  `);
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "addons" || menu.path === "/admin/addons")) {
+    const anchor = menus.find(menu => menu.id === "courts");
+    const order = (anchor?.order ?? 0) + 1;
+    for (const menu of menus) if (menu.order >= order) menu.order += 1;
+    menus.push({ id: "addons", name: "Sewa & Tambahan", path: "/admin/addons", icon: "ShoppingBag", group: anchor?.group ?? "Operasional", order, active: true, createdAt: new Date().toISOString() });
+    saveCollection("menus", menus);
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if ((role.slug === "admin" || role.menuIds.includes("courts")) && !role.menuIds.includes("addons")) role.menuIds.push("addons");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (8, ?)").run(new Date().toISOString());
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

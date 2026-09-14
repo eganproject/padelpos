@@ -6,6 +6,7 @@ import { api,money } from "@/lib/api";
 import { type Court,type Maintenance,type PriceRule,dayShort,formatDays,timeSlots,minute,weekOrder } from "@/lib/operations";
 import { formatShortDay } from "@/lib/shop";
 import { environmentLabel,photoUrl } from "@/lib/venue-info";
+import { shrink } from "@/lib/image";
 import { ErrorBox,Modal,Submit } from "./operation-ui";
 
 type CourtsData={courts:Court[];floors:{id:string;name:string}[];maintenance:Maintenance[];price_rules:PriceRule[];date:string;timezone:string};
@@ -75,21 +76,6 @@ function CourtForm({court,close,done}:{court:Court|null;close:()=>void;done:()=>
     <div className="field-grid"><label>Jenis lapangan<select value={form.environment} onChange={e=>setForm({...form,environment:e.target.value as Court["environment"]})}><option value="">Tidak ditampilkan</option><option value="indoor">Indoor (beratap)</option><option value="outdoor">Outdoor (terbuka)</option></select></label><label>Permukaan lapangan<input list="surface-options" maxLength={40} value={form.surface} onChange={e=>setForm({...form,surface:e.target.value})} placeholder="Mis. Rumput sintetis"/><datalist id="surface-options"><option value="Rumput sintetis"/><option value="Karpet akrilik"/><option value="Beton berlapis"/></datalist></label></div>
     <label>Deskripsi<textarea maxLength={600} rows={4} value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Mis. dinding kaca panoramik, pencahayaan LED, cocok untuk main malam."/></label><p className="ops-muted field-counter">{form.description.length}/600 · Foto dikelola dari tombol Foto pada kartu lapangan.</p>
     <p className="ops-muted">Perubahan tarif berlaku untuk booking baru. Harga booking yang sudah dibuat tetap.</p></div><div className="modal-actions"><button type="button" onClick={close} disabled={busy}>Batal</button><Submit busy={busy}/></div></form></Modal>;
-}
-
-/** Perkecil foto di browser sebelum diunggah: foto ponsel belasan MB menjadi beberapa ratus KB. */
-async function shrink(file:File):Promise<Blob>{
-  if(!["image/jpeg","image/png","image/webp"].includes(file.type))throw new Error("Format tidak didukung. Gunakan JPG, PNG, atau WebP.");
-  let bitmap:ImageBitmap;
-  try{bitmap=await createImageBitmap(file)}catch{throw new Error("Foto tidak dapat dibaca.")}
-  const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
-  const canvas=document.createElement("canvas");canvas.width=Math.round(bitmap.width*scale);canvas.height=Math.round(bitmap.height*scale);
-  const context=canvas.getContext("2d")!;
-  // PNG transparan diberi latar putih karena JPEG tidak mendukung transparansi.
-  context.fillStyle="#fff";context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
-  const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,"image/jpeg",0.85));
-  if(!blob)throw new Error("Foto gagal diproses.");
-  return blob;
 }
 
 function PhotoManager({court,close,changed}:{court:Court;close:()=>void;changed:(courtId:string,photos:string[])=>void}){

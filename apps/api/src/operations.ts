@@ -2,32 +2,29 @@
 import { z } from "zod";
 import { db,transaction,audit,defaultVenue,type VenueLayout } from "./store.js";
 import { check } from "./errors.js";
-import { venueTimezone } from "./config.js";
 import { photoIndex } from "./photos.js";
+import { clockLabel,localClock,minutes } from "./clock.js";
+import { applyLines,bookingAddons,linesSchema,releaseAddons,setReturned } from "./addons.js";
+export { clockLabel,localClock,minutes };
 
 export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id:string|null}
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
-export interface Booking {id:string;court_id:string;court_name:string;customer_id:string|null;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:BookingStatus;source:"staff"|"online";hold_expires_at:number|null;notes:string;created_by:string|null;created_at:string;cancel_reason:string;paid:number}
+export interface Booking {id:string;court_id:string;court_name:string;customer_id:string|null;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:BookingStatus;source:"staff"|"online";hold_expires_at:number|null;notes:string;created_by:string|null;created_at:string;cancel_reason:string;paid:number;
+  /** Porsi sewa lapangan; `total` = court_total + tambahan. */
+  court_total:number;addon_count:number}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
 export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
-export function localClock(value:Date=new Date()){
-  const parts=new Intl.DateTimeFormat("en-CA",{timeZone:venueTimezone,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(value);
-  const part=(name:string)=>parts.find(p=>p.type===name)!.value;
-  return {date:`${part("year")}-${part("month")}-${part("day")}`,time:`${part("hour")}:${part("minute")}`,timezone:venueTimezone};
-}
-export const minutes=(time:string)=>Number(time.slice(0,2))*60+Number(time.slice(3));
-export const clockLabel=(value:number)=>`${String(Math.floor(value/60)).padStart(2,"0")}:${String(value%60).padStart(2,"0")}`;
 export const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
 export const timeSchema=z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/,"Jam harus menggunakan interval 30 menit.");
 const closeSchema=z.union([timeSchema,z.literal("24:00")]);
 // Detail untuk pelanggan bersifat opsional: bila tidak dikirim, nilai tersimpan dipertahankan.
 export const courtSchema=z.object({name:z.string().trim().min(2).max(60),hourly_rate:z.number().int().min(1000).max(10000000),opens_at:timeSchema,closes_at:closeSchema,active:z.boolean(),description:z.string().trim().max(600,"Deskripsi maksimal 600 karakter.").optional(),environment:z.enum(["","indoor","outdoor"]).optional(),surface:z.string().trim().max(40,"Jenis permukaan maksimal 40 karakter.").optional()}).refine(v=>v.opens_at<v.closes_at,"Jam tutup harus setelah jam buka.");
-export const bookingSchema=z.object({court_id:z.string().min(1),customer:z.string().trim().min(2).max(80),phone:z.string().trim().min(9).max(18),date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500).default("")});
+export const bookingSchema=z.object({court_id:z.string().min(1),customer:z.string().trim().min(2).max(80),phone:z.string().trim().min(9).max(18),date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500).default(""),addons:linesSchema.default([])});
 export const maintenanceSchema=z.object({court_id:z.string().min(1),date:dateSchema,start_time:timeSchema,end_time:closeSchema,reason:z.string().trim().min(3).max(200)});
 export const paymentSchema=z.object({id:z.uuid(),amount:z.number().int().positive().max(240000000),kind:z.enum(["payment","refund"]),method:z.enum(["cash","transfer","qris"]),note:z.string().trim().max(200).default("")});
 export function courts(){return db.prepare("SELECT * FROM courts ORDER BY name").all() as unknown as Court[]}
 export function maintenances(date?:string){return db.prepare("SELECT m.*,c.name court_name FROM maintenance m JOIN courts c ON c.id=m.court_id WHERE (? IS NULL OR m.date=?) ORDER BY m.date,m.start_time").all(date||null,date||null) as unknown as Maintenance[]}
-const bookingSelect="SELECT b.*,c.name court_name,COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid FROM bookings b JOIN courts c ON c.id=b.court_id";
+const bookingSelect="SELECT b.*,c.name court_name,COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid,(SELECT count(*) FROM booking_addons WHERE booking_id=b.id) addon_count FROM bookings b JOIN courts c ON c.id=b.court_id";
 export function bookings(date?:string){return db.prepare(bookingSelect+" WHERE (? IS NULL OR b.date=?) ORDER BY b.date DESC,b.start_time,b.created_at").all(date||null,date||null) as unknown as Booking[]}
 export function getBooking(id:string){
   const booking=db.prepare(bookingSelect+" WHERE b.id=?").get(id) as unknown as Booking|undefined;
@@ -65,7 +62,8 @@ export function createBooking(input:unknown,actor:string){
   return transaction(()=>{
     const court=schedule(data.court_id,data.date,data.start_time,data.end_time),id=randomUUID();
     const total=quote(court,priceRules(),data.date,data.start_time,data.end_time);
-    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.date,data.start_time,data.end_time,total,"confirmed",data.notes,actor,new Date().toISOString());
+    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.date,data.start_time,data.end_time,total,total,"confirmed",data.notes,actor,new Date().toISOString());
+    if(data.addons.length)applyLines(getBooking(id),data.addons,actor);
     audit(actor,"booking.create",id);return getBooking(id);
   });
 }
@@ -91,6 +89,7 @@ export function changeBookingStatus(id:string,input:unknown,actor:string){
       check(booking.paid===booking.total,409,"Lunasi pembayaran sebelum menyelesaikan booking.");
     }
     db.prepare("UPDATE bookings SET status=?,cancel_reason=? WHERE id=?").run(data.status,data.reason,id);
+    if(data.status==="cancelled")releaseAddons(id,actor);
     audit(actor,"booking."+data.status,id);return getBooking(id);
   });
 }
@@ -113,6 +112,25 @@ export function recordPayment(id:string,input:unknown,actor:string){
     }
     db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());
     audit(actor,data.kind,data.id);return {booking:getBooking(id),payments:payments(id)};
+  });
+}
+/** Ubah sewa & tambahan booking aktif. Tagihan ikut berubah, tetapi tidak boleh di bawah pembayaran. */
+export function updateBookingAddons(id:string,input:unknown,actor:string){
+  const {lines}=z.object({lines:linesSchema}).parse(input);
+  return transaction(()=>{
+    const booking=getBooking(id);
+    check(booking.status==="confirmed",409,"Tambahan hanya dapat diubah pada booking yang masih aktif.");
+    applyLines(booking,lines,actor);
+    audit(actor,"booking.addons",id);return {booking:getBooking(id),addons:bookingAddons(id)};
+  });
+}
+/** Tandai barang sewa sudah (atau belum) dikembalikan pelanggan. */
+export function returnBookingAddons(id:string,input:unknown,actor:string){
+  return transaction(()=>{
+    const booking=getBooking(id);
+    check(booking.status==="confirmed"||booking.status==="completed",409,"Booking ini sudah tidak aktif.");
+    setReturned(id,input);
+    audit(actor,"booking.addons.return",id);return {booking:getBooking(id),addons:bookingAddons(id)};
   });
 }
 

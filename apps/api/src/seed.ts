@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { db, transaction } from "./store.js";
 import { floors, localClock, priceRules, quote } from "./operations.js";
+import { applyLines } from "./addons.js";
 
 /**
  * Data contoh untuk mencoba aplikasi.
@@ -38,7 +39,8 @@ type Scenario = {
   floors: { name: string; width: number; height: number }[];
   courts: SeedCourt[];
   rules: [label: string, days: number[], start: string, end: string, rate: number, courts: number[]][];
-  reservations: { court: number; day: number; start: string; end: string; customer: string; phone: string }[];
+  /** `addons`: [indeks item katalog, jumlah]. */
+  reservations: { court: number; day: number; start: string; end: string; customer: string; phone: string; addons?: [item: number, quantity: number][] }[];
   maintenance: { court: number; day: number; start: string; end: string; reason: string };
   /** Posisi dalam unit kanvas: 1 unit = 0,1 m. Lapangan standar 10 x 20 m = 100 x 200 unit. */
   features: [floor: number, kind: string, label: string, x: number, y: number, w: number, h: number][];
@@ -47,8 +49,22 @@ type Scenario = {
   faqs: [question: string, answer: string][];
 };
 
+// Katalog sewa & tambahan, sama untuk kedua contoh.
+// [nama, kategori, jenis, hitungan, harga, stok (null = tidak dibatasi), batas stok menipis, maks per booking, deskripsi, tampil online]
+const catalog: [string, string, "sewa" | "jual" | "layanan", "per_booking" | "per_hour", number, number | null, number, number, string, boolean][] = [
+  ["Sewa raket", "raket", "sewa", "per_booking", 30000, 16, 0, 4, "Raket karbon untuk pemula hingga menengah, dipinjam selama jam main.", true],
+  ["Raket premium", "raket", "sewa", "per_booking", 60000, 4, 0, 4, "Raket seri pro yang lebih ringan dan bertenaga.", true],
+  ["Bola padel (isi 3)", "bola", "jual", "per_booking", 85000, 24, 6, 4, "Satu tabung berisi 3 bola baru, boleh dibawa pulang.", true],
+  ["Sewa sepatu", "sepatu", "sewa", "per_booking", 25000, 10, 0, 4, "Sepatu bersol karet non-marking, ukuran 38–45.", true],
+  ["Handuk", "handuk", "sewa", "per_booking", 10000, 20, 0, 4, "Handuk bersih untuk dipakai selama di venue.", true],
+  ["Air mineral 600 ml", "minuman", "jual", "per_booking", 8000, 48, 12, 12, "", true],
+  ["Pelatih privat", "pelatih", "layanan", "per_hour", 200000, 2, 0, 1, "Latihan teknik dasar bersama pelatih bersertifikat. Dihitung per jam main.", true],
+  ["Rekam video pertandingan", "dokumentasi", "layanan", "per_booking", 75000, null, 0, 1, "Video pertandingan dikirim lewat WhatsApp setelah main.", true],
+  ["Overgrip raket", "perlengkapan", "jual", "per_booking", 35000, 4, 5, 4, "Dijual di resepsionis untuk mengganti grip yang licin.", false],
+];
+
 const commonFaqs: [string, string][] = [
-  ["Apakah bisa sewa raket dan bola?", "Bisa. Raket dan bola tersedia di resepsionis dan dibayar langsung di tempat."],
+  ["Apakah bisa sewa raket dan bola?", "Bisa. Pilih raket, bola, sepatu, atau pelatih saat memesan jadwal, atau minta langsung di resepsionis."],
   ["Berapa pemain dalam satu lapangan?", "Padel dimainkan berpasangan, jadi idealnya 4 pemain. Tetap boleh bermain berdua."],
 ];
 
@@ -72,10 +88,10 @@ const oneFloor: Scenario = {
     ["Akhir pekan", [0, 6], "07:00", "21:00", 300000, [2]],
   ],
   reservations: [
-    { court: 0, day: 0, start: "18:00", end: "19:30", customer: "Andi Pratama", phone: "081234567001" },
-    { court: 1, day: 0, start: "19:00", end: "20:00", customer: "Rina Kusuma", phone: "081234567002" },
-    { court: 0, day: 1, start: "07:00", end: "08:30", customer: "Komunitas Padel Pagi", phone: "081234567003" },
-    { court: 2, day: 1, start: "16:00", end: "18:00", customer: "Dimas Herlambang", phone: "081234567004" },
+    { court: 0, day: 0, start: "18:00", end: "19:30", customer: "Andi Pratama", phone: "081234567001", addons: [[0, 4], [2, 1], [5, 4]] },
+    { court: 1, day: 0, start: "19:00", end: "20:00", customer: "Rina Kusuma", phone: "081234567002", addons: [[3, 2]] },
+    { court: 0, day: 1, start: "07:00", end: "08:30", customer: "Komunitas Padel Pagi", phone: "081234567003", addons: [[6, 1], [0, 2]] },
+    { court: 2, day: 1, start: "16:00", end: "18:00", customer: "Dimas Herlambang", phone: "081234567004", addons: [[1, 2], [7, 1]] },
     { court: 1, day: 2, start: "20:00", end: "21:00", customer: "Sari Wulandari", phone: "081234567005" },
   ],
   maintenance: { court: 2, day: 1, start: "09:00", end: "11:00", reason: "Perawatan rumput sintetis" },
@@ -123,10 +139,10 @@ const twoFloorBuilding: Scenario = {
     ["Sore rooftop", [0, 1, 2, 3, 4, 5, 6], "16:00", "19:00", 325000, [3, 4]],
   ],
   reservations: [
-    { court: 0, day: 0, start: "18:00", end: "19:30", customer: "Andi Pratama", phone: "081234567001" },
-    { court: 3, day: 0, start: "17:00", end: "18:00", customer: "Rina Kusuma", phone: "081234567002" },
-    { court: 1, day: 1, start: "07:00", end: "08:30", customer: "Komunitas Padel Pagi", phone: "081234567003" },
-    { court: 4, day: 1, start: "16:00", end: "18:00", customer: "Dimas Herlambang", phone: "081234567004" },
+    { court: 0, day: 0, start: "18:00", end: "19:30", customer: "Andi Pratama", phone: "081234567001", addons: [[0, 4], [2, 1], [5, 4]] },
+    { court: 3, day: 0, start: "17:00", end: "18:00", customer: "Rina Kusuma", phone: "081234567002", addons: [[3, 2], [4, 2]] },
+    { court: 1, day: 1, start: "07:00", end: "08:30", customer: "Komunitas Padel Pagi", phone: "081234567003", addons: [[6, 1], [0, 2]] },
+    { court: 4, day: 1, start: "16:00", end: "18:00", customer: "Dimas Herlambang", phone: "081234567004", addons: [[1, 2], [7, 1]] },
     { court: 2, day: 2, start: "20:00", end: "21:00", customer: "Sari Wulandari", phone: "081234567005" },
   ],
   maintenance: { court: 4, day: 1, start: "09:00", end: "11:00", reason: "Pengecekan jaring dan lampu rooftop" },
@@ -188,12 +204,24 @@ transaction(() => {
     for (const index of targets) db.prepare("INSERT INTO price_rule_courts (rule_id,court_id) VALUES (?,?)").run(id, ids[index].id);
   }
 
+  // Katalog tambahan hanya diisi bila masih kosong, agar --force tidak membuat item ganda.
+  const hasCatalog = (db.prepare("SELECT count(*) n FROM addons").get() as { n: number }).n > 0;
+  const addonIds = hasCatalog ? [] : catalog.map(([name, category, type, pricing, price, stock, lowStock, max, description, online], position) => {
+    const id = randomUUID(), stamp = new Date().toISOString();
+    db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)")
+      .run(id, name, category, type, pricing, price, stock, lowStock, max, description, Number(online), position, stamp);
+    if (stock !== null) db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,stock_after,created_by,created_at) VALUES (?,?,?,'awal','',?,?,?)").run(randomUUID(), id, stock, stock, actor, stamp);
+    return id;
+  });
+
   const activeRules = priceRules();
   for (const item of scenario.reservations) {
-    const court = ids[item.court];
+    const court = ids[item.court], id = randomUUID();
     const total = quote(court, activeRules, day(item.day), item.start, item.end);
-    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(randomUUID(), court.id, item.customer, item.phone, day(item.day), item.start, item.end, total, "confirmed", "", actor, new Date().toISOString());
+    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, court.id, item.customer, item.phone, day(item.day), item.start, item.end, total, total, "confirmed", "", actor, new Date().toISOString());
+    if (addonIds.length && item.addons)
+      applyLines({ id, date: day(item.day), start_time: item.start, end_time: item.end, paid: 0, court_total: total }, item.addons.map(([index, quantity]) => ({ addon_id: addonIds[index], quantity })), actor);
   }
 
   const care = scenario.maintenance;
@@ -228,7 +256,7 @@ transaction(() => {
   for (const [key, document] of Object.entries(documents))
     db.prepare("INSERT OR IGNORE INTO settings (key, document) VALUES (?, ?)").run(key, JSON.stringify(document));
 
-  console.log(`Data contoh ${scenario.label} dibuat: ${scenario.floors.length} lantai, ${ids.length} lapangan, ${scenario.rules.length} tarif khusus, ${scenario.reservations.length} booking, ${scenario.features.length} elemen denah, info venue, kebijakan, dan FAQ.`);
+  console.log(`Data contoh ${scenario.label} dibuat: ${scenario.floors.length} lantai, ${ids.length} lapangan, ${scenario.rules.length} tarif khusus, ${scenario.reservations.length} booking, ${addonIds.length} item sewa & tambahan, ${scenario.features.length} elemen denah, info venue, kebijakan, dan FAQ.`);
   console.log(`Tanggal yang terisi: ${day(0)} (hari ini), ${day(1)}, ${day(2)}.`);
 });
 db.close();

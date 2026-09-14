@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Info, Layers, MessageCircle, RefreshCw, X } from "lucide-react";
+import { CalendarDays, ChevronDown, Info, Layers, MessageCircle, PackagePlus, RefreshCw, X } from "lucide-react";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
 import { CourtCover } from "@/components/photo-gallery";
+import { ShopAddonPicker } from "@/components/shop-addons";
+import { type AddonOption, fetchAddonOptions, lineTotal, maxFor } from "@/lib/addons";
 import { minute, timeSlots } from "@/lib/operations";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { environmentLabel, policySummary, whatsappLink } from "@/lib/venue-info";
@@ -36,6 +38,10 @@ function AvailabilityView() {
   const blocks = useRef(new Map<string, HTMLElement>());
   const jumped = useRef(false);
   const { data: venue } = useVenueInfo();
+  /** Pilihan tambahan untuk jam yang dipilih; null selama stoknya belum diperiksa. */
+  const [addonOptions, setAddonOptions] = useState<AddonOption[] | null>(null);
+  const [picks, setPicks] = useState<Record<string, number>>({});
+  const [addonsOpen, setAddonsOpen] = useState(false);
 
   const focusCourt = useCallback((courtId: string) => {
     blocks.current.get(courtId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -106,6 +112,36 @@ function AvailabilityView() {
   const covered = (courtId: string, start: string) =>
     !!picked && !!effective && picked.courtId === courtId && minute(start) >= minute(picked.start) && minute(start) < minute(picked.start) + effective;
 
+  // Stok raket sewa bergantung pada jam main, jadi diperiksa ulang setiap jam, durasi, atau jadwal berubah.
+  useEffect(() => {
+    if (!picked || !end) { setAddonOptions(null); return; }
+    let active = true;
+    fetchAddonOptions(date, picked.start, end).then(result => {
+      if (!active) return;
+      setAddonOptions(result.addons);
+      setPicks(current => {
+        const next: Record<string, number> = {};
+        for (const [id, quantity] of Object.entries(current)) {
+          const option = result.addons.find(item => item.id === id);
+          const allowed = option ? Math.min(quantity, maxFor(option)) : 0;
+          if (allowed > 0) next[id] = allowed;
+        }
+        return next;
+      });
+    }).catch(() => { if (active) setAddonOptions([]); });
+    return () => { active = false; };
+  }, [date, picked, end, data]);
+  useEffect(() => { if (!picked) { setPicks({}); setAddonsOpen(false); } }, [picked]);
+  const catalog = addonOptions ?? venue?.addons ?? [];
+  const chosenAddons = effective
+    ? catalog.flatMap(option => {
+      const quantity = picks[option.id] ?? 0;
+      return quantity > 0 ? [{ option, quantity, subtotal: lineTotal(option.price, quantity, option.pricing, effective) }] : [];
+    })
+    : [];
+  const extras = chosenAddons.reduce((sum, item) => sum + item.subtotal, 0);
+  const pickedCount = chosenAddons.reduce((sum, item) => sum + item.quantity, 0);
+
   const info = venue?.info;
   const policyLine = venue ? policySummary(venue.policies) : null;
   const floors = data?.floors ?? [];
@@ -122,9 +158,16 @@ function AvailabilityView() {
     `Lapangan: ${pickedCourt.name}${pickedFloor ? ` (${pickedFloor})` : ""}`,
     `Tanggal: ${formatDay(date)}`,
     `Jam: ${picked.start}–${end} (${durationLabel(effective)})`,
-    `Total: ${money(total)}`,
+    ...(chosenAddons.length ? [
+      `Sewa lapangan: ${money(total)}`,
+      "",
+      "Tambahan:",
+      ...chosenAddons.map(item => `- ${item.quantity}× ${item.option.name}: ${money(item.subtotal)}`),
+      "",
+    ] : []),
+    `Total: ${money(total + extras)}`,
     "",
-    "Apakah slot ini masih tersedia?",
+    chosenAddons.length ? "Apakah slot dan tambahan ini masih tersedia?" : "Apakah slot ini masih tersedia?",
   ].join("\n") : "";
 
   return (
@@ -288,6 +331,7 @@ function AvailabilityView() {
             <b>{pickedCourt.name}</b>
             <span>{pickedFloor ? `${pickedFloor} · ` : ""}{formatShortDay(date)} · {picked.start}{end ? ` – ${end}` : ""}</span>
             {appliedRules.length > 0 && <em>Termasuk tarif {appliedRules.join(" & ")}</em>}
+            {pickedCount > 0 && <span className="extras">Lapangan {money(total)} + {pickedCount} tambahan {money(extras)}</span>}
           </div>
           <div className="shop-duration" role="group" aria-label="Durasi main">
             {durations.map(value => (
@@ -297,7 +341,7 @@ function AvailabilityView() {
             ))}
           </div>
           <div className="pay">
-            <span className="total">{money(total)}</span>
+            <span className="total">{money(total + extras)}</span>
             {info?.whatsapp && message ? (
               <a className="shop-cta" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener" aria-describedby="catatan-bayar">
                 <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
@@ -310,6 +354,19 @@ function AvailabilityView() {
               {policyLine && <> <Link href="/kebijakan#pembatalan">{policyLine}.</Link></>}
             </small>
           </div>
+          {catalog.length > 0 && (
+            <div className={`shop-summary-addons${addonsOpen ? " open" : ""}`}>
+              <button type="button" className="shop-addons-toggle" aria-expanded={addonsOpen} aria-controls="pilihan-tambahan" onClick={() => setAddonsOpen(open => !open)}>
+                <PackagePlus size={17} aria-hidden="true" />
+                <span>{pickedCount ? `${pickedCount} tambahan dipilih · ${money(extras)}` : "Tambah sewa raket, bola & lainnya"}</span>
+                <ChevronDown size={16} aria-hidden="true" className="chevron" />
+              </button>
+              {addonsOpen && (
+                <ShopAddonPicker id="pilihan-tambahan" options={catalog} picks={picks} loading={addonOptions === null}
+                  onChange={(id, quantity) => setPicks(current => ({ ...current, [id]: quantity }))} />
+              )}
+            </div>
+          )}
         </div>
       )}
     </section>

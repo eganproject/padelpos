@@ -10,6 +10,7 @@ import { CourtCover } from "@/components/photo-gallery";
 import { FacilityIcon } from "@/components/facility-icon";
 import { RichText } from "@/components/rich-text";
 import { FaqList, RefundTiers, useScrollToHash } from "@/components/shop-policy";
+import { ShopAddonCatalog } from "@/components/shop-addons";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { environmentLabel, facilityLabels, hasCancellationPolicy, mapsEmbed, mapsLink, rescheduleLine, whatsappLink } from "@/lib/venue-info";
 import { addDays, fetchAvailability, floorLabel, formatShortDay, venueNow, type Availability } from "@/lib/shop";
@@ -171,6 +172,18 @@ export default function ShopLandingPage() {
         </section>
       )}
 
+      {venue && venue.addons.length > 0 && (
+        <section className="shop-section" id="tambahan" aria-labelledby="judul-tambahan">
+          <div className="shop-section-head">
+            <div>
+              <h2 id="judul-tambahan">Sewa & tambahan</h2>
+              <p>Tidak membawa raket? Pilih perlengkapan atau pelatih saat memesan jadwal.</p>
+            </div>
+          </div>
+          <ShopAddonCatalog items={venue.addons} />
+        </section>
+      )}
+
       {info && hasContact && (
         <section className="shop-section" id="lokasi" aria-labelledby="judul-lokasi">
           <div className="shop-section-head">
@@ -252,7 +265,7 @@ export default function ShopLandingPage() {
           <li className="shop-step">
             <span>2</span>
             <h3>Pilih jam dan durasi</h3>
-            <p>Tentukan jam mulai dan lama bermain. Total biaya langsung terlihat sebelum Anda lanjut.</p>
+            <p>Tentukan jam mulai dan lama bermain, lalu tambahkan sewa raket atau bola bila perlu. Total biaya langsung terlihat.</p>
           </li>
           <li className="shop-step">
             <span>3</span>

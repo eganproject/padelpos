@@ -7,7 +7,7 @@ import { ErrorBox } from "@/components/operation-ui";
 import { api,money } from "@/lib/api";
 import { type Booking,type Court,statusLabel,statusTone } from "@/lib/operations";
 import { formatDay } from "@/lib/shop";
-type Summary={date:string;timezone:string;revenueToday:number;revenueWeek:number;bookingsToday:number;occupancy:number;receivable:number;refundsDue:number;daily:{date:string;amount:number}[];bookings:Booking[];courts:Court[]};
+type Summary={date:string;timezone:string;revenueToday:number;revenueWeek:number;bookingsToday:number;occupancy:number;receivable:number;refundsDue:number;addons?:{today:number;unreturned:number;low_stock:{id:string;name:string;stock:number}[]};daily:{date:string;amount:number}[];bookings:Booking[];courts:Court[]};
 const compactMoney=(value:number)=>value===0?"Rp 0":`${value<0?"−":""}Rp ${new Intl.NumberFormat("id-ID",{notation:"compact",maximumFractionDigits:1}).format(Math.abs(value))}`;
 const chartDay=(date:string)=>new Intl.DateTimeFormat("id-ID",{weekday:"short",day:"numeric",timeZone:"UTC"}).format(new Date(date+"T12:00:00Z"));
 const courtTone:Record<string,string>={Tersedia:"on",Digunakan:"done",Maintenance:"wait",Nonaktif:"off"};
@@ -17,7 +17,7 @@ export default function AdminPage(){
   useEffect(()=>{void load();const timer=setInterval(()=>void load(),60000);return()=>clearInterval(timer)},[load]);
   const metrics=data?[
     {label:"Penerimaan neto hari ini",value:money(data.revenueToday),hint:`7 hari terakhir: ${money(data.revenueWeek)}`,Icon:CircleDollarSign,tone:"lime"},
-    {label:"Booking hari ini",value:String(data.bookingsToday),hint:"Tidak termasuk pembatalan",Icon:CalendarDays,tone:"violet"},
+    {label:"Booking hari ini",value:String(data.bookingsToday),hint:data.addons?.today?`Tambahan hari ini ${money(data.addons.today)}`:"Tidak termasuk pembatalan",Icon:CalendarDays,tone:"violet"},
     {label:"Okupansi hari ini",value:data.occupancy+"%",hint:"Dari jam lapangan aktif",Icon:Activity,tone:"cyan"},
     {label:"Tagihan belum lunas",value:money(data.receivable),hint:"Seluruh booking aktif",Icon:WalletCards,tone:"orange"},
   ]:[];
@@ -29,6 +29,7 @@ export default function AdminPage(){
     {!data?<p className="empty-state">Memuat ringkasan operasional…</p>:<>
     <div className="metric-grid">{metrics.map(({label,value,hint,Icon,tone})=><article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon/></span></div><p>{label}</p><h2>{value}</h2><small>{hint}</small></article>)}</div>
     {data.refundsDue>0&&<div className="ops-alert">Pengembalian dana yang belum dicatat: <b>{money(data.refundsDue)}</b>. Periksa booking yang dibatalkan.</div>}
+    {data.addons&&(data.addons.unreturned>0||data.addons.low_stock.length>0)&&<div className="ops-alert addon-alert">{data.addons.unreturned>0&&<span><b>{data.addons.unreturned} barang sewa</b> belum ditandai kembali.</span>}{data.addons.low_stock.length>0&&<span>Stok menipis: {data.addons.low_stock.map(a=>`${a.name} (${a.stock})`).join(", ")}.</span>}<Link className="ops-link" href="/admin/addons">Periksa <ArrowRight size={14}/></Link></div>}
     <div className="ops-dashboard-grid">
       <article className="settings-card"><div className="ops-card-head"><h2>Penerimaan 7 hari</h2><strong>{money(data.revenueWeek)}</strong></div><p className="ops-muted">Pembayaran diterima dikurangi pengembalian, menurut tanggal transaksi.</p>
         {quiet?<div className="ops-chart-empty"><p>Belum ada pembayaran tercatat dalam 7 hari terakhir.<br/>Grafik terisi setelah DP atau pelunasan dicatat di menu Booking.</p></div>

@@ -33,8 +33,8 @@ pada `.env`. Hapus variabel itu setelah admin pertama dibuat.
 
 ## Data contoh
 
-- `npm run seed -w apps/api` — venue satu lantai: tiga lapangan, tarif khusus, booking, denah
-  lengkap dengan pintu masuk, serta info venue, kebijakan, dan FAQ.
+- `npm run seed -w apps/api` — venue satu lantai: tiga lapangan, tarif khusus, booking dengan sewa
+  raket dan tambahan lain, denah lengkap dengan pintu masuk, serta info venue, kebijakan, dan FAQ.
 - `npm run seed:dua-lantai -w apps/api` — gedung dua lantai: tiga lapangan indoor dan pintu masuk
   di Lantai 1, dua lapangan rooftop dan tribun di Lantai 2, tangga dan lift di posisi yang sama
   pada kedua lantai.
@@ -55,6 +55,28 @@ lalu pindahkan lapangan atau elemen lewat pilihan **Lantai** di panel pengaturan
 punya ukuran sendiri, dan lapangan hanya dicek saling menimpa terhadap lapangan di lantai yang sama.
 Lantai yang masih berisi tidak dapat dihapus. Pelanggan melihat tab lantai pada denah dan jadwal
 yang dikelompokkan per lantai.
+
+## Sewa & tambahan
+
+Menu **Sewa & Tambahan** mengelola katalog raket, bola, sepatu, pelatih, dan barang lain yang
+ditagihkan bersama booking. Setiap item punya salah satu jenis berikut:
+
+- **Sewa**: barang dipinjam lalu dikembalikan. Stoknya berupa jumlah unit, dan unit hanya terpakai
+  selama jam main, jadi raket yang sama bisa dipakai booking berikutnya.
+- **Jual**: barang habis pakai, misalnya bola atau minuman. Stok berkurang saat item ditambahkan ke
+  booking dan kembali bila barisnya dihapus atau booking dibatalkan.
+- **Layanan**: jasa seperti pelatih. Stoknya berarti kapasitas pada jam yang sama.
+
+Harga dihitung per booking atau per jam main. Stok boleh tidak dibatasi. Setiap baris booking
+menyimpan salinan nama dan harga, jadi perubahan katalog tidak mengubah tagihan lama.
+
+- **Kasir**: menambah atau mengubah tambahan dari detail booking, termasuk biaya lain di luar katalog.
+  Tagihan tidak boleh turun di bawah pembayaran yang sudah diterima.
+- **Pengembalian**: barang sewa ditandai sudah kembali dari detail booking. Barang yang belum kembali
+  tampil di menu ini dan di ringkasan.
+- **Stok**: restok, barang rusak atau hilang, dan hitung ulang tercatat di riwayat stok.
+- **Pelanggan**: melihat katalog di beranda, memilih tambahan di ringkasan pesanan, dan pilihannya
+  ikut di pesan WhatsApp. Item yang tidak ditandai tampil online hanya tersedia untuk kasir.
 
 ## Penyimpanan data
 
