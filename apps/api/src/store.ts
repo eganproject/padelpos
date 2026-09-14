@@ -195,6 +195,28 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 4").get()) transaction
   `);
   db.prepare("INSERT INTO migrations VALUES (4, ?)").run(new Date().toISOString());
 });
+
+/**
+ * Nama menu bawaan diseragamkan ke Bahasa Indonesia agar sidebar tidak campur bahasa.
+ * Nama yang sudah diubah admin tidak disentuh. Grup diganti untuk semua menu, termasuk
+ * menu kustom, supaya menu kustom tidak terpisah dari grup asalnya.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 5").get()) transaction(() => {
+  const renames: Record<string, [from: string, to: string]> = {
+    dashboard: ["Overview", "Ringkasan"], bookings: ["Bookings", "Booking"], courts: ["Courts", "Lapangan"],
+    layout: ["Layout Venue", "Denah Venue"], users: ["Users", "Pengguna"], roles: ["Roles", "Role & Akses"],
+    menus: ["Menu Access", "Menu Navigasi"], profile: ["My Profile", "Profil Saya"],
+  };
+  const groups: Record<string, string> = { "Workspace": "Operasional", "Access Control": "Hak Akses", "System": "Akun" };
+  const menus = collection<AccessMenu>("menus");
+  for (const menu of menus) {
+    const rename = renames[menu.id];
+    if (rename && menu.name === rename[0]) menu.name = rename[1];
+    if (groups[menu.group]) menu.group = groups[menu.group];
+  }
+  saveCollection("menus", menus);
+  db.prepare("INSERT INTO migrations VALUES (5, ?)").run(new Date().toISOString());
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

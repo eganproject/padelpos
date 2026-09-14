@@ -6,6 +6,7 @@ import "./admin-ui.css";
 import "./management.css";
 import "./operations.css";
 import "./layout-editor.css";
+import "./admin-polish.css";
 import "./shop.css";
 
 // Variabel ini sudah lama dirujuk seluruh CSS, tetapi fontnya belum pernah dimuat.
@@ -13,7 +14,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Padelix — Booking Lapangan Padel",
+  title: { default: "Padelix — Booking Lapangan Padel", template: "%s · Padelix" },
   description: "Cek ketersediaan lapangan padel dan pesan jam main Anda secara online.",
 };
 

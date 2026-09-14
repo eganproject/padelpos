@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, LogOut, Menu, Moon, Sun, X } from "lucide-react";
+import { Activity, ExternalLink, LogOut, Menu, Moon, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "./brand";
@@ -65,8 +65,12 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
       </aside>
       <section className="manage-main">
         <header className="manage-top">
-          <div className="manage-top-start"><button className="manage-menu-button" onClick={() => setSidebarOpen(true)} aria-label="Buka menu"><Menu /></button><Link href="/admin"><Activity /><span>Control center</span></Link></div>
-          <div className="manage-top-actions"><button onClick={toggleTheme} aria-label="Ubah tema">{theme === "dark" ? <Sun /> : <Moon />}</button><span className="manage-avatar">{user?.name?.slice(0, 2).toUpperCase() || "AD"}</span></div>
+          <div className="manage-top-start"><button className="manage-menu-button" onClick={() => setSidebarOpen(true)} aria-label="Buka menu"><Menu /></button><Link href="/admin"><Activity /><span>Panel admin</span></Link></div>
+          <div className="manage-top-actions">
+            <Link className="site-link" href="/" target="_blank" rel="noopener" title="Buka situs pelanggan di tab baru"><ExternalLink /><span>Situs pelanggan</span></Link>
+            <button onClick={toggleTheme} aria-label={theme === "dark" ? "Gunakan tema terang" : "Gunakan tema gelap"}>{theme === "dark" ? <Sun /> : <Moon />}</button>
+            <span className="manage-avatar" title={user?.name}>{user?.name?.slice(0, 2).toUpperCase() || "AD"}</span>
+          </div>
         </header>
         {children}
       </section>

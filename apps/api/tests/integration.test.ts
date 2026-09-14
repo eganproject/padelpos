@@ -218,6 +218,33 @@ test("operational workflow, concurrency, permissions and durable storage", async
   }
 });
 
+test("nama menu bawaan diterjemahkan tanpa menimpa nama yang sudah diubah admin",()=>{
+  const legacy=mkdtempSync(path.join(tmpdir(),"padelix-menu-test-"));
+  const stamp="2026-01-01T00:00:00Z";
+  const menus=[
+    {id:"dashboard",name:"Overview",path:"/admin",icon:"LayoutDashboard",group:"Workspace",order:1,active:true,createdAt:stamp},
+    {id:"bookings",name:"Jadwal Lapangan",path:"/admin/bookings",icon:"CalendarDays",group:"Workspace",order:2,active:true,createdAt:stamp},
+    {id:"users",name:"Users",path:"/admin/users",icon:"UsersRound",group:"Access Control",order:5,active:true,createdAt:stamp},
+    {id:"laporan",name:"Laporan",path:"/admin/laporan",icon:"Circle",group:"Workspace",order:9,active:true,createdAt:stamp},
+  ];
+  writeFileSync(path.join(legacy,"menus.json"),JSON.stringify(menus));
+  const script="const {getMenus,db}=await import('./src/store.ts');console.log(JSON.stringify(getMenus()));db.close();";
+  try {
+    const run=spawnSync(process.execPath,["--import","tsx","--input-type=module","-e",script],{env:{...process.env,DATA_DIR:legacy},encoding:"utf8"});
+    assert.equal(run.status,0,run.stderr);
+    const byId=Object.fromEntries((JSON.parse(run.stdout.trim()) as {id:string;name:string;group:string}[]).map(menu=>[menu.id,menu]));
+    assert.equal(byId.dashboard.name,"Ringkasan");
+    assert.equal(byId.users.name,"Pengguna");
+    assert.equal(byId.layout.name,"Denah Venue","menu yang ditambahkan migrasi 3 ikut diterjemahkan");
+    assert.equal(byId.bookings.name,"Jadwal Lapangan","nama yang sudah diubah admin harus dipertahankan");
+    assert.equal(byId.users.group,"Hak Akses");
+    assert.equal(byId.laporan.group,"Operasional","menu kustom tetap satu grup dengan menu bawaan");
+  } finally {
+    assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-menu-test-"));
+    rmSync(legacy,{recursive:true,force:true});
+  }
+});
+
 test("legacy JSON is migrated once and original files are preserved",()=>{
   const legacy=mkdtempSync(path.join(tmpdir(),"padelix-migration-test-"));
   const user={id:"legacy-user",name:"Legacy",email:"legacy@example.test",phone:"081234567890",passwordHash:"existing-hash",role:"admin",createdAt:"2026-01-01T00:00:00Z"};
