@@ -1,5 +1,4 @@
 import { api } from "./api";
-import { minute } from "./operations";
 import type { Venue, VenueFeature } from "./venue";
 
 export const venueTimezone = "Asia/Jakarta";
@@ -7,8 +6,15 @@ export const slotMinutes = 30;
 
 export type SlotState = "available" | "booked" | "maintenance" | "past";
 export type CourtBox = { x: number; y: number; w: number; h: number };
-export type ShopCourt = { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; layout: CourtBox };
-export type ShopSlot = { start: string; end: string; state: SlotState };
+export type ShopCourt = {
+  id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string;
+  description: string; environment: "" | "indoor" | "outdoor"; surface: string; photos: string[];
+  /** Kisaran tarif per jam sepanjang minggu, termasuk tarif khusus. */
+  rate_min: number; rate_max: number;
+  layout: CourtBox;
+};
+/** `rate` adalah tarif per jam slot ini; `rule` nama tarif khusus bila berlaku. */
+export type ShopSlot = { start: string; end: string; state: SlotState; rate: number; rule: string | null };
 export type CourtAvailability = { court: ShopCourt; slots: ShopSlot[] };
 export type Availability = { date: string; today: string; time: string; timezone: string; venue: Venue; features: VenueFeature[]; courts: CourtAvailability[] };
 
@@ -33,15 +39,23 @@ export function formatShortDay(date: string) {
   return new Intl.DateTimeFormat("id-ID", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(date + "T12:00:00Z"));
 }
 
-export const priceFor = (court: ShopCourt, start: string, end: string) => Math.round(court.hourly_rate * (minute(end) - minute(start)) / 60);
+const slotsFrom = (slots: ShopSlot[], start: string, duration: number) => {
+  const from = slots.findIndex(s => s.start === start);
+  return from < 0 ? [] : slots.slice(from, from + duration / slotMinutes);
+};
+
+/** Total sewa dari tarif tiap slot 30 menit, dihitung sama persis dengan server. */
+export const priceFor = (slots: ShopSlot[], start: string, duration: number) =>
+  Math.round(slotsFrom(slots, start, duration).reduce((sum, slot) => sum + slot.rate, 0) / 2);
+
+/** Nama tarif khusus yang ikut terpakai pada rentang ini. */
+export const rulesFor = (slots: ShopSlot[], start: string, duration: number) =>
+  [...new Set(slotsFrom(slots, start, duration).map(slot => slot.rule).filter((rule): rule is string => !!rule))];
 
 /** Slot berurutan mulai dari `start` sepanjang `duration` menit, semuanya harus tersedia. */
 export function rangeIsFree(slots: ShopSlot[], start: string, duration: number) {
-  const from = slots.findIndex(s => s.start === start);
-  if (from < 0) return false;
-  const count = duration / slotMinutes;
-  if (from + count > slots.length) return false;
-  return slots.slice(from, from + count).every(s => s.state === "available");
+  const range = slotsFrom(slots, start, duration);
+  return range.length === duration / slotMinutes && range.every(s => s.state === "available");
 }
 
 export const fetchAvailability = (date: string) => api<Availability>(`/public/availability?date=${encodeURIComponent(date)}`);

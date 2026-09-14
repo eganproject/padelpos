@@ -201,6 +201,78 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.ok(Array.isArray(venue.data.features)&&venue.data.features.length>0,"elemen informasi harus ikut agar denah pelanggan lengkap");
       assert.ok(Array.isArray(open.data.features),"ketersediaan harian juga membawa elemen informasi");
     });
+    await t.test("tarif khusus: harga per slot, tolak tumpang tindih, dan tidak mengubah booking lama",async()=>{
+      const day=new Date(tomorrow+"T12:00:00Z").getUTCDay(),other=(day+1)%7;
+      const rule={label:"Jam sibuk",court_ids:[courtId],days:[day],start_time:"18:00",end_time:"20:00",hourly_rate:500000};
+      assert.equal((await request("/operations/price-rules","POST",rule,staff)).status,403,"peran tanpa menu courts tidak boleh mengatur tarif");
+      assert.equal((await request("/operations/price-rules","POST",{...rule,start_time:"20:00",end_time:"18:00"},admin)).status,400);
+      assert.equal((await request("/operations/price-rules","POST",{...rule,court_ids:["tidak-ada"]},admin)).status,404);
+      const created=await request("/operations/price-rules","POST",rule,admin);
+      assert.equal(created.status,201);
+      const ruleId=created.data.price_rules[0].id;
+      const clash=await request("/operations/price-rules","POST",{...rule,label:"Promo",start_time:"19:30",end_time:"21:00"},admin);
+      assert.equal(clash.status,409,"dua tarif pada lapangan, hari, dan jam yang sama harus ditolak");
+      assert.match(clash.data.message,/Jam sibuk/);
+      assert.equal((await request("/operations/price-rules","POST",{...rule,label:"Hari lain",days:[other]},admin)).status,201,"hari berbeda tidak bentrok");
+      // 17:30–18:30 = 30 menit tarif dasar 400.000 + 30 menit tarif khusus 500.000.
+      const mixed=await request("/operations/bookings","POST",booking({start_time:"17:30",end_time:"18:30"}),admin);
+      assert.equal(mixed.status,201);assert.equal(mixed.data.booking.total,450000);
+      const open=await request("/public/availability?date="+tomorrow,"GET");
+      const slots=open.data.courts.find((entry:{court:{id:string}})=>entry.court.id===courtId).slots;
+      const at=(start:string)=>slots.find((slot:{start:string})=>slot.start===start);
+      assert.equal(at("18:00").rate,500000);assert.equal(at("18:00").rule,"Jam sibuk");
+      assert.equal(at("17:00").rate,400000);assert.equal(at("17:00").rule,null);
+      const info=await request("/public/info","GET");
+      const court=info.data.courts.find((c:{id:string})=>c.id===courtId);
+      assert.equal(court.rate_min,400000);assert.equal(court.rate_max,500000);
+      assert.equal((await request("/operations/price-rules/"+ruleId,"DELETE",undefined,admin)).status,204);
+      assert.equal((await request("/operations/bookings/"+mixed.data.booking.id,"GET",undefined,admin)).data.booking.total,450000,"menghapus tarif tidak mengubah tagihan yang sudah dibuat");
+    });
+    await t.test("foto lapangan: hanya gambar asli, dibatasi jumlahnya, dan dapat dilihat publik",async()=>{
+      const upload=(body:Buffer,type="image/png",cookie=admin)=>fetch(`${base}/operations/courts/${courtId}/photos`,{method:"POST",headers:{"Content-Type":type,Cookie:cookie,Origin:"http://localhost:3000"},body:new Uint8Array(body)});
+      const png=Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.alloc(64,1)]);
+      assert.equal((await upload(png,"image/png",staff)).status,403);
+      assert.equal((await upload(Buffer.from("<svg onload=alert(1)>"),"image/svg+xml")).status,415,"SVG dapat berisi skrip, jadi ditolak");
+      assert.equal((await upload(Buffer.from("bukan gambar sama sekali"),"image/png")).status,400,"isi berkas harus cocok dengan tipenya");
+      let photos:{id:string}[]=[];
+      for(let i=0;i<6;i++){const response=await upload(png);assert.equal(response.status,201);photos=(await response.json()).photos;}
+      assert.equal((await upload(png)).status,409,"maksimal 6 foto per lapangan");
+      const reversed=photos.map(p=>p.id).reverse();
+      assert.equal((await request(`/operations/courts/${courtId}/photos/order`,"PUT",{ids:reversed.slice(1)},admin)).status,409,"urutan harus memuat semua foto");
+      const ordered=await request(`/operations/courts/${courtId}/photos/order`,"PUT",{ids:reversed},admin);
+      assert.deepEqual(ordered.data.photos.map((p:{id:string})=>p.id),reversed);
+      const file=await fetch(`${base}/public/photos/${reversed[0]}`);
+      assert.equal(file.status,200);assert.equal(file.headers.get("content-type"),"image/png");
+      assert.ok(Buffer.from(await file.arrayBuffer()).equals(png));
+      const removed=await request(`/operations/courts/${courtId}/photos/${reversed[0]}`,"DELETE",undefined,admin);
+      assert.equal(removed.data.photos.length,5);assert.equal(removed.data.photos[0].position,0);
+      const info=await request("/public/info","GET");
+      assert.equal(info.data.courts.find((c:{id:string})=>c.id===courtId).photos[0],reversed[1],"sampul pindah ke foto berikutnya");
+    });
+    await t.test("info venue, kebijakan, dan FAQ: tervalidasi dan tampil di endpoint publik",async()=>{
+      const empty=await request("/public/info","GET");
+      assert.equal(empty.status,200);assert.equal(empty.data.info.address,"");assert.deepEqual(empty.data.faqs,[]);
+      const info={name:"Arena Uji",address:"Jl. Uji No. 1",whatsapp:"0812-3456-7890",instagram:"https://instagram.com/arena.uji/",facilities:["parkir","wifi","parkir"],maps_url:""};
+      assert.equal((await request("/operations/content/info","PUT",info,staff)).status,403,"peran tanpa menu info tidak boleh mengubah");
+      assert.equal((await request("/operations/content/info","PUT",{...info,maps_url:"javascript:alert(1)"},admin)).status,400,"tautan peta wajib https");
+      assert.equal((await request("/operations/content/info","PUT",{...info,whatsapp:"12345"},admin)).status,400);
+      const saved=await request("/operations/content/info","PUT",info,admin);
+      assert.equal(saved.status,200);
+      assert.equal(saved.data.info.whatsapp,"6281234567890","nomor WhatsApp diseragamkan agar siap dipakai wa.me");
+      assert.equal(saved.data.info.instagram,"arena.uji");
+      assert.deepEqual(saved.data.info.facilities,["parkir","wifi"]);
+      assert.equal((await request("/operations/content/policies","PUT",{refund_tiers:[{hours:6,percent:100},{hours:24,percent:50}]},admin)).status,400,"refund tidak boleh naik saat makin dekat jam main");
+      const policies=await request("/operations/content/policies","PUT",{refund_tiers:[{hours:6,percent:50},{hours:24,percent:100}],reschedule:"yes",reschedule_hours:12,terms:"Datang tepat waktu."},admin);
+      assert.equal(policies.status,200);
+      assert.deepEqual(policies.data.policies.refund_tiers.map((t:{hours:number})=>t.hours),[24,6],"tingkat diurutkan dari batas terjauh");
+      assert.equal((await request("/operations/content/faqs","PUT",{items:[{id:"a",question:"Bisa sewa raket?",answer:""}]},admin)).status,400,"FAQ tanpa jawaban ditolak");
+      assert.equal((await request("/operations/content/faqs","PUT",{items:[{id:"a",question:"Bisa sewa raket?",answer:"Bisa, di resepsionis."}]},admin)).status,200);
+      const pub=await request("/public/info","GET");
+      assert.equal(pub.data.info.name,"Arena Uji");assert.equal(pub.data.policies.reschedule_hours,12);
+      assert.equal(pub.data.faqs[0].answer,"Bisa, di resepsionis.");assert.ok(pub.data.info.updated_at);
+      const manage=await request("/operations/content","GET",undefined,admin);
+      assert.equal(manage.status,200);assert.ok(Array.isArray(manage.data.courts));
+    });
     await t.test("password change revokes previous sessions; logout revokes server session",async()=>{
       const second=(await request("/auth/login","POST",{email:adminData.email,password:adminData.password})).cookie;
       const changed=await request("/profile/password","PUT",{currentPassword:adminData.password,newPassword:"NewStrongPass123"},admin);

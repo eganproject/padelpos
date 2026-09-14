@@ -44,5 +44,11 @@ sebagai sumber migrasi awal, lalu diabaikan. Berkas aslinya tidak dihapus.
 - Sesi memakai cookie `httpOnly` berisi token acak yang disimpan ter-hash di database,
   berlaku 8 jam. Aktifkan HTTPS agar atribut `secure` pada cookie berfungsi.
 - Jadwalkan `npm run backup -w apps/api` secara berkala; salin hasilnya ke luar server.
+- Rate limit membaca IP pengunjung. Rewrite Next.js tidak menambahkan IP asli, sehingga tanpa
+  reverse proxy semua pengunjung berbagi satu kuota. Pasang nginx (atau sejenisnya) di depan
+  Next.js dengan `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`, lalu isi
+  `TRUST_PROXY=loopback`. Jangan isi `TRUST_PROXY` tanpa reverse proxy: header dari browser
+  dapat dipalsukan.
+- Foto lapangan tersimpan di dalam database, jadi ikut tercadang oleh `npm run backup`.
 - SQLite di sini mengandalkan satu proses API. Bila nanti API dijalankan lebih dari satu
   proses atau lebih dari satu server, pindahkan penyimpanan ke PostgreSQL.

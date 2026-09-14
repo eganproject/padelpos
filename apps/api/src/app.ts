@@ -14,18 +14,29 @@ import { HttpError } from "./errors.js";
 
 export const app=express();
 app.disable("x-powered-by");
+// Rewrite Next.js tidak menambahkan X-Forwarded-For, tetapi meneruskan nilai kiriman browser
+// apa adanya. Mempercayainya tanpa reverse proxy berarti siapa pun bisa memalsukan IP untuk
+// mengakali rate limit, jadi hanya aktif bila TRUST_PROXY diisi, mis. "loopback" ketika nginx
+// di depan Next.js menambahkan IP asli pengunjung (proxy_add_x_forwarded_for).
+const trustProxy=process.env.TRUST_PROXY?.trim();
+if(trustProxy)app.set("trust proxy",/^\d+$/.test(trustProxy)?Number(trustProxy):trustProxy);
 app.use(helmet());
 const origin=process.env.CLIENT_URL||"http://localhost:3000";
 app.use(cors({origin,credentials:true}));
+/** Satu-satunya endpoint yang menerima berkas biner: unggah foto lapangan. */
+const photoUpload=/^\/api\/operations\/courts\/[^/]+\/photos$/;
 app.use((req,res,next)=>{
   if(!["GET","HEAD","OPTIONS"].includes(req.method)){
     if(req.headers.origin&&req.headers.origin!==origin)return res.status(403).json({message:"Asal permintaan tidak diizinkan."});
     // req.is() bernilai null untuk request tanpa body (mis. DELETE); tolak hanya body ber-tipe salah.
-    if(req.is("application/json")===false)return res.status(415).json({message:"Gunakan application/json."});
+    if(req.method==="POST"&&photoUpload.test(req.path)){
+      if(req.is(["image/jpeg","image/png","image/webp"])===false)return res.status(415).json({message:"Format foto harus JPG, PNG, atau WebP."});
+    }else if(req.is("application/json")===false)return res.status(415).json({message:"Gunakan application/json."});
   }
   next();
 });
-app.use(express.json({limit:"20kb"}));
+// Cukup untuk syarat & ketentuan serta 30 FAQ sekaligus.
+app.use(express.json({limit:"128kb"}));
 const limiter=rateLimit({windowMs:15*60*1000,limit:30,standardHeaders:"draft-8",legacyHeaders:false,message:{message:"Terlalu banyak percobaan. Coba lagi dalam 15 menit."}});
 app.use("/api/auth/login",limiter);
 app.use("/api/auth/register",limiter);

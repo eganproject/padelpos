@@ -1,0 +1,183 @@
+/* Informasi venue di halaman pelanggan: foto, fasilitas, lokasi, kebijakan, FAQ.
+   Dimuat setelah shop.css sehingga dapat menimpa aturan kartu dan footer lama. */
+
+/* Navigasi atas */
+.shop-nav a.link{font-weight:600}
+.shop-nav a.link[aria-current=page]{color:var(--ink);background:var(--line-soft)}
+.shop-nav a.primary[aria-current=page]{box-shadow:inset 0 0 0 2px var(--brand)}
+@media(max-width:760px){.shop-nav a.link{display:none}}
+.shop-section[id]{scroll-margin-top:72px}
+
+/* Sampul lapangan; tanpa foto tampil gambar garis lapangan */
+.court-cover{position:relative;display:block;width:100%;aspect-ratio:16/10;border:0;padding:0;margin:0;background:var(--brand-wash);overflow:hidden;cursor:zoom-in}
+.court-cover img{display:block;width:100%;height:100%;object-fit:cover;transition:transform .35s}
+button.court-cover:hover img{transform:scale(1.03)}
+.court-cover-count{position:absolute;right:10px;bottom:10px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:99px;background:#161a12cc;color:#fff;font-size:12px;font-weight:700}
+.court-cover.empty{cursor:default;background:linear-gradient(160deg,#eef8d6,#f8fbef)}
+.court-cover-lines{position:absolute;inset:22% 18%;border:2px solid #b3d66b;border-radius:3px}
+.court-cover-lines:before{content:"";position:absolute;left:50%;top:-10%;bottom:-10%;width:2px;margin-left:-1px;background:#8fbf3a}
+.court-cover-lines:after{content:"";position:absolute;inset:0 22%;border-left:2px solid #cbe596;border-right:2px solid #cbe596;background:linear-gradient(#cbe596,#cbe596) center/100% 2px no-repeat}
+
+/* Kartu lapangan dengan foto */
+.shop-court-card{padding:0;gap:0;overflow:hidden}
+.shop-court-card-body{flex:1;display:flex;flex-direction:column;gap:10px;padding:18px 20px 20px}
+.shop-court-card .shop-ghost{margin-top:auto}
+.shop-court-card.skeleton{min-height:420px}
+.shop-tags{display:flex;flex-wrap:wrap;gap:6px}
+.shop-tags span{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--line-soft);color:var(--ink-soft)}
+.shop-tags span.indoor{background:#e6f0fa;color:#2c5b87}
+.shop-tags span.outdoor{background:#fdf0d9;color:#85550c}
+.shop-court-desc{margin:0;font-size:14px;line-height:1.6;color:var(--ink-soft);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.shop-court-card .price .from{font-size:13px;font-weight:500;color:var(--ink-faint);font-family:var(--font-inter)}
+.shop-rate-note{margin-top:-6px;font-size:12px;color:var(--ink-faint)}
+
+/* Fasilitas */
+.shop-facilities{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.shop-facilities li{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;font-size:15px;font-weight:600}
+.shop-facilities svg{flex:none;width:40px;height:40px;padding:10px;border-radius:10px;background:var(--brand-wash);color:var(--brand-deep)}
+
+/* Lokasi & kontak */
+.shop-location{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:stretch}
+.shop-location.single{grid-template-columns:minmax(0,1fr);max-width:760px}
+.shop-location-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;display:flex;flex-direction:column;gap:20px;min-width:0}
+.shop-about{font-size:15px;color:var(--ink-soft)}
+.shop-contact-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
+.shop-contact-list li{display:flex;align-items:flex-start;gap:12px;min-width:0}
+.shop-contact-list svg{flex:none;width:38px;height:38px;padding:10px;border-radius:10px;background:var(--line-soft);color:var(--ink-soft)}
+.shop-contact-list div{min-width:0}
+.shop-contact-list small{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-faint)}
+.shop-contact-list span,.shop-contact-list a{font-size:15px;line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
+.shop-contact-list a:hover{text-decoration:underline}
+.shop-location-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto}
+.shop-location-actions a{height:48px}
+.shop-map-embed{min-height:360px;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--line-soft);box-shadow:var(--shadow)}
+.shop-map-embed iframe{display:block;width:100%;height:100%;min-height:360px;border:0}
+
+/* Sebelum memesan: kebijakan dan FAQ */
+.shop-trust{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:16px;align-items:start}
+.shop-trust.single{grid-template-columns:minmax(0,1fr);max-width:760px}
+.shop-policy-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:14px}
+.shop-policy-card header{display:flex;align-items:center;gap:10px;color:var(--brand-deep)}
+.shop-policy-card h3{font-size:18px;color:var(--ink)}
+.shop-policy-card>p{margin:0;font-size:14px;line-height:1.6;color:var(--ink-soft)}
+.shop-tiers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.shop-tiers li{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:12px;background:var(--paper);border:1px solid var(--line-soft)}
+.shop-tiers strong{flex:none;display:grid;place-items:center;width:58px;height:42px;border-radius:10px;font-family:var(--font-space);font-size:16px}
+.shop-tiers li.full strong{background:var(--brand-wash);color:var(--brand-deep)}
+.shop-tiers li.part strong{background:var(--care-wash);color:#8a6110}
+.shop-tiers li.none strong{background:var(--busy-wash);color:#9d4227}
+.shop-tiers b{display:block;font-size:15px}
+.shop-tiers span{display:block;margin-top:1px;font-size:13px;line-height:1.5;color:var(--ink-faint)}
+.shop-text-link{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:14px;font-weight:700;color:var(--brand-deep)}
+.shop-text-link:hover{text-decoration:underline}
+.shop-faq-preview{display:flex;flex-direction:column;gap:14px}
+.shop-faq{display:flex;flex-direction:column;gap:10px}
+.shop-faq details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 18px}
+.shop-faq details[open]{box-shadow:var(--shadow)}
+.shop-faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 0;font-size:15px;font-weight:700;line-height:1.45}
+.shop-faq summary::-webkit-details-marker{display:none}
+.shop-faq summary svg{flex:none;color:var(--ink-faint);transition:transform .2s}
+.shop-faq details[open] summary svg{transform:rotate(45deg);color:var(--ink)}
+.shop-faq .rich-text{padding-bottom:16px;font-size:15px;color:var(--ink-soft)}
+
+/* Teks dari admin */
+.shop-page .rich-text p{margin:0 0 12px;white-space:pre-line;line-height:1.7}
+.shop-page .rich-text ul,.shop-page .rich-text ol{margin:0 0 12px;padding-left:22px;line-height:1.7}
+.shop-page .rich-text li+li{margin-top:4px}
+.shop-page .rich-text>:last-child{margin-bottom:0}
+
+/* Halaman kebijakan dan FAQ */
+.shop-doc{max-width:820px;display:flex;flex-direction:column;gap:18px;padding-top:40px}
+.shop-doc-head{margin-bottom:6px}
+.shop-doc-head h1{font-size:clamp(30px,5vw,44px);line-height:1.1;margin:16px 0 10px}
+.shop-doc-head p{margin:0;font-size:16px;line-height:1.6;color:var(--ink-soft)}
+.shop-doc-toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.shop-doc-toc a{padding:8px 14px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:14px;font-weight:600;color:var(--ink-soft)}
+.shop-doc-toc a:hover{border-color:var(--brand-deep);color:var(--ink)}
+.shop-doc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:26px;display:flex;flex-direction:column;align-items:flex-start;gap:16px;scroll-margin-top:84px}
+.shop-doc-card>*{align-self:stretch}
+.shop-doc-card>.shop-ghost{align-self:flex-start}
+.shop-doc-card h2{font-size:22px}
+.shop-doc-card>p{margin:0;color:var(--ink-soft);line-height:1.6}
+.shop-doc-card.skeleton{min-height:220px}
+.shop-doc-notes{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:15px;line-height:1.6;color:var(--ink-soft)}
+.shop-doc-text{font-size:15px;color:var(--ink-soft)}
+.shop-doc-more{margin:0;font-size:15px;color:var(--ink-soft)}
+.shop-doc-more a{color:var(--brand-deep);font-weight:700;text-decoration:underline}
+.shop-doc .shop-faq summary{font-size:16px;padding:18px 0}
+.shop-help{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-top:10px;padding:22px 24px;border-radius:var(--radius);background:var(--ink);color:#fff}
+.shop-help h2{font-size:20px;color:#fff}
+.shop-help p{margin:4px 0 0;font-size:14px;color:#cfd6c8}
+.shop-help .actions{display:flex;flex-wrap:wrap;gap:10px}
+.shop-help .shop-cta,.shop-help .shop-ghost{height:46px;font-size:14px}
+.shop-help .shop-ghost{background:transparent;color:#fff;border-color:#ffffff40}
+.shop-help .shop-ghost:hover{background:#ffffff14}
+
+/* Galeri layar penuh */
+.lightbox{position:fixed;inset:0;z-index:100;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#0c0f0af5;color:#fff;outline:0}
+.lightbox-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;font-size:14px;color:#d6dccf}
+.lightbox-bar b{color:#fff}
+.lightbox-bar button,.lightbox-nav{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:#ffffff1f;color:#fff;cursor:pointer}
+.lightbox-bar button:hover,.lightbox-nav:hover{background:#ffffff38}
+.lightbox-stage{margin:0;min-height:0;display:grid;place-items:center;padding:0 76px}
+.lightbox-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;user-select:none}
+.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%)}
+.lightbox-nav.prev{left:16px}
+.lightbox-nav.next{right:16px}
+.lightbox-thumbs{display:flex;justify-content:center;gap:8px;padding:14px 16px 20px;overflow-x:auto}
+.lightbox-thumbs button{flex:none;width:68px;height:50px;padding:0;border:2px solid transparent;border-radius:8px;overflow:hidden;background:none;cursor:pointer;opacity:.5}
+.lightbox-thumbs button[aria-current=true]{border-color:#c8ff3d;opacity:1}
+.lightbox-thumbs img{display:block;width:100%;height:100%;object-fit:cover}
+
+/* Halaman ketersediaan */
+.shop-court-block header .title{flex:1;min-width:0}
+.court-cover.shop-court-thumb{flex:none;width:64px;height:64px;aspect-ratio:auto;border-radius:12px}
+.shop-court-thumb .court-cover-count{right:4px;bottom:4px;padding:1px 6px;font-size:11px}
+.shop-slot.special{position:relative}
+.shop-slot.special:after{content:"";position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:#d98a1c}
+.shop-slot.picked.special:after{background:var(--brand-ink)}
+.shop-legend i.special{position:relative;background:var(--surface);border-color:#b9bfb2}
+.shop-legend i.special:after{content:"";position:absolute;top:2px;right:2px;width:5px;height:5px;border-radius:50%;background:#d98a1c}
+.shop-summary .what em{display:block;margin-top:2px;font-style:normal;font-size:13px;font-weight:600;color:#8a6110}
+.shop-summary a.shop-cta{white-space:nowrap}
+/* Catatan panjang di kolom bayar sempat melebarkan kolom itu hingga durasi menimpa nama lapangan. */
+.shop-summary .what{min-width:170px}
+.shop-summary .pay{max-width:430px}
+.shop-summary .pay small{line-height:1.5}
+.shop-summary .pay small a{color:var(--brand-deep);font-weight:600;text-decoration:underline}
+
+/* Footer */
+.shop-footer-inner{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:24px 48px}
+.shop-footer h2{margin:0 0 4px;font-family:var(--font-inter);font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--ink-faint)}
+.shop-footer-brand p{max-width:44ch}
+.shop-footer-facts,.shop-footer-contact ul{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:14px;color:var(--ink-soft)}
+.shop-footer-contact ul{margin-top:10px}
+.shop-footer-facts li,.shop-footer-contact a{display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.shop-footer-facts svg,.shop-footer-contact svg{flex:none;margin-top:3px;color:var(--ink-faint)}
+.shop-footer-inner .shop-footer-contact a{font-weight:500;overflow-wrap:anywhere}
+.shop-footer-contact a:hover,.shop-footer-links a:hover{color:var(--ink);text-decoration:underline}
+.shop-footer-links{flex-direction:column;gap:10px}
+
+@media(max-width:900px){
+  .shop-location,.shop-trust{grid-template-columns:minmax(0,1fr)}
+  .shop-footer-inner{grid-template-columns:1fr 1fr}
+  .shop-footer-brand{grid-column:1/-1}
+}
+@media(max-width:720px){
+  .shop-map-embed,.shop-map-embed iframe{min-height:280px}
+  .shop-location-card,.shop-doc-card{padding:18px}
+  .shop-location-actions a{flex:1}
+  .shop-doc{padding-top:28px}
+  .shop-help{padding:20px}
+  .shop-help .actions,.shop-help .actions a{width:100%}
+  .lightbox-stage{padding:0 8px}
+  .lightbox-nav{top:auto;bottom:86px;transform:none;width:40px;height:40px}
+  .shop-court-block header{flex-wrap:wrap;gap:12px}
+  .shop-court-block header .rate{flex-basis:100%;flex-direction:row;align-items:baseline;gap:6px;text-align:left;margin-left:0}
+}
+@media(max-width:520px){
+  .shop-footer-inner{grid-template-columns:1fr}
+  .shop-facilities{grid-template-columns:1fr 1fr}
+  .shop-facilities li{flex-direction:column;align-items:flex-start;gap:8px;font-size:14px}
+}
+@media(prefers-reduced-motion:reduce){.court-cover img,.shop-faq summary svg{transition:none}}

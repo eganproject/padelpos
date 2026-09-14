@@ -1,13 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Info, RefreshCw, X } from "lucide-react";
+import { CalendarDays, Info, MessageCircle, RefreshCw, X } from "lucide-react";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
+import { CourtCover } from "@/components/photo-gallery";
 import { minute, timeSlots } from "@/lib/operations";
+import { useVenueInfo } from "@/lib/use-venue-info";
+import { environmentLabel, policySummary, whatsappLink } from "@/lib/venue-info";
 import {
-  addDays, fetchAvailability, formatDay, formatShortDay, priceFor, rangeIsFree, venueNow,
+  addDays, fetchAvailability, formatDay, formatShortDay, priceFor, rangeIsFree, rulesFor, venueNow,
   type Availability, type ShopCourt,
 } from "@/lib/shop";
 
@@ -31,6 +35,7 @@ function AvailabilityView() {
   const [refreshing, setRefreshing] = useState(false);
   const blocks = useRef(new Map<string, HTMLElement>());
   const jumped = useRef(false);
+  const { data: venue } = useVenueInfo();
 
   const focusCourt = useCallback((courtId: string) => {
     blocks.current.get(courtId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -86,6 +91,7 @@ function AvailabilityView() {
   const days = today ? Array.from({ length: 7 }, (_, index) => addDays(stripStart, index)).filter(value => value <= lastDay) : [];
   const nextDay = date ? addDays(date, 1) : "";
   const totalFree = data ? data.courts.reduce((sum, entry) => sum + entry.slots.filter(slot => slot.state === "available").length, 0) : 0;
+  const anySpecial = !!data?.courts.some(entry => entry.slots.some(slot => slot.rule && slot.state === "available"));
 
   const pickedCourt = useMemo<ShopCourt | undefined>(
     () => data?.courts.find(entry => entry.court.id === picked?.courtId)?.court,
@@ -95,9 +101,23 @@ function AvailabilityView() {
   const available = picked ? durations.filter(value => rangeIsFree(pickedSlots, picked.start, value)) : [];
   const effective = available.includes(duration) ? duration : available[0];
   const end = picked && effective ? timeSlots(minute(picked.start) + effective, minute(picked.start) + effective)[0] : "";
-  const total = pickedCourt && picked && end ? priceFor(pickedCourt, picked.start, end) : 0;
+  const total = picked && effective ? priceFor(pickedSlots, picked.start, effective) : 0;
+  const appliedRules = picked && effective ? rulesFor(pickedSlots, picked.start, effective) : [];
   const covered = (courtId: string, start: string) =>
     !!picked && !!effective && picked.courtId === courtId && minute(start) >= minute(picked.start) && minute(start) < minute(picked.start) + effective;
+
+  const info = venue?.info;
+  const policyLine = venue ? policySummary(venue.policies) : null;
+  const message = pickedCourt && picked && end ? [
+    `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin memesan lapangan padel:`,
+    "",
+    `Lapangan: ${pickedCourt.name}`,
+    `Tanggal: ${formatDay(date)}`,
+    `Jam: ${picked.start}–${end} (${durationLabel(effective)})`,
+    `Total: ${money(total)}`,
+    "",
+    "Apakah slot ini masih tersedia?",
+  ].join("\n") : "";
 
   return (
     <section className="shop-section shop-availability-page">
@@ -167,6 +187,7 @@ function AvailabilityView() {
             <span><i className="pick" />Pilihan Anda</span>
             <span><i className="busy" />Sudah dipesan</span>
             <span><i className="care" />Perawatan</span>
+            {anySpecial && <span><i className="special" />Tarif khusus</span>}
           </div>
 
           {data.courts.map(({ court, slots }) => {
@@ -174,6 +195,8 @@ function AvailabilityView() {
             const shown = date === data.today ? slots.filter(slot => slot.state !== "past") : slots;
             const passed = slots.length - shown.length;
             const free = slots.filter(slot => slot.state === "available").length;
+            const rates = (shown.length ? shown : slots).map(slot => slot.rate);
+            const low = rates.length ? Math.min(...rates) : court.hourly_rate, high = rates.length ? Math.max(...rates) : court.hourly_rate;
             return (
               <article
                 className="shop-court-block"
@@ -182,11 +205,19 @@ function AvailabilityView() {
                 ref={node => { if (node) blocks.current.set(court.id, node); else blocks.current.delete(court.id); }}
               >
                 <header>
-                  <div>
+                  {court.photos.length > 0 && <CourtCover name={court.name} photos={court.photos} className="shop-court-thumb" />}
+                  <div className="title">
                     <h3>{court.name}</h3>
-                    <small>Buka {court.opens_at} – {court.closes_at} · {free === 0 ? "penuh" : `${free} slot kosong`}</small>
+                    <small>
+                      {[court.environment && environmentLabel[court.environment], court.surface].filter(Boolean).join(" · ")}
+                      {(court.environment || court.surface) && <br />}
+                      Buka {court.opens_at} – {court.closes_at} · {free === 0 ? "penuh" : `${free} slot kosong`}
+                    </small>
                   </div>
-                  <div className="rate"><b>{money(court.hourly_rate)}</b><small>per jam</small></div>
+                  <div className="rate">
+                    <b>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</b>
+                    <small>per jam</small>
+                  </div>
                 </header>
                 {free === 0 ? (
                   <div className="shop-court-full">
@@ -202,15 +233,17 @@ function AvailabilityView() {
                     <div className="shop-slots">
                       {shown.map(slot => {
                         const chosen = covered(court.id, slot.start);
+                        const special = slot.state === "available" && !!slot.rule;
                         const label = slot.state === "booked" ? "sudah dipesan" : slot.state === "maintenance" ? "sedang perawatan" : "tersedia";
                         return (
                           <button
                             key={slot.start}
                             type="button"
-                            className={`shop-slot ${chosen ? "picked" : slot.state}`}
+                            className={`shop-slot ${chosen ? "picked" : slot.state}${special ? " special" : ""}`}
                             disabled={slot.state !== "available"}
                             aria-pressed={chosen}
-                            aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : label}`}
+                            title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
+                            aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : label}${special ? `, tarif ${slot.rule} ${money(slot.rate)} per jam` : ""}`}
                             onClick={() => { setNotice(""); setPicked({ courtId: court.id, start: slot.start }); setDuration(60); }}
                           >
                             {slot.start}
@@ -236,6 +269,7 @@ function AvailabilityView() {
             <small>Pilihan Anda</small>
             <b>{pickedCourt.name}</b>
             <span>{formatShortDay(date)} · {picked.start}{end ? ` – ${end}` : ""}</span>
+            {appliedRules.length > 0 && <em>Termasuk tarif {appliedRules.join(" & ")}</em>}
           </div>
           <div className="shop-duration" role="group" aria-label="Durasi main">
             {durations.map(value => (
@@ -246,8 +280,17 @@ function AvailabilityView() {
           </div>
           <div className="pay">
             <span className="total">{money(total)}</span>
-            <button className="shop-cta" type="button" disabled aria-describedby="catatan-bayar">Lanjut ke pembayaran</button>
-            <small id="catatan-bayar">Pembayaran online segera hadir. Tunjukkan ringkasan ini ke staf venue.</small>
+            {info?.whatsapp && message ? (
+              <a className="shop-cta" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener" aria-describedby="catatan-bayar">
+                <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
+              </a>
+            ) : (
+              <button className="shop-cta" type="button" disabled aria-describedby="catatan-bayar">Lanjut ke pembayaran</button>
+            )}
+            <small id="catatan-bayar">
+              {info?.whatsapp ? "Slot belum terkunci sampai dikonfirmasi staf. Pembayaran online segera hadir." : "Pembayaran online segera hadir. Tunjukkan ringkasan ini ke staf venue."}
+              {policyLine && <> <Link href="/kebijakan#pembatalan">{policyLine}.</Link></>}
+            </small>
           </div>
         </div>
       )}

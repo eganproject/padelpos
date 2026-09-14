@@ -217,6 +217,55 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 5").get()) transaction
   saveCollection("menus", menus);
   db.prepare("INSERT INTO migrations VALUES (5, ?)").run(new Date().toISOString());
 });
+
+/**
+ * Informasi untuk pelanggan: deskripsi dan foto lapangan, serta tarif khusus
+ * (jam sibuk, akhir pekan). Profil venue, kebijakan, dan FAQ cukup berupa dokumen
+ * di tabel settings. Menu "Info Venue" disisipkan tepat setelah Denah Venue.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 6").get()) transaction(() => {
+  db.exec(`
+    ALTER TABLE courts ADD COLUMN description TEXT NOT NULL DEFAULT '';
+    ALTER TABLE courts ADD COLUMN environment TEXT NOT NULL DEFAULT '' CHECK(environment IN ('','indoor','outdoor'));
+    ALTER TABLE courts ADD COLUMN surface TEXT NOT NULL DEFAULT '';
+    CREATE TABLE court_photos (
+      id TEXT PRIMARY KEY,
+      court_id TEXT NOT NULL REFERENCES courts(id) ON DELETE CASCADE,
+      mime TEXT NOT NULL CHECK(mime IN ('image/jpeg','image/png','image/webp')),
+      data BLOB NOT NULL,
+      bytes INTEGER NOT NULL CHECK(bytes > 0),
+      position INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX court_photos_court ON court_photos (court_id, position);
+    CREATE TABLE price_rules (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      days TEXT NOT NULL CHECK(json_valid(days)),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      hourly_rate INTEGER NOT NULL CHECK(hourly_rate > 0),
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE price_rule_courts (
+      rule_id TEXT NOT NULL REFERENCES price_rules(id) ON DELETE CASCADE,
+      court_id TEXT NOT NULL REFERENCES courts(id) ON DELETE CASCADE,
+      PRIMARY KEY (rule_id, court_id)
+    );
+  `);
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "info" || menu.path === "/admin/info")) {
+    const anchor = menus.find(menu => menu.id === "layout") ?? menus.find(menu => menu.id === "courts");
+    const order = (anchor?.order ?? 0) + 1;
+    for (const menu of menus) if (menu.order >= order) menu.order += 1;
+    menus.push({ id: "info", name: "Info Venue", path: "/admin/info", icon: "Store", group: anchor?.group ?? "Operasional", order, active: true, createdAt: new Date().toISOString() });
+    saveCollection("menus", menus);
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("info")) role.menuIds.push("info");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (6, ?)").run(new Date().toISOString());
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

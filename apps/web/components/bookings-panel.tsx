@@ -3,7 +3,7 @@ import { useCallback,useEffect,useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
-import { type Booking,type Context,type Payment,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
+import { type Booking,type Context,type Payment,quote,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
 import { formatShortDay } from "@/lib/shop";
 import { ErrorBox,Modal,Submit } from "./operation-ui";
 
@@ -46,7 +46,7 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
   const schedule=context?[...context.schedule.filter(b=>b.court_id===form.court_id).map(b=>({...b,label:"Dipesan"})),...context.maintenance.filter(m=>m.court_id===form.court_id).map(m=>({...m,label:"Perawatan"}))].sort((a,b)=>a.start_time.localeCompare(b.start_time)):[];
   const conflict=schedule.some(s=>s.start_time<form.end_time&&s.end_time>form.start_time);
   const validTime=!!court&&form.start_time>=court.opens_at&&form.end_time<=court.closes_at&&form.start_time<form.end_time;
-  const price=court&&validTime?Math.round(court.hourly_rate*(minute(form.end_time)-minute(form.start_time))/60):0;
+  const price=court&&context&&validTime?quote(court,context.price_rules,form.date,form.start_time,form.end_time):0;
   async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError("");try{const result=await api<{booking:Booking}>("/operations/bookings",{method:"POST",body:JSON.stringify(form)});toast.success("Booking berhasil dibuat");done(result.booking.id)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
   return <Modal title="Booking baru" close={close}><form onSubmit={submit}><div className="modal-fields">{error&&<ErrorBox message={error}/>}<p className="ops-muted">Waktu lapangan: {context?.timezone||"…"}. Durasi kelipatan 30 menit.</p>
     {context&&!context.courts.some(c=>c.active)?<p>Belum ada lapangan aktif. Tambahkan melalui menu Lapangan terlebih dahulu.</p>:<>
