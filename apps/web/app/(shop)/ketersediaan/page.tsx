@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Info, MessageCircle, RefreshCw, X } from "lucide-react";
+import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, Info, Layers, MessageCircle, RefreshCw, X } from "lucide-react";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
 import { CourtCover } from "@/components/photo-gallery";
@@ -11,7 +11,7 @@ import { minute, timeSlots } from "@/lib/operations";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { environmentLabel, policySummary, whatsappLink } from "@/lib/venue-info";
 import {
-  addDays, fetchAvailability, formatDay, formatShortDay, priceFor, rangeIsFree, rulesFor, venueNow,
+  addDays, fetchAvailability, floorLabel, formatDay, formatShortDay, priceFor, rangeIsFree, rulesFor, venueNow,
   type Availability, type ShopCourt,
 } from "@/lib/shop";
 
@@ -108,10 +108,18 @@ function AvailabilityView() {
 
   const info = venue?.info;
   const policyLine = venue ? policySummary(venue.policies) : null;
+  const floors = data?.floors ?? [];
+  const pickedFloor = pickedCourt ? floorLabel(floors, pickedCourt.floor_id) : undefined;
+  // Venue bertingkat: jadwal dikelompokkan per lantai sesuai urutan lantai di denah.
+  const groups = data
+    ? floors.length > 1
+      ? floors.map(floor => ({ floor, entries: data.courts.filter(entry => (entry.court.floor_id ?? floors[0].id) === floor.id) })).filter(group => group.entries.length)
+      : [{ floor: null, entries: data.courts }]
+    : [];
   const message = pickedCourt && picked && end ? [
     `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin memesan lapangan padel:`,
     "",
-    `Lapangan: ${pickedCourt.name}`,
+    `Lapangan: ${pickedCourt.name}${pickedFloor ? ` (${pickedFloor})` : ""}`,
     `Tanggal: ${formatDay(date)}`,
     `Jam: ${picked.start}–${end} (${durationLabel(effective)})`,
     `Total: ${money(total)}`,
@@ -173,7 +181,7 @@ function AvailabilityView() {
               <p>Ketuk lapangan untuk melompat ke jadwalnya.</p>
             </header>
             <div className="venue-map-scroll">
-              <VenueMap venue={data.venue} courts={data.courts} features={data.features} selected={picked?.courtId} onSelect={focusCourt} />
+              <VenueMap venue={data.venue} floors={data.floors} courts={data.courts} features={data.features} selected={picked?.courtId} onSelect={focusCourt} />
             </div>
             <div className="venue-map-legend">
               <span><i className="open" />Banyak slot kosong</span>
@@ -190,7 +198,15 @@ function AvailabilityView() {
             {anySpecial && <span><i className="special" />Tarif khusus</span>}
           </div>
 
-          {data.courts.map(({ court, slots }) => {
+          {groups.map(group => (
+            <Fragment key={group.floor?.id ?? "semua"}>
+              {group.floor && (
+                <h2 className="shop-floor-title">
+                  <Layers size={18} aria-hidden="true" /> {group.floor.name}
+                  <small>{group.entries.length} lapangan</small>
+                </h2>
+              )}
+          {group.entries.map(({ court, slots }) => {
             // Slot yang sudah lewat hanya memenuhi layar; cukup sebutkan jumlahnya.
             const shown = date === data.today ? slots.filter(slot => slot.state !== "past") : slots;
             const passed = slots.length - shown.length;
@@ -259,6 +275,8 @@ function AvailabilityView() {
               </article>
             );
           })}
+            </Fragment>
+          ))}
         </>
       )}
 
@@ -268,7 +286,7 @@ function AvailabilityView() {
           <div className="what">
             <small>Pilihan Anda</small>
             <b>{pickedCourt.name}</b>
-            <span>{formatShortDay(date)} · {picked.start}{end ? ` – ${end}` : ""}</span>
+            <span>{pickedFloor ? `${pickedFloor} · ` : ""}{formatShortDay(date)} · {picked.start}{end ? ` – ${end}` : ""}</span>
             {appliedRules.length > 0 && <em>Termasuk tarif {appliedRules.join(" & ")}</em>}
           </div>
           <div className="shop-duration" role="group" aria-label="Durasi main">

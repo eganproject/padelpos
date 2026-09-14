@@ -145,6 +145,26 @@ html[data-theme="light"]{--venue-grid-line:#1118270f;--venue-stage:#eef1ec;--ven
 .kind-resepsionis{border-color:#a578ff;background:#a578ff1f;color:#c4a5ff}
 .kind-loker{border-color:#b98a5e;background:#b98a5e1f;color:#d6ab84}
 .kind-lainnya{border-color:#8a9299;background:#8a92991f;color:#b0b7bd}
+.kind-pintu-masuk{border-color:#ef6f6c;background:#ef6f6c24;color:#f5a3a1}
+.kind-tangga{border-color:#d4a72c;background:#d4a72c1f;color:#e8c865}
+.kind-lift{border-color:#5aa9e6;background:#5aa9e61f;color:#95c8f0}
+i.dot.kind-pintu-masuk{background:#ef6f6c}
+i.dot.kind-tangga{background:#d4a72c}
+i.dot.kind-lift{background:#5aa9e6}
+.venue-feature.kind-pintu-masuk{border-style:solid}
+
+/* Tab lantai di atas denah */
+.venue-floors{display:flex;align-items:center;gap:4px;padding:6px 8px 0;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:thin}
+.venue-floors [role=tab]{position:relative;flex:none;display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 13px;margin-bottom:-1px;border:1px solid transparent;border-bottom:0;border-radius:9px 9px 0 0;background:none;color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
+.venue-floors [role=tab]:hover{color:var(--text)}
+.venue-floors [role=tab][aria-selected=true]{background:var(--venue-stage);border-color:var(--line);color:var(--text)}
+.venue-floors [role=tab][aria-selected=true] svg{color:var(--lime)}
+.venue-floors [role=tab] small{font-size:12px;font-weight:500;color:var(--muted)}
+.venue-floor-warn{width:7px;height:7px;border-radius:50%;background:var(--orange)}
+.venue-floor-add{flex:none;display:inline-flex;align-items:center;gap:6px;height:32px;margin:0 0 4px 6px;padding:0 10px;border:1px dashed #3d4648;border-radius:8px;background:none;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
+.venue-floor-add:hover:not(:disabled){color:var(--text);border-color:#7e9832}
+.venue-floor-add:disabled{opacity:.4;cursor:not-allowed}
+.venue-floor-panel .row-buttons button{font-size:12px}
 i.dot.kind-jalan{background:#8b95a1}
 i.dot.kind-kantin{background:#e0913f}
 i.dot.kind-tempat-duduk{background:#4de4ed}
@@ -203,3 +223,8 @@ html[data-theme="light"] .kind-parkir{color:#414a78}
 html[data-theme="light"] .kind-resepsionis{color:#5a3a9c}
 html[data-theme="light"] .kind-loker{color:#754c25}
 html[data-theme="light"] .kind-lainnya{color:#4d545a}
+html[data-theme="light"] .kind-pintu-masuk{color:#a33a36}
+html[data-theme="light"] .kind-tangga{color:#7a5d08}
+html[data-theme="light"] .kind-lift{color:#1f5f94}
+html[data-theme="light"] .venue-floors [role=tab][aria-selected=true] svg{color:#4d6b0a}
+html[data-theme="light"] .venue-floor-add{border-color:#c6cec3}

@@ -8,7 +8,7 @@ import { formatShortDay } from "@/lib/shop";
 import { environmentLabel,photoUrl } from "@/lib/venue-info";
 import { ErrorBox,Modal,Submit } from "./operation-ui";
 
-type CourtsData={courts:Court[];maintenance:Maintenance[];price_rules:PriceRule[];date:string;timezone:string};
+type CourtsData={courts:Court[];floors:{id:string;name:string}[];maintenance:Maintenance[];price_rules:PriceRule[];date:string;timezone:string};
 const maxPhotos=6;
 
 export function CourtsPanel(){
@@ -37,6 +37,7 @@ export function CourtsPanel(){
     {!data?<p className="empty-state">Memuat lapangan…</p>:<>
     <div className="ops-court-grid">{data.courts.map(c=>{
       const photos=c.photos??[],rules=data.price_rules.filter(r=>r.court_ids.includes(c.id));
+      const floorName=data.floors.length>1?data.floors.find(f=>f.id===c.floor_id)?.name:undefined;
       return <article className="settings-card court-admin-card" key={c.id}>
         <button type="button" className={`court-admin-cover${photos.length?"":" empty"}`} onClick={()=>setPhotosOf(c.id)} aria-label={`Kelola foto ${c.name}`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -44,7 +45,7 @@ export function CourtsPanel(){
           <em><Images size={13} aria-hidden="true"/> {photos.length}/{maxPhotos}</em>
         </button>
         <div className="ops-card-head"><h2>{c.name}</h2><span className={c.active?"status-pill on":"status-pill off"}>{c.active?"Aktif":"Nonaktif"}</span></div>
-        {(c.environment||c.surface||rules.length>0)&&<div className="court-admin-tags">{c.environment&&<span>{environmentLabel[c.environment]}</span>}{c.surface&&<span>{c.surface}</span>}{rules.length>0&&<span className="rule"><Tag size={12} aria-hidden="true"/> {rules.length} tarif khusus</span>}</div>}
+        {(floorName||c.environment||c.surface||rules.length>0)&&<div className="court-admin-tags">{floorName&&<span>{floorName}</span>}{c.environment&&<span>{environmentLabel[c.environment]}</span>}{c.surface&&<span>{c.surface}</span>}{rules.length>0&&<span className="rule"><Tag size={12} aria-hidden="true"/> {rules.length} tarif khusus</span>}</div>}
         <strong className="ops-price">{money(c.hourly_rate)} <small>/ jam · tarif dasar</small></strong>
         <p className="ops-muted">Buka {c.opens_at} – {c.closes_at}</p>
         <p className={`court-admin-desc${c.description?"":" missing"}`}>{c.description||"Belum ada deskripsi untuk pelanggan."}</p>

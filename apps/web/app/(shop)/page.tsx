@@ -12,7 +12,7 @@ import { RichText } from "@/components/rich-text";
 import { FaqList, RefundTiers, useScrollToHash } from "@/components/shop-policy";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { environmentLabel, facilityLabels, hasCancellationPolicy, mapsEmbed, mapsLink, rescheduleLine, whatsappLink } from "@/lib/venue-info";
-import { addDays, fetchAvailability, formatShortDay, venueNow, type Availability } from "@/lib/shop";
+import { addDays, fetchAvailability, floorLabel, formatShortDay, venueNow, type Availability } from "@/lib/shop";
 
 export default function ShopLandingPage() {
   const router = useRouter();
@@ -37,7 +37,10 @@ export default function ShopLandingPage() {
     [data],
   );
   const freeToday = [...freeByCourt.values()].reduce((sum, value) => sum + value, 0);
-  const courts = data?.courts.map(entry => entry.court) ?? [];
+  const floors = data?.floors ?? [];
+  const floorOrder = (floorId: string | null) => Math.max(0, floors.findIndex(floor => floor.id === floorId));
+  // Urut per lantai; urutan nama dari API tetap terjaga karena sort bersifat stabil.
+  const courts = (data?.courts.map(entry => entry.court) ?? []).sort((a, b) => floorOrder(a.floor_id) - floorOrder(b.floor_id));
   const lowestRate = courts.length ? Math.min(...courts.map(court => court.rate_min)) : 0;
   const variesByTime = courts.some(court => court.rate_min < court.rate_max);
   const indoor = courts.filter(court => court.environment === "indoor").length, outdoor = courts.filter(court => court.environment === "outdoor").length;
@@ -90,7 +93,7 @@ export default function ShopLandingPage() {
             </span>
           </div>
           {data && data.courts.length > 0 ? (
-            <VenueMap venue={data.venue} courts={data.courts} features={data.features} onSelect={courtId => router.push(scheduleHref(courtId))} compact />
+            <VenueMap venue={data.venue} floors={data.floors} courts={data.courts} features={data.features} onSelect={courtId => router.push(scheduleHref(courtId))} compact />
           ) : (
             <div className="shop-hero-placeholder">{failed ? "Denah belum dapat dimuat. Coba muat ulang halaman." : "Menyiapkan denah venue…"}</div>
           )}
@@ -99,7 +102,7 @@ export default function ShopLandingPage() {
       </section>
 
       <section className="shop-section shop-facts" aria-label="Sekilas tentang venue">
-        <div><MapPinned size={20} /><b>{data ? `${courts.length} lapangan` : "–"}</b><span>{indoor || outdoor ? [indoor && `${indoor} indoor`, outdoor && `${outdoor} outdoor`].filter(Boolean).join(" · ") : "Semua jadwal dalam satu halaman"}</span></div>
+        <div><MapPinned size={20} /><b>{data ? `${courts.length} lapangan` : "–"}</b><span>{floors.length > 1 || indoor || outdoor ? [floors.length > 1 && `${floors.length} lantai`, indoor && `${indoor} indoor`, outdoor && `${outdoor} outdoor`].filter(Boolean).join(" · ") : "Semua jadwal dalam satu halaman"}</span></div>
         <div><CreditCard size={20} /><b>{lowestRate ? `Mulai ${money(lowestRate)}` : "–"}</b><span>{variesByTime ? "Per jam, tarif berbeda di jam tertentu" : "Per jam, durasi 1 sampai 2 jam"}</span></div>
         <div><Timer size={20} /><b>90 hari ke depan</b><span>Rencanakan jadwal main lebih awal</span></div>
       </section>
@@ -122,6 +125,7 @@ export default function ShopLandingPage() {
             {courts.map(court => {
               const free = freeByCourt.get(court.id) ?? 0;
               const varies = court.rate_min < court.rate_max;
+              const floorName = floorLabel(floors, court.floor_id);
               return (
                 <article className="shop-court-card" key={court.id}>
                   <CourtCover name={court.name} photos={court.photos} />
@@ -132,8 +136,9 @@ export default function ShopLandingPage() {
                         {free === 0 ? "Penuh hari ini" : `${free} slot kosong hari ini`}
                       </span>
                     </div>
-                    {(court.environment || court.surface) && (
+                    {(floorName || court.environment || court.surface) && (
                       <div className="shop-tags">
+                        {floorName && <span className="floor">{floorName}</span>}
                         {court.environment && <span className={court.environment}>{environmentLabel[court.environment]}</span>}
                         {court.surface && <span>{court.surface}</span>}
                       </div>

@@ -10,7 +10,8 @@
     "lint": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "backup": "tsx src/backup.ts",
-    "seed": "tsx src/seed.ts"
+    "seed": "tsx src/seed.ts",
+    "seed:dua-lantai": "tsx src/seed.ts --dua-lantai"
   },
   "dependencies": {
     "bcryptjs": "^3.0.0",

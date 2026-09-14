@@ -146,6 +146,29 @@ button.court-cover:hover img{transform:scale(1.03)}
 .shop-summary .pay small{line-height:1.5}
 .shop-summary .pay small a{color:var(--brand-deep);font-weight:600;text-decoration:underline}
 
+/* Venue bertingkat: tab lantai di denah dan judul lantai di daftar jadwal */
+.venue-map-block{width:100%}
+.venue-map-floors{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:680px;margin:0 auto 12px}
+.venue-map-floors button{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--ink-soft);font-size:14px;font-weight:600;cursor:pointer}
+.venue-map-floors button small{font-size:12px;font-weight:500;color:var(--ink-faint)}
+.venue-map-floors button:hover{border-color:#b9c3ad}
+.venue-map-floors button[aria-selected=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+.venue-map-floors button[aria-selected=true] small{color:#cfd6c8}
+.venue-map-block.compact .venue-map-floors{justify-content:flex-start;margin-bottom:10px}
+.venue-map-block.compact .venue-map-floors button{height:32px;padding:0 10px;font-size:13px}
+@media(max-width:520px){
+  /* Satu baris yang dapat digeser, bukan pecah menjadi beberapa baris. */
+  .venue-map-floors{flex-wrap:nowrap;justify-content:flex-start;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .venue-map-floors button{flex:none;height:34px;padding:0 10px;font-size:13px;gap:5px}
+}
+.shop-floor-title{display:flex;align-items:center;gap:9px;margin:26px 0 12px;font-size:20px}
+.shop-floor-title svg{color:var(--brand-deep)}
+.shop-floor-title small{margin-left:4px;font-family:var(--font-inter);font-size:13px;font-weight:500;color:var(--ink-faint)}
+.shop-tags span.floor{background:var(--ink);color:#fff}
+.venue-map-feature.kind-pintu-masuk{border-color:#ef9a97;background:#fdecec;color:#a33a36;border-style:solid}
+.venue-map-feature.kind-tangga{border-color:#e3c46a;background:#fdf6df;color:#7a5d08}
+.venue-map-feature.kind-lift{border-color:#9cc7ee;background:#eaf4fd;color:#1f5f94}
+
 /* Footer */
 .shop-footer-inner{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:24px 48px}
 .shop-footer h2{margin:0 0 4px;font-family:var(--font-inter);font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--ink-faint)}

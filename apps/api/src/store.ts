@@ -1,4 +1,5 @@
-﻿import { mkdirSync, existsSync, readFileSync } from "node:fs";
+﻿import { randomUUID } from "node:crypto";
+import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { dataDir } from "./config.js";
@@ -265,6 +266,33 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 6").get()) transaction
     saveCollection("roles", roles);
   }
   db.prepare("INSERT INTO migrations VALUES (6, ?)").run(new Date().toISOString());
+});
+
+/**
+ * Lantai: venue bertingkat punya satu denah per lantai. Setiap lantai menyimpan ukurannya
+ * sendiri (lantai atas bisa lebih kecil); kisi tetap satu pengaturan editor di settings.
+ * Denah lama menjadi "Lantai 1" dengan ukuran yang sudah ada, jadi tampilannya tidak berubah.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 7").get()) transaction(() => {
+  db.exec(`
+    CREATE TABLE floors (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      width INTEGER NOT NULL CHECK(width BETWEEN 200 AND 5000),
+      height INTEGER NOT NULL CHECK(height BETWEEN 200 AND 5000),
+      created_at TEXT NOT NULL
+    );
+    ALTER TABLE courts ADD COLUMN floor_id TEXT REFERENCES floors(id);
+    ALTER TABLE venue_features ADD COLUMN floor_id TEXT REFERENCES floors(id);
+  `);
+  const row = db.prepare("SELECT document FROM settings WHERE key = 'venue'").get() as { document: string } | undefined;
+  const venue = row ? JSON.parse(row.document) as VenueLayout : defaultVenue;
+  const id = randomUUID();
+  db.prepare("INSERT INTO floors (id, name, position, width, height, created_at) VALUES (?, 'Lantai 1', 0, ?, ?, ?)").run(id, venue.width, venue.height, new Date().toISOString());
+  db.prepare("UPDATE courts SET floor_id = ?").run(id);
+  db.prepare("UPDATE venue_features SET floor_id = ?").run(id);
+  db.prepare("INSERT INTO migrations VALUES (7, ?)").run(new Date().toISOString());
 });
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");

@@ -10,7 +10,7 @@ router.get("/context",requireAnyMenu(["bookings","courts"]),(req,res)=>{
 });
 router.get("/courts",requireMenu("courts"),(_req,res)=>{
   const photos=photoIndex();
-  res.json({courts:ops.courts().map(court=>({...court,photos:photos.get(court.id)??[]})),maintenance:ops.maintenances().filter(m=>m.date>=ops.localClock().date),price_rules:ops.priceRules(),...ops.localClock()});
+  res.json({courts:ops.courts().map(court=>({...court,photos:photos.get(court.id)??[]})),floors:ops.floors(),maintenance:ops.maintenances().filter(m=>m.date>=ops.localClock().date),price_rules:ops.priceRules(),...ops.localClock()});
 });
 router.post("/courts",requireMenu("courts"),(req:AuthRequest,res)=>res.status(201).json({court:ops.saveCourt(req.body,req.auth!.sub)}));
 router.put("/courts/:id",requireMenu("courts"),(req:AuthRequest,res)=>res.json({court:ops.saveCourt(req.body,req.auth!.sub,String(req.params.id))}));

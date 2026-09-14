@@ -1,4 +1,4 @@
-export type Court={id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;description:string;environment:""|"indoor"|"outdoor";surface:string;photos?:string[];state?:string;until?:string|null};
+export type Court={id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id?:string|null;photos?:string[];state?:string;until?:string|null};
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
 export type Booking={id:string;court_id:string;court_name:string;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;paid:number;status:BookingStatus;notes:string;cancel_reason:string};
 export type Payment={id:string;amount:number;kind:"payment"|"refund";method:string;note:string;created_at:string};

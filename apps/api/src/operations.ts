@@ -5,7 +5,7 @@ import { check } from "./errors.js";
 import { venueTimezone } from "./config.js";
 import { photoIndex } from "./photos.js";
 
-export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number;description:string;environment:""|"indoor"|"outdoor";surface:string}
+export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id:string|null}
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
 export interface Booking {id:string;court_id:string;court_name:string;customer_id:string|null;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:BookingStatus;source:"staff"|"online";hold_expires_at:number|null;notes:string;created_by:string|null;created_at:string;cancel_reason:string;paid:number}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
@@ -54,7 +54,8 @@ export function saveCourt(input:unknown,actor:string,id?:string){
       check(!maintenances().some(m=>m.court_id===id&&m.date>=now.date&&(m.start_time<data.opens_at||m.end_time>data.closes_at)),409,"Jam operasional bertentangan dengan maintenance.");
       db.prepare("UPDATE courts SET name=?,hourly_rate=?,opens_at=?,closes_at=?,active=?,description=?,environment=?,surface=? WHERE id=?").run(data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),data.description??existing!.description,data.environment??existing!.environment,data.surface??existing!.surface,id);
     }else{
-      id=randomUUID();db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at,description,environment,surface) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id,data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),new Date().toISOString(),data.description??"",data.environment??"",data.surface??"");
+      // Lapangan baru masuk ke lantai pertama; editor denah dapat memindahkannya.
+      id=randomUUID();db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at,description,environment,surface,floor_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id,data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),new Date().toISOString(),data.description??"",data.environment??"",data.surface??"",floors()[0]?.id??null);
     }
     audit(actor,existing?"court.update":"court.create",id!);return courts().find(c=>c.id===id)!;
   });
@@ -120,53 +121,99 @@ export function recordPayment(id:string,input:unknown,actor:string){
 // Satuan kanvas: 1 unit = 0,1 meter. Tidak ada rotasi; lapangan mendatar dibuat
 // dengan menukar lebar dan tinggi, sehingga kotak selalu sejajar sumbu dan
 // pemeriksaan tumpang tindih tetap sederhana dan benar.
-export const venueSchema=z.object({width:z.number().int().min(200).max(5000),height:z.number().int().min(200).max(5000),grid:z.number().int().min(5).max(50)});
+// Venue bertingkat punya satu denah per lantai. Posisi x/y berlaku di dalam lantainya,
+// jadi dua lapangan boleh berada di koordinat yang sama asalkan beda lantai.
+const sideSchema=z.number().int().min(200).max(5000);
+/** Lebar dan panjang adalah format lama (satu lantai) dan hanya dipakai bila `floors` tidak dikirim. */
+export const venueSchema=z.object({width:sideSchema.optional(),height:sideSchema.optional(),grid:z.number().int().min(5).max(50)});
 /** Jenis elemen penjelas. Menambah jenis cukup di sini, tanpa migrasi. */
-export const featureKinds=["jalan","kantin","tempat-duduk","toilet","parkir","resepsionis","loker","lainnya"] as const;
+export const featureKinds=["jalan","pintu-masuk","kantin","tempat-duduk","toilet","parkir","resepsionis","loker","tangga","lift","lainnya"] as const;
 export type FeatureKind=typeof featureKinds[number];
-export interface VenueFeature {id:string;kind:FeatureKind;label:string;x:number;y:number;w:number;h:number;created_at:string}
+export interface VenueFeature {id:string;kind:FeatureKind;label:string;x:number;y:number;w:number;h:number;floor_id:string|null;created_at:string}
+export interface Floor {id:string;name:string;position:number;width:number;height:number;created_at:string}
+type FloorPlan={id:string;name:string;width:number;height:number};
 const boxSchema={x:z.number().int().min(0).max(5000),y:z.number().int().min(0).max(5000),w:z.number().int().min(10).max(5000),h:z.number().int().min(10).max(5000)};
+const floorRef=z.string().min(1).max(64).optional();
 export const layoutSchema=z.object({
   venue:venueSchema,
-  courts:z.array(z.object({id:z.string().min(1),...boxSchema,w:z.number().int().min(20).max(2000),h:z.number().int().min(20).max(2000)})).max(60),
+  // Daftar lengkap lantai sesuai urutan tampil; lantai yang tidak dikirim dianggap dihapus.
+  floors:z.array(z.object({id:z.string().min(1).max(64),name:z.string().trim().min(1,"Isi nama lantai.").max(30,"Nama lantai maksimal 30 karakter."),width:sideSchema,height:sideSchema}))
+    .min(1,"Venue minimal punya satu lantai.").max(10,"Maksimal 10 lantai.").optional(),
+  courts:z.array(z.object({id:z.string().min(1),floor_id:floorRef,...boxSchema,w:z.number().int().min(20).max(2000),h:z.number().int().min(20).max(2000)})).max(60),
   // Daftar lengkap: elemen yang tidak ikut terkirim dianggap dihapus.
-  features:z.array(z.object({id:z.string().min(1).max(64),kind:z.enum(featureKinds),label:z.string().trim().max(40).default(""),...boxSchema})).max(80).optional(),
+  features:z.array(z.object({id:z.string().min(1).max(64),kind:z.enum(featureKinds),label:z.string().trim().max(40).default(""),floor_id:floorRef,...boxSchema})).max(80).optional(),
 });
-export function getVenue():VenueLayout{
+export function floors(){return db.prepare("SELECT * FROM floors ORDER BY position,created_at").all() as unknown as Floor[]}
+function storedVenue(){
   const row=db.prepare("SELECT document FROM settings WHERE key='venue'").get() as {document:string}|undefined;
   return row?JSON.parse(row.document) as VenueLayout:defaultVenue;
 }
-export function features(){return db.prepare("SELECT * FROM venue_features ORDER BY created_at,id").all() as unknown as VenueFeature[]}
-export function layout(){return {venue:getVenue(),courts:courts(),features:features()}}
+/** Ukuran lantai pertama beserta kisi, untuk klien yang belum mengenal lantai. */
+export function getVenue():VenueLayout{
+  const first=floors()[0],stored=storedVenue();
+  return first?{width:first.width,height:first.height,grid:stored.grid}:stored;
+}
+/** Baris tanpa lantai (seharusnya tidak ada setelah migrasi 7) dianggap berada di lantai pertama. */
+function withFloor<T extends {floor_id:string|null}>(items:T[]){
+  const first=floors()[0]?.id??null;
+  return items.map(item=>({...item,floor_id:item.floor_id??first}));
+}
+export function features(){return withFloor(db.prepare("SELECT * FROM venue_features ORDER BY created_at,id").all() as unknown as VenueFeature[])}
+export function layout(){return {venue:getVenue(),floors:floors(),courts:withFloor(courts()),features:features()}}
 const overlaps=(a:{x:number;y:number;w:number;h:number},b:{x:number;y:number;w:number;h:number})=>a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
 export function saveLayout(input:unknown,actor:string){
   const data=layoutSchema.parse(input);
   return transaction(()=>{
+    const before=floors();
+    check(before.length,500,"Data lantai belum tersedia. Jalankan ulang API agar migrasi berjalan.");
+    const plan:FloorPlan[]=data.floors??before.map((floor,index)=>index===0&&data.venue.width&&data.venue.height?{...floor,width:data.venue.width,height:data.venue.height}:floor);
+    check(new Set(plan.map(floor=>floor.id)).size===plan.length,400,"Ada lantai dengan id ganda.");
+    check(new Set(plan.map(floor=>floor.name.toLowerCase())).size===plan.length,409,"Nama lantai tidak boleh sama.");
+    /** Lantai tujuan harus ada di rencana; lantai yang dihapus tidak boleh masih berisi apa pun. */
+    const target=(floorId:string|null,what:string):FloorPlan=>{
+      const floor=plan.find(item=>item.id===floorId);
+      if(floor)return floor;
+      const removed=before.find(item=>item.id===floorId);
+      check(!removed,409,`${removed?.name} masih berisi ${what}. Pindahkan atau hapus isinya sebelum menghapus lantai.`);
+      check(false,400,`Lantai untuk ${what} tidak ditemukan. Muat ulang halaman.`);
+    };
+    const first=before[0].id;
     const all=courts();
     for(const item of data.courts)check(all.some(c=>c.id===item.id),404,"Ada lapangan yang tidak ditemukan. Muat ulang halaman.");
     // Lapangan yang tidak ikut dikirim tetap menempati ruang, jadi ikut divalidasi.
-    const named=all.map(court=>{
+    const placed=all.map(court=>{
       const moved=data.courts.find(item=>item.id===court.id);
       const box=moved?{x:moved.x,y:moved.y,w:moved.w,h:moved.h}:{x:court.layout_x,y:court.layout_y,w:court.layout_w,h:court.layout_h};
-      check(box.x+box.w<=data.venue.width&&box.y+box.h<=data.venue.height,400,`Posisi ${court.name} keluar dari area venue.`);
-      return {...box,name:court.name};
+      const floor=target(moved?.floor_id??court.floor_id??first,court.name);
+      check(box.x+box.w<=floor.width&&box.y+box.h<=floor.height,400,`Posisi ${court.name} keluar dari area ${floor.name}.`);
+      return {...box,id:court.id,name:court.name,floor};
     });
-    for(let i=0;i<named.length;i++)for(let j=i+1;j<named.length;j++)
-      check(!overlaps(named[i],named[j]),409,`${named[i].name} dan ${named[j].name} saling menimpa. Geser salah satunya.`);
-    // Elemen penjelas hanya dijaga agar tetap di dalam area. Saling menimpa
+    for(let i=0;i<placed.length;i++)for(let j=i+1;j<placed.length;j++)
+      if(placed[i].floor.id===placed[j].floor.id)
+        check(!overlaps(placed[i],placed[j]),409,`${placed[i].name} dan ${placed[j].name} saling menimpa di ${placed[i].floor.name}. Geser salah satunya.`);
+    // Elemen penjelas hanya dijaga agar tetap di dalam area lantainya. Saling menimpa
     // dibiarkan, karena menaruh kursi di dalam area lounge itu wajar dan
     // elemen ini tidak memengaruhi jadwal sama sekali.
-    for(const item of data.features??[])
-      check(item.x+item.w<=data.venue.width&&item.y+item.h<=data.venue.height,400,`Elemen ${item.label||item.kind} keluar dari area venue.`);
+    const existingFeatures=features();
+    const source:{id:string;kind:FeatureKind;label:string;x:number;y:number;w:number;h:number;floor_id?:string|null}[]=data.features??existingFeatures;
+    const featurePlan=source.map(item=>{
+      const floor=target(item.floor_id??existingFeatures.find(existing=>existing.id===item.id)?.floor_id??first,`elemen ${item.label||item.kind}`);
+      check(item.x+item.w<=floor.width&&item.y+item.h<=floor.height,400,`Elemen ${item.label||item.kind} keluar dari area ${floor.name}.`);
+      return {...item,floor_id:floor.id};
+    });
 
-    db.prepare("UPDATE settings SET document=? WHERE key='venue'").run(JSON.stringify(data.venue));
-    for(const item of data.courts)db.prepare("UPDATE courts SET layout_x=?,layout_y=?,layout_w=?,layout_h=? WHERE id=?").run(item.x,item.y,item.w,item.h,item.id);
-    if(data.features){
-      const keep=new Set(data.features.map(item=>item.id));
-      for(const existing of features())if(!keep.has(existing.id))db.prepare("DELETE FROM venue_features WHERE id=?").run(existing.id);
-      const upsert=db.prepare("INSERT INTO venue_features (id,kind,label,x,y,w,h,created_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,label=excluded.label,x=excluded.x,y=excluded.y,w=excluded.w,h=excluded.h");
-      for(const item of data.features)upsert.run(item.id,item.kind,item.label,item.x,item.y,item.w,item.h,new Date().toISOString());
-    }
+    // Ukuran di settings disamakan dengan lantai pertama untuk klien lama.
+    db.prepare("UPDATE settings SET document=? WHERE key='venue'").run(JSON.stringify({width:plan[0].width,height:plan[0].height,grid:data.venue.grid}));
+    const upsertFloor=db.prepare("INSERT INTO floors (id,name,position,width,height,created_at) VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,position=excluded.position,width=excluded.width,height=excluded.height");
+    plan.forEach((floor,index)=>upsertFloor.run(floor.id,floor.name,index,floor.width,floor.height,new Date().toISOString()));
+    for(const item of placed)db.prepare("UPDATE courts SET layout_x=?,layout_y=?,layout_w=?,layout_h=?,floor_id=? WHERE id=?").run(item.x,item.y,item.w,item.h,item.floor.id,item.id);
+    const keep=new Set(featurePlan.map(item=>item.id));
+    for(const existing of existingFeatures)if(!keep.has(existing.id))db.prepare("DELETE FROM venue_features WHERE id=?").run(existing.id);
+    const upsert=db.prepare("INSERT INTO venue_features (id,kind,label,x,y,w,h,floor_id,created_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,label=excluded.label,x=excluded.x,y=excluded.y,w=excluded.w,h=excluded.h,floor_id=excluded.floor_id");
+    for(const item of featurePlan)upsert.run(item.id,item.kind,item.label,item.x,item.y,item.w,item.h,item.floor_id,new Date().toISOString());
+    // Lantai dihapus paling akhir, setelah tidak ada lagi lapangan atau elemen yang merujuknya.
+    const keepFloors=new Set(plan.map(floor=>floor.id));
+    for(const floor of before)if(!keepFloors.has(floor.id))db.prepare("DELETE FROM floors WHERE id=?").run(floor.id);
     audit(actor,"layout.update","venue");return layout();
   });
 }
@@ -240,7 +287,7 @@ export function removePriceRule(id:string,actor:string){transaction(()=>{
 })}
 
 /** Data lapangan untuk pelanggan, termasuk kisaran tarif sepanjang minggu. */
-function publicCourt(court:Court,rules:PriceRule[],photos:Map<string,string[]>){
+function publicCourt(court:Court,rules:PriceRule[],photos:Map<string,string[]>,firstFloor:string|null){
   let low=Infinity,high=0;
   for(let day=0;day<7;day++){
     // Tanggal acuan mana pun dengan hari yang sama menghasilkan tarif yang sama.
@@ -252,11 +299,14 @@ function publicCourt(court:Court,rules:PriceRule[],photos:Map<string,string[]>){
   return {id:court.id,name:court.name,hourly_rate:court.hourly_rate,opens_at:court.opens_at,closes_at:court.closes_at,
     description:court.description,environment:court.environment,surface:court.surface,photos:photos.get(court.id)??[],
     rate_min:Number.isFinite(low)?low:court.hourly_rate,rate_max:high||court.hourly_rate,
+    floor_id:court.floor_id??firstFloor,
     layout:{x:court.layout_x,y:court.layout_y,w:court.layout_w,h:court.layout_h}};
 }
+/** Lantai untuk pelanggan: cukup nama dan ukuran denahnya. */
+export const publicFloors=()=>floors().map(({id,name,width,height})=>({id,name,width,height}));
 export function publicCourts(){
-  const rules=priceRules(),photos=photoIndex();
-  return courts().filter(c=>c.active).map(court=>publicCourt(court,rules,photos));
+  const rules=priceRules(),photos=photoIndex(),first=floors()[0]?.id??null;
+  return courts().filter(c=>c.active).map(court=>publicCourt(court,rules,photos,first));
 }
 
 // --- Ketersediaan publik ---------------------------------------------------
@@ -268,7 +318,7 @@ export function publicAvailability(date:string){
   const active=courts().filter(c=>c.active);
   const taken=bookings(date).filter(b=>b.status==="confirmed"||b.status==="completed"||(b.status==="pending"&&(b.hold_expires_at??0)*1000>Date.now()));
   const care=maintenances(date);
-  const rules=priceRules(),photos=photoIndex();
+  const rules=priceRules(),photos=photoIndex(),first=floors()[0]?.id??null;
   const courtsOut=active.map(court=>{
     const slots:PublicSlot[]=[];
     for(let value=minutes(court.opens_at);value+30<=minutes(court.closes_at);value+=30){
@@ -278,7 +328,7 @@ export function publicAvailability(date:string){
       const past=date<now.date||(date===now.date&&start<now.time);
       slots.push({start,end,state:busy?"booked":fixing?"maintenance":past?"past":"available",...rateAt(court,rules,date,start)});
     }
-    return {court:publicCourt(court,rules,photos),slots};
+    return {court:publicCourt(court,rules,photos,first),slots};
   });
-  return {date,today:now.date,time:now.time,timezone:now.timezone,venue:getVenue(),features:features(),courts:courtsOut};
+  return {date,today:now.date,time:now.time,timezone:now.timezone,venue:getVenue(),floors:publicFloors(),features:features(),courts:courtsOut};
 }

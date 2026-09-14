@@ -201,6 +201,37 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.ok(Array.isArray(venue.data.features)&&venue.data.features.length>0,"elemen informasi harus ikut agar denah pelanggan lengkap");
       assert.ok(Array.isArray(open.data.features),"ketersediaan harian juga membawa elemen informasi");
     });
+    await t.test("lantai: denah per lantai, koordinat sama boleh di lantai berbeda",async()=>{
+      const before=await request("/operations/layout","GET",undefined,admin);
+      assert.equal(before.data.floors.length,1,"denah lama menjadi satu lantai");
+      const [ground]=before.data.floors;
+      const grid=before.data.venue.grid;
+      const upper=await request("/operations/courts","POST",{name:"Rooftop Uji",hourly_rate:250000,opens_at:"07:00",closes_at:"22:00",active:true},admin);
+      assert.equal(upper.status,201);
+      assert.equal(upper.data.court.floor_id,ground.id,"lapangan baru masuk ke lantai pertama");
+      const upperId=upper.data.court.id,roof={id:"lantai-atas",name:"Rooftop",width:400,height:300};
+      const floorPlan=[{id:ground.id,name:ground.name,width:ground.width,height:ground.height},roof];
+      const box={x:10,y:20,w:100,h:200};
+      const features=before.data.features.map((f:{id:string;kind:string;label:string;x:number;y:number;w:number;h:number;floor_id:string})=>({id:f.id,kind:f.kind,label:f.label,x:f.x,y:f.y,w:f.w,h:f.h,floor_id:f.floor_id}));
+      const stairs={id:randomUUID(),kind:"tangga",label:"",x:300,y:0,w:40,h:60,floor_id:roof.id};
+      const plan=(courts:unknown[],extra:object={})=>({venue:{grid},floors:floorPlan,courts,features:[...features,stairs],...extra});
+      assert.equal((await request("/operations/layout","PUT",plan([{id:courtId,floor_id:ground.id,...box},{id:upperId,floor_id:ground.id,...box}]),admin)).status,409,"dua lapangan di lantai yang sama tidak boleh menimpa");
+      const saved=await request("/operations/layout","PUT",plan([{id:courtId,floor_id:ground.id,...box},{id:upperId,floor_id:roof.id,...box}]),admin);
+      assert.equal(saved.status,200,"koordinat sama di lantai berbeda boleh");
+      assert.deepEqual(saved.data.floors.map((f:{name:string})=>f.name),[ground.name,"Rooftop"]);
+      assert.equal(saved.data.courts.find((c:{id:string})=>c.id===upperId).floor_id,roof.id);
+      assert.equal((await request("/operations/layout","PUT",plan([{id:upperId,floor_id:roof.id,x:350,y:0,w:100,h:200}]),admin)).status,400,"batas area dicek terhadap ukuran lantainya sendiri");
+      assert.equal((await request("/operations/layout","PUT",plan([],{floors:[...floorPlan,{id:"lain",name:"rooftop",width:300,height:300}]}),admin)).status,409,"nama lantai tidak boleh sama");
+      assert.equal((await request("/operations/layout","PUT",plan([],{floors:[floorPlan[0]]}),admin)).status,409,"lantai yang masih berisi tidak boleh dihapus");
+      const open=await request("/public/availability?date="+tomorrow,"GET");
+      assert.equal(open.data.floors.length,2,"pelanggan menerima daftar lantai");
+      assert.equal(open.data.courts.find((entry:{court:{id:string}})=>entry.court.id===upperId).court.floor_id,roof.id);
+      assert.equal(open.data.features.find((f:{id:string})=>f.id===stairs.id).floor_id,roof.id);
+      // Kosongkan lantai atas, lalu lantainya boleh dihapus.
+      assert.equal((await request("/operations/courts/"+upperId,"DELETE",undefined,admin)).status,204);
+      const removed=await request("/operations/layout","PUT",{venue:{grid},floors:[floorPlan[0]],courts:[],features},admin);
+      assert.equal(removed.status,200);assert.equal(removed.data.floors.length,1);
+    });
     await t.test("tarif khusus: harga per slot, tolak tumpang tindih, dan tidak mengubah booking lama",async()=>{
       const day=new Date(tomorrow+"T12:00:00Z").getUTCDay(),other=(day+1)%7;
       const rule={label:"Jam sibuk",court_ids:[courtId],days:[day],start_time:"18:00",end_time:"20:00",hourly_rate:500000};
@@ -389,6 +420,8 @@ test("migrasi v1 ke v2 mempertahankan data lama dan memberlakukan aturan hold", 
     assert.equal(one("SELECT * FROM payments WHERE id='p1'").amount, 150000);
     assert.equal(one("SELECT * FROM payments WHERE id='p1'").source, "staff");
     assert.equal(db2.prepare("PRAGMA foreign_key_check").all().length, 0, "migrasi tidak boleh menyisakan foreign key menggantung");
+    assert.equal(one("SELECT count(*) n FROM floors").n, 1, "denah lama menjadi satu lantai");
+    assert.ok(one("SELECT floor_id FROM courts WHERE id='c1'").floor_id, "lapangan lama masuk ke lantai pertama");
 
     const active = Math.floor(Date.now() / 1000) + 600, lapsed = Math.floor(Date.now() / 1000) - 1;
     insert("h1", "09:00", "10:00", "pending", { hold: active })();

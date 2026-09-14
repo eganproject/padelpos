@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { Venue, VenueFeature } from "./venue";
+import type { Floor, Venue, VenueFeature } from "./venue";
 
 export const venueTimezone = "Asia/Jakarta";
 export const slotMinutes = 30;
@@ -11,12 +11,13 @@ export type ShopCourt = {
   description: string; environment: "" | "indoor" | "outdoor"; surface: string; photos: string[];
   /** Kisaran tarif per jam sepanjang minggu, termasuk tarif khusus. */
   rate_min: number; rate_max: number;
+  floor_id: string | null;
   layout: CourtBox;
 };
 /** `rate` adalah tarif per jam slot ini; `rule` nama tarif khusus bila berlaku. */
 export type ShopSlot = { start: string; end: string; state: SlotState; rate: number; rule: string | null };
 export type CourtAvailability = { court: ShopCourt; slots: ShopSlot[] };
-export type Availability = { date: string; today: string; time: string; timezone: string; venue: Venue; features: VenueFeature[]; courts: CourtAvailability[] };
+export type Availability = { date: string; today: string; time: string; timezone: string; venue: Venue; floors: Floor[]; features: VenueFeature[]; courts: CourtAvailability[] };
 
 /** Dipakai sebelum data server tiba, hanya untuk menebak tanggal awal. */
 export function venueNow() {
@@ -59,6 +60,10 @@ export function rangeIsFree(slots: ShopSlot[], start: string, duration: number) 
 }
 
 export const fetchAvailability = (date: string) => api<Availability>(`/public/availability?date=${encodeURIComponent(date)}`);
-export const fetchVenue = () => api<{ venue: Venue; features: VenueFeature[]; timezone: string; today: string; courts: ShopCourt[] }>("/public/venue");
+export const fetchVenue = () => api<{ venue: Venue; floors: Floor[]; features: VenueFeature[]; timezone: string; today: string; courts: ShopCourt[] }>("/public/venue");
 
-export type { Venue, VenueFeature } from "./venue";
+/** Nama lantai lapangan, hanya bila venue punya lebih dari satu lantai. */
+export const floorLabel = (floors: Floor[], floorId: string | null) =>
+  floors.length > 1 ? floors.find(floor => floor.id === (floorId ?? floors[0].id))?.name : undefined;
+
+export type { Floor, Venue, VenueFeature } from "./venue";
