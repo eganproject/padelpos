@@ -16,7 +16,7 @@ export interface Maintenance {id:string;court_id:string;court_name:string;date:s
 export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
 export const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
 export const timeSchema=z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/,"Jam harus menggunakan interval 30 menit.");
-const closeSchema=z.union([timeSchema,z.literal("24:00")]);
+export const closeSchema=z.union([timeSchema,z.literal("24:00")]);
 // Detail untuk pelanggan bersifat opsional: bila tidak dikirim, nilai tersimpan dipertahankan.
 export const courtSchema=z.object({name:z.string().trim().min(2).max(60),hourly_rate:z.number().int().min(1000).max(10000000),opens_at:timeSchema,closes_at:closeSchema,active:z.boolean(),description:z.string().trim().max(600,"Deskripsi maksimal 600 karakter.").optional(),environment:z.enum(["","indoor","outdoor"]).optional(),surface:z.string().trim().max(40,"Jenis permukaan maksimal 40 karakter.").optional()}).refine(v=>v.opens_at<v.closes_at,"Jam tutup harus setelah jam buka.");
 export const bookingSchema=z.object({court_id:z.string().min(1),customer:z.string().trim().min(2).max(80),phone:z.string().trim().min(9).max(18),date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500).default(""),addons:linesSchema.default([])});
@@ -32,7 +32,8 @@ export function getBooking(id:string){
 }
 export function payments(id:string){return db.prepare("SELECT * FROM payments WHERE booking_id=? ORDER BY created_at,id").all(id) as unknown as Payment[]}
 function future(date:string,start:string){const now=localClock();check(date>now.date||(date===now.date&&start>=now.time),400,"Jadwal tidak boleh berada di masa lalu.");}
-function schedule(courtId:string,date:string,start:string,end:string){
+/** Validasi slot: lapangan aktif, di dalam jam operasional, dan bukan masa lalu. */
+export function ensureSlot(courtId:string,date:string,start:string,end:string){
   check(start<end,400,"Jam selesai harus setelah jam mulai.");future(date,start);
   const court=courts().find(c=>c.id===courtId);check(court,404,"Lapangan tidak ditemukan.");
   check(court.active,409,"Lapangan sedang tidak aktif.");
@@ -60,7 +61,7 @@ export function saveCourt(input:unknown,actor:string,id?:string){
 export function createBooking(input:unknown,actor:string){
   const data=bookingSchema.parse(input);
   return transaction(()=>{
-    const court=schedule(data.court_id,data.date,data.start_time,data.end_time),id=randomUUID();
+    const court=ensureSlot(data.court_id,data.date,data.start_time,data.end_time),id=randomUUID();
     const total=quote(court,priceRules(),data.date,data.start_time,data.end_time);
     db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.date,data.start_time,data.end_time,total,total,"confirmed",data.notes,actor,new Date().toISOString());
     if(data.addons.length)applyLines(getBooking(id),data.addons,actor);
@@ -70,7 +71,7 @@ export function createBooking(input:unknown,actor:string){
 export function createMaintenance(input:unknown,actor:string){
   const data=maintenanceSchema.parse(input);
   return transaction(()=>{
-    schedule(data.court_id,data.date,data.start_time,data.end_time);const id=randomUUID();
+    ensureSlot(data.court_id,data.date,data.start_time,data.end_time);const id=randomUUID();
     db.prepare("INSERT INTO maintenance (id,court_id,date,start_time,end_time,reason) VALUES (?,?,?,?,?,?)").run(id,data.court_id,data.date,data.start_time,data.end_time,data.reason);
     audit(actor,"maintenance.create",id);return maintenances(data.date).find(m=>m.id===id)!;
   });

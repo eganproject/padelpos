@@ -366,6 +366,47 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 8").get()) transaction
   }
   db.prepare("INSERT INTO migrations VALUES (8, ?)").run(new Date().toISOString());
 });
+/**
+ * Pembayaran online lewat Midtrans. Satu baris `payment_intents` mewakili satu halaman pembayaran:
+ * `booking` untuk checkout pelanggan, `tagihan` untuk link yang dibuat staf. Pengaturan dan kunci
+ * disimpan sebagai dokumen `payment` di tabel settings. Menu Pembayaran hanya untuk admin karena
+ * berisi kunci rahasia.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 9").get()) transaction(() => {
+  db.exec(`
+    CREATE TABLE payment_intents (
+      order_id TEXT PRIMARY KEY,
+      booking_id TEXT NOT NULL REFERENCES bookings(id),
+      amount INTEGER NOT NULL CHECK(amount > 0),
+      kind TEXT NOT NULL CHECK(kind IN ('booking','tagihan')),
+      status TEXT NOT NULL CHECK(status IN ('pending','paid','expired','cancelled','failed','refunded')),
+      snap_token TEXT,
+      redirect_url TEXT,
+      payment_type TEXT,
+      transaction_id TEXT,
+      environment TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      raw_status TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX payment_intents_booking ON payment_intents (booking_id, created_at);
+    CREATE INDEX payment_intents_status ON payment_intents (status, expires_at);
+  `);
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "payments" || menu.path === "/admin/payments")) {
+    const anchor = menus.find(menu => menu.id === "bookings");
+    const order = (anchor?.order ?? 0) + 1;
+    for (const menu of menus) if (menu.order >= order) menu.order += 1;
+    menus.push({ id: "payments", name: "Pembayaran", path: "/admin/payments", icon: "CreditCard", group: anchor?.group ?? "Operasional", order, active: true, createdAt: new Date().toISOString() });
+    saveCollection("menus", menus);
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("payments")) role.menuIds.push("payments");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (9, ?)").run(new Date().toISOString());
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

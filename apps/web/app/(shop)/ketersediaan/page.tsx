@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, Info, Layers, MessageCircle, PackagePlus, RefreshCw, X } from "lucide-react";
+import { CalendarDays, ChevronDown, CreditCard, Info, Layers, MessageCircle, PackagePlus, RefreshCw, X } from "lucide-react";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
 import { CourtCover } from "@/components/photo-gallery";
 import { ShopAddonPicker } from "@/components/shop-addons";
+import { CheckoutModal } from "@/components/checkout-modal";
 import { type AddonOption, fetchAddonOptions, lineTotal, maxFor } from "@/lib/addons";
+import { amountDue } from "@/lib/payments";
 import { minute, timeSlots } from "@/lib/operations";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { environmentLabel, policySummary, whatsappLink } from "@/lib/venue-info";
@@ -42,6 +44,7 @@ function AvailabilityView() {
   const [addonOptions, setAddonOptions] = useState<AddonOption[] | null>(null);
   const [picks, setPicks] = useState<Record<string, number>>({});
   const [addonsOpen, setAddonsOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const focusCourt = useCallback((courtId: string) => {
     blocks.current.get(courtId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -141,6 +144,10 @@ function AvailabilityView() {
     : [];
   const extras = chosenAddons.reduce((sum, item) => sum + item.subtotal, 0);
   const pickedCount = chosenAddons.reduce((sum, item) => sum + item.quantity, 0);
+  const grandTotal = total + extras;
+  const payment = venue?.payment;
+  const payOnline = !!payment?.enabled;
+  const payNow = payment ? amountDue(payment, grandTotal) : grandTotal;
 
   const info = venue?.info;
   const policyLine = venue ? policySummary(venue.policies) : null;
@@ -341,8 +348,19 @@ function AvailabilityView() {
             ))}
           </div>
           <div className="pay">
-            <span className="total">{money(total + extras)}</span>
-            {info?.whatsapp && message ? (
+            <span className="total">{money(grandTotal)}</span>
+            {payOnline ? (
+              <>
+                <button className="shop-cta" type="button" onClick={() => setCheckoutOpen(true)} aria-describedby="catatan-bayar">
+                  <CreditCard size={18} aria-hidden="true" /> Bayar online
+                </button>
+                {info?.whatsapp && message && (
+                  <a className="shop-ghost small" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
+                    <MessageCircle size={16} aria-hidden="true" /> Tanya dulu
+                  </a>
+                )}
+              </>
+            ) : info?.whatsapp && message ? (
               <a className="shop-cta" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener" aria-describedby="catatan-bayar">
                 <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
               </a>
@@ -350,7 +368,9 @@ function AvailabilityView() {
               <button className="shop-cta" type="button" disabled aria-describedby="catatan-bayar">Lanjut ke pembayaran</button>
             )}
             <small id="catatan-bayar">
-              {info?.whatsapp ? "Slot belum terkunci sampai dikonfirmasi staf. Pembayaran online segera hadir." : "Pembayaran online segera hadir. Tunjukkan ringkasan ini ke staf venue."}
+              {payOnline
+                ? `Slot dikunci ${payment!.hold_minutes} menit setelah Anda menekan bayar. ${payNow < grandTotal ? `Bayar ${money(payNow)} sekarang, sisanya di venue.` : "Bayar lewat QRIS, virtual account, e-wallet, atau kartu."}`
+                : info?.whatsapp ? "Slot belum terkunci sampai dikonfirmasi staf. Pembayaran online segera hadir." : "Pembayaran online segera hadir. Tunjukkan ringkasan ini ke staf venue."}
               {policyLine && <> <Link href="/kebijakan#pembatalan">{policyLine}.</Link></>}
             </small>
           </div>
@@ -368,6 +388,20 @@ function AvailabilityView() {
             </div>
           )}
         </div>
+      )}
+
+      {checkoutOpen && payment && picked && pickedCourt && end && effective && (
+        <CheckoutModal
+          payment={payment}
+          booking={{
+            court_id: pickedCourt.id, court_name: pickedCourt.name, floor: pickedFloor,
+            date, dateLabel: formatDay(date), start_time: picked.start, end_time: end,
+            durationLabel: durationLabel(effective), courtTotal: total, total: grandTotal,
+            picks: chosenAddons.map(item => ({ addon_id: item.option.id, name: item.option.name, quantity: item.quantity, subtotal: item.subtotal })),
+          }}
+          onClose={() => setCheckoutOpen(false)}
+          onTaken={() => { setCheckoutOpen(false); setPicked(null); void load(date, true); }}
+        />
       )}
     </section>
   );

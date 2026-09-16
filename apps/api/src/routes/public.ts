@@ -5,9 +5,21 @@ import * as ops from "../operations.js";
 import { content } from "../content.js";
 import { photoFile } from "../photos.js";
 import { publicAddons } from "../addons.js";
+import { publicPayment } from "../midtrans.js";
+import { createCheckout, expireHolds, handleNotification, orderView, refreshOrder } from "../payments.js";
 import { check } from "../errors.js";
 
 const router = Router();
+
+/**
+ * Webhook Midtrans. Diletakkan sebelum rate limit umum karena pengirimnya server Midtrans,
+ * bukan pengunjung, dan notifikasi yang tertolak akan dikirim ulang berkali-kali.
+ * Keasliannya dijaga oleh tanda tangan SHA512, bukan oleh alamat pengirim.
+ */
+router.post("/payments/midtrans/notification", rateLimit({ windowMs: 60 * 1000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false, message: { message: "Terlalu banyak notifikasi." } }), (req, res) => {
+  const result = handleNotification(req.body);
+  res.json({ status: "ok", handled: result.handled, outcome: result.outcome });
+});
 
 // Foto memakai id acak yang tidak pernah berubah isinya, jadi aman di-cache selamanya oleh browser.
 // Batasnya dipisah karena satu halaman bisa memuat banyak foto sekaligus.
@@ -34,16 +46,21 @@ const requestedDate = (value: unknown) => {
 };
 
 router.get("/venue", (_req, res) => {
+  expireHolds();
   const data = ops.publicAvailability(ops.localClock().date);
   res.json({ venue: data.venue, floors: data.floors, features: data.features, timezone: data.timezone, today: data.today, courts: data.courts.map(entry => entry.court) });
 });
 
-router.get("/availability", (req, res) => res.json(ops.publicAvailability(requestedDate(req.query.date))));
+router.get("/availability", (req, res) => {
+  // Booking yang batas bayarnya lewat dilepas dulu agar slotnya tampil kosong lagi.
+  expireHolds();
+  res.json(ops.publicAvailability(requestedDate(req.query.date)));
+});
 
 /** Profil, kontak, fasilitas, kebijakan, FAQ, dan katalog sewa & tambahan. */
 router.get("/info", (_req, res) => {
   const { info, policies, faqs } = content();
-  res.json({ info, policies, faqs: faqs.items, courts: ops.publicCourts(), addons: publicAddons() });
+  res.json({ info, policies, faqs: faqs.items, courts: ops.publicCourts(), addons: publicAddons(), payment: publicPayment() });
 });
 
 /** Sewa & tambahan. Dengan tanggal dan jam, `available` menghitung barang yang dipakai booking lain. */
@@ -53,6 +70,18 @@ router.get("/addons", (req, res) => {
   const { start, end } = z.object({ start: ops.timeSchema, end: z.union([ops.timeSchema, z.literal("24:00")]) })
     .refine(v => v.start < v.end, "Jam selesai harus setelah jam mulai.").parse(req.query);
   res.json({ addons: publicAddons({ date, start, end }) });
+});
+
+/** Pesan dan bayar online. Dibatasi lebih ketat karena setiap panggilan mengunci satu slot. */
+router.post("/checkout", rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false, message: { message: "Terlalu banyak percobaan pemesanan. Coba lagi sebentar lagi." } }), async (req, res) => {
+  res.status(201).json(await createCheckout(req.body));
+});
+
+/** Halaman status pesanan. Id booking berupa UUID acak, jadi tautannya tidak dapat ditebak. */
+router.get("/orders/:id", (req, res) => res.json(orderView(String(req.params.id))));
+router.post("/orders/:id/refresh", async (req, res) => {
+  await refreshOrder(String(req.params.id));
+  res.json(orderView(String(req.params.id)));
 });
 
 export default router;

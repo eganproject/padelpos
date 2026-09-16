@@ -1,10 +1,11 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
-import { PackageCheck,PackagePlus,Plus } from "lucide-react";
+import { Copy,CreditCard,PackageCheck,PackagePlus,Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
 import { type AddonOption,type BookingAddon,unitLabel } from "@/lib/addons";
+import { type PaymentIntent,intentLabel,intentTone } from "@/lib/payments";
 import { formatShortDay } from "@/lib/shop";
 import { AddonLinesEditor,type Draft,clampDrafts,draftPayload,draftsFrom,draftsTotal } from "./addon-lines";
 import { ErrorBox,Modal,Submit } from "./operation-ui";
@@ -81,7 +82,7 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
     </div><div className="modal-actions"><button type="button" onClick={close}>Batal</button><Submit busy={busy||refreshing||!validTime||conflict}>Simpan booking</Submit></div></form></Modal>;
 }
 
-type Detail={booking:Booking;payments:Payment[];addons:BookingAddon[]};
+type Detail={booking:Booking;payments:Payment[];addons:BookingAddon[];intents:PaymentIntent[]};
 function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>void}){
   const [data,setData]=useState<Detail|null>(null);
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[reason,setReason]=useState("");
@@ -114,6 +115,20 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     try{const result=await api<{booking:Booking;addons:BookingAddon[]}>(`/operations/bookings/${id}/addons/returned`,{method:"PATCH",body:JSON.stringify({line_ids:lineIds,returned})});setData(d=>d&&{...d,...result});toast.success(returned?"Barang ditandai sudah kembali":"Tanda kembali dibatalkan")}
     catch(e){setError((e as Error).message)}finally{setBusy(false)}
   }
+  async function makeLink(){
+    setBusy(true);setError("");
+    try{
+      const result=await api<{intent:PaymentIntent}>(`/operations/bookings/${id}/payment-link`,{method:"POST",body:JSON.stringify({})});
+      setData(d=>d&&{...d,intents:[result.intent,...d.intents]});
+      await copyLink(result.intent.redirect_url??"");
+      toast.success("Link pembayaran dibuat");
+    }catch(e){setError((e as Error).message)}finally{setBusy(false)}
+  }
+  async function copyLink(url:string){
+    if(!url)return;
+    try{await navigator.clipboard.writeText(url);toast.success("Link disalin, siap dikirim ke pelanggan")}
+    catch{toast.message("Salin link ini: "+url)}
+  }
   const refundable=booking?.status==="cancelled"&&(booking.paid>0),payable=booking?.status==="confirmed"&&booking.total>booking.paid;
   const canReturn=booking?.status==="confirmed"||booking?.status==="completed";
   const unreturned=lines.filter(l=>l.type==="sewa"&&!l.returned_at);
@@ -136,6 +151,14 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     <div className="ops-total"><span>Sewa lapangan</span><strong>{money(booking.court_total)}</strong></div>{booking.total!==booking.court_total&&<div className="ops-total"><span>Tambahan</span><strong>{money(booking.total-booking.court_total)}</strong></div>}<div className="ops-total"><span>Total tagihan</span><strong>{money(booking.total)}</strong></div><div className="ops-total"><span>Pembayaran neto</span><strong>{money(booking.paid)}</strong></div><div className="ops-total"><span>{booking.status==="cancelled"?"Perlu dikembalikan":"Sisa tagihan"}</span><strong>{money(due(booking))}</strong></div>
     {booking.cancel_reason&&<p>Alasan pembatalan: {booking.cancel_reason}</p>}
     {(payable||refundable)&&<form onSubmit={pay} className="ops-payment"><h3>{refundable?"Catat pengembalian dana":"Catat DP / pelunasan"}</h3><p className="ops-muted">Pastikan uang sudah {refundable?"dikembalikan":"diterima"}. Formulir ini mencatat transaksi manual.</p><div className="field-grid"><label>Nominal (Rp)<input required type="number" min={1} max={refundable?booking.paid:booking.total-booking.paid} step={1} value={form.amount} onChange={e=>setForm({...form,id:crypto.randomUUID(),amount:Number(e.target.value)})}/></label><label>Metode<select value={form.method} onChange={e=>setForm({...form,id:crypto.randomUUID(),method:e.target.value})}><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="qris">QRIS</option></select></label></div><label>Catatan / referensi{refundable?" (wajib)":" (opsional)"}<input required={!!refundable} minLength={refundable?3:undefined} maxLength={200} value={form.note} onChange={e=>setForm({...form,id:crypto.randomUUID(),note:e.target.value})}/></label><Submit busy={busy}>{refundable?"Catat pengembalian":"Catat pembayaran"}</Submit></form>}
+    {(payable||(data!.intents.length>0))&&<section className="ops-addons" aria-label="Tagihan online">
+      <div className="ops-card-head"><h3>Tagihan online</h3>{payable&&<button type="button" className="ops-secondary" disabled={busy} onClick={()=>void makeLink()}><CreditCard size={14}/> Buat link pembayaran</button>}</div>
+      {data!.intents.length?<ul className="pay-links">{data!.intents.map(intent=><li key={intent.order_id}>
+        <div><b>{money(intent.amount)} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</b><small>{intent.order_id} · {new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}</small></div>
+        <span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span>
+        {intent.status==="pending"&&intent.redirect_url&&<button type="button" className="ops-link-button" onClick={()=>void copyLink(intent.redirect_url!)}><Copy size={13}/> Salin link</button>}
+      </li>)}</ul>:<p className="ops-muted">Belum ada tagihan online. Link berlaku 24 jam dan dapat dikirim ke pelanggan lewat WhatsApp.</p>}
+    </section>}
     <h3>Riwayat pembayaran</h3>{data!.payments.length?data!.payments.map(p=><div className="ops-history" key={p.id}><div><b>{p.kind==="refund"?"Pengembalian":"Pembayaran"} · {p.method.toUpperCase()}</b><small>{new Date(p.created_at).toLocaleString("id-ID")} {p.note&&"· "+p.note}</small></div><strong>{p.kind==="refund"?"−":""}{money(p.amount)}</strong></div>):<p className="ops-muted">Belum ada pembayaran.</p>}
     {booking.status==="confirmed"&&<div className="ops-status-actions"><h3>Status reservasi</h3><button className="ops-secondary" disabled={busy||booking.paid<booking.total} onClick={()=>void status("completed")}>Tandai selesai</button><p className="ops-muted">Sesi dapat diselesaikan setelah jam berakhir dan tagihan lunas.{unreturned.length>0?` Masih ada ${unreturned.reduce((sum,l)=>sum+l.quantity,0)} barang sewa yang belum kembali.`:""}</p><label>Alasan pembatalan<input minLength={3} maxLength={200} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Wajib diisi untuk membatalkan"/></label><button className="ops-danger" disabled={busy||reason.trim().length<3} onClick={()=>void status("cancelled")}>Batalkan booking</button>{lines.some(l=>l.type==="jual")&&<p className="ops-muted">Stok barang jual pada booking ini kembali otomatis saat dibatalkan.</p>}</div>}
     </>}

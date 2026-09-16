@@ -78,6 +78,44 @@ menyimpan salinan nama dan harga, jadi perubahan katalog tidak mengubah tagihan 
 - **Pelanggan**: melihat katalog di beranda, memilih tambahan di ringkasan pesanan, dan pilihannya
   ikut di pesan WhatsApp. Item yang tidak ditandai tampil online hanya tersedia untuk kasir.
 
+## Pembayaran online (Midtrans)
+
+Menu **Pembayaran** menyambungkan aplikasi ke akun Midtrans Anda.
+
+1. Ambil **client key** dan **server key** di dashboard Midtrans: Settings -> Access Keys. Kunci sandbox
+   berawalan `SB-`, kunci produksi tanpa awalan itu.
+2. Isi kedua kunci di menu Pembayaran, pilih lingkungan, lalu centang **Aktifkan pembayaran online**.
+   Tombol **Uji koneksi** memastikan server key diterima Midtrans.
+3. Salin alamat webhook dari halaman itu ke dashboard Midtrans: Settings -> Configuration ->
+   **Payment Notification URL**. Tanpa webhook, pembayaran yang masuk tidak otomatis mengonfirmasi booking.
+
+Kunci juga dapat diisi lewat environment (`MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`,
+`MIDTRANS_IS_PRODUCTION`). Bila diisi, nilai itu yang dipakai dan panel hanya menampilkan statusnya.
+Server key tidak pernah dikirim kembali ke browser.
+
+### Alur pemesanan online
+
+Pelanggan memilih jadwal dan tambahan, menekan **Bayar online**, lalu diarahkan ke halaman pembayaran
+Midtrans (QRIS, virtual account, e-wallet, atau kartu). Booking langsung dibuat berstatus *menunggu
+pembayaran* sehingga slotnya terkunci selama batas waktu yang Anda tentukan. Setelah pembayaran masuk,
+webhook mengubahnya menjadi terkonfirmasi dan mencatat pembayaran. Bila tidak dibayar sampai batas
+waktu, booking kedaluwarsa, slot terbuka lagi, dan stok barang jual kembali.
+
+- **Bayar penuh atau DP**: pilih di menu Pembayaran. Sisa tagihan DP ditagih di venue seperti biasa.
+- **Halaman status**: pelanggan menerima tautan `/pesanan/<id>` yang menampilkan status, sisa waktu bayar,
+  dan tombol periksa status sebagai cadangan bila webhook telat.
+- **Link tagihan kasir**: dari detail booking, staf dapat membuat link pembayaran untuk sisa tagihan
+  booking yang sudah berjalan. Link berlaku 24 jam dan hanya mencatat pembayaran.
+
+Tanda tangan setiap notifikasi diperiksa dengan server key, nominalnya dicocokkan dengan tagihan, dan
+notifikasi ganda tidak pernah menambah pembayaran dua kali.
+
+### Menguji di komputer sendiri
+
+Webhook dikirim dari server Midtrans, jadi `localhost` tidak dapat dihubungi. Jalankan terowongan
+(mis. `ngrok http 3000`), isi `PUBLIC_URL` dengan alamat terowongan itu, lalu pakai alamat webhook yang
+tampil di menu Pembayaran. Coba dulu dengan kunci sandbox sebelum berpindah ke produksi.
+
 ## Penyimpanan data
 
 Data tersimpan pada `apps/api/data/padelix.sqlite` (mode WAL) dan dibuat otomatis saat

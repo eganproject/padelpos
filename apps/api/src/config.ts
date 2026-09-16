@@ -8,3 +8,6 @@ export const production = process.env.NODE_ENV === "production";
 export const venueTimezone = process.env.VENUE_TIMEZONE || "Asia/Jakarta";
 new Intl.DateTimeFormat("en", { timeZone: venueTimezone });
 
+export const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+/** Alamat yang dibuka pelanggan; dipakai untuk URL kembali dan webhook Midtrans. */
+export const publicUrl = (process.env.PUBLIC_URL || clientUrl).replace(/[/]+$/, "");

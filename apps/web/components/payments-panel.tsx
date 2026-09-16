@@ -1,0 +1,162 @@
+"use client";
+import { useCallback,useEffect,useMemo,useState } from "react";
+import { Check,Copy,ExternalLink,Loader2,RefreshCw,ShieldCheck,TriangleAlert } from "lucide-react";
+import { toast } from "sonner";
+import { api,money } from "@/lib/api";
+import { formatShortDay } from "@/lib/shop";
+import { type AdminIntent,type PaymentSettings,intentLabel,intentTone,methodLabel,payTypeLabel } from "@/lib/payments";
+import { ErrorBox } from "./operation-ui";
+
+type Data={settings:PaymentSettings;intents:AdminIntent[];date:string;time:string;timezone:string};
+type Form={enabled:boolean;environment:"sandbox"|"production";client_key:string;server_key:string;clear_server_key:boolean;mode:"full"|"dp";dp_percent:number;hold_minutes:number;note:string};
+const formFrom=(settings:PaymentSettings):Form=>({enabled:settings.enabled,environment:settings.environment,client_key:settings.client_key,server_key:"",clear_server_key:false,mode:settings.mode,dp_percent:settings.dp_percent,hold_minutes:settings.hold_minutes,note:settings.note});
+
+export function PaymentsPanel(){
+  const [data,setData]=useState<Data|null>(null),[form,setForm]=useState<Form|null>(null);
+  const [error,setError]=useState(""),[busy,setBusy]=useState(""),[test,setTest]=useState<{ok:boolean;message:string}|null>(null);
+  const load=useCallback(async()=>{
+    try{const result=await api<Data>("/operations/payments");setData(result);setForm(formFrom(result.settings));setError("")}
+    catch(e){setError((e as Error).message)}
+  },[]);
+  useEffect(()=>{void load()},[load]);
+  const settings=data?.settings;
+  const dirty=useMemo(()=>!!settings&&!!form&&JSON.stringify(form)!==JSON.stringify(formFrom(settings)),[form,settings]);
+  const set=<K extends keyof Form>(key:K,value:Form[K])=>setForm(current=>current&&{...current,[key]:value});
+
+  async function save(event:React.FormEvent){
+    event.preventDefault();if(!form)return;
+    setBusy("simpan");setError("");
+    try{
+      const result=await api<{settings:PaymentSettings}>("/operations/payments/settings",{method:"PUT",body:JSON.stringify(form)});
+      setData(current=>current&&{...current,settings:result.settings});setForm(formFrom(result.settings));setTest(null);
+      toast.success("Pengaturan pembayaran disimpan");
+    }catch(e){setError((e as Error).message)}finally{setBusy("")}
+  }
+  async function runTest(){
+    setBusy("uji");setTest(null);
+    try{setTest(await api<{ok:boolean;message:string}>("/operations/payments/test",{method:"POST",body:"{}"}))}
+    catch(e){setTest({ok:false,message:(e as Error).message})}finally{setBusy("")}
+  }
+  async function recheck(orderId:string){
+    setBusy(orderId);
+    try{
+      const result=await api<{settings:PaymentSettings;intents:AdminIntent[]}>(`/operations/payments/intents/${encodeURIComponent(orderId)}/refresh`,{method:"POST",body:"{}"});
+      setData(current=>current&&{...current,...result});toast.success("Status transaksi diperbarui");
+    }catch(e){toast.error((e as Error).message)}finally{setBusy("")}
+  }
+  async function copy(text:string,label:string){
+    try{await navigator.clipboard.writeText(text);toast.success(`${label} disalin`)}
+    catch{toast.error("Tidak dapat menyalin otomatis. Salin manual dari kolomnya.")}
+  }
+
+  if(error&&!data)return <ErrorBox message={error} retry={load}/>;
+  if(!data||!form||!settings)return <p className="empty-state">Memuat pengaturan pembayaran…</p>;
+  const sandbox=form.environment==="sandbox";
+  const keyHint=sandbox?"SB-Mid-server-…":"Mid-server-…";
+  return <div className="cms">
+    {error&&<ErrorBox message={error}/>}
+    <div className="pay-status">
+      <div className={`pay-badge ${settings.ready?"on":"off"}`}>
+        {settings.ready?<ShieldCheck size={22} aria-hidden="true"/>:<TriangleAlert size={22} aria-hidden="true"/>}
+        <div>
+          <b>{settings.ready?"Pembayaran online aktif":settings.server_key_set?"Belum diaktifkan":"Kunci Midtrans belum diisi"}</b>
+          <small>{settings.ready?"Pelanggan dapat memesan dan membayar sendiri dari halaman jadwal.":"Selama belum aktif, pelanggan memesan lewat WhatsApp seperti biasa."}</small>
+        </div>
+      </div>
+      <dl className="pay-meta">
+        <div><dt>Lingkungan</dt><dd>{settings.environment==="production"?"Produksi":"Sandbox (uji coba)"}</dd></div>
+        <div><dt>Server key</dt><dd>{settings.server_key_set?(settings.key_source==="env"?"Dari environment":"Tersimpan di panel"):"Belum diisi"}</dd></div>
+        <div><dt>Cara menagih</dt><dd>{settings.mode==="dp"?`DP ${settings.dp_percent}%`:"Bayar penuh"}</dd></div>
+        <div><dt>Batas bayar</dt><dd>{settings.hold_minutes} menit</dd></div>
+      </dl>
+      <button type="button" className="ops-secondary" onClick={()=>void runTest()} disabled={!settings.server_key_set||!!busy}>
+        {busy==="uji"?<Loader2 size={15} className="spin"/>:<RefreshCw size={15}/>} Uji koneksi
+      </button>
+    </div>
+    {test&&<p className={`pay-test ${test.ok?"ok":"warn"}`} role="status">{test.ok?<Check size={15}/>:<TriangleAlert size={15}/>} {test.message}</p>}
+
+    <form className="cms-form" onSubmit={save}>
+      <div className="cms-grid">
+        <section className="cms-card">
+          <header><h2>Kunci Midtrans</h2><p>Ambil dari dashboard Midtrans: Settings → Access Keys. Server key bersifat rahasia dan tidak pernah ditampilkan lagi setelah disimpan.</p></header>
+          <label className="cms-check"><input type="checkbox" checked={form.enabled} onChange={e=>set("enabled",e.target.checked)}/> Aktifkan pembayaran online</label>
+          <label className="cms-field"><span className="cms-label">Lingkungan</span>
+            <select value={form.environment} onChange={e=>set("environment",e.target.value as Form["environment"])}>
+              <option value="sandbox">Sandbox — untuk uji coba</option>
+              <option value="production">Produksi — uang sungguhan</option>
+            </select>
+            <small className="cms-hint">Sandbox memakai kunci berawalan SB-. Ganti ke produksi setelah alurnya terbukti.</small>
+          </label>
+          <label className="cms-field"><span className="cms-label">Client key</span>
+            <input value={form.client_key} maxLength={120} placeholder={sandbox?"SB-Mid-client-…":"Mid-client-…"} onChange={e=>set("client_key",e.target.value)}/>
+          </label>
+          <label className="cms-field"><span className="cms-label">Server key</span>
+            <input type="password" autoComplete="off" maxLength={120} value={form.server_key} disabled={form.clear_server_key}
+              placeholder={settings.server_key_set?"Tersimpan — isi hanya bila ingin mengganti":keyHint} onChange={e=>set("server_key",e.target.value)}/>
+            <small className="cms-hint">{settings.key_source==="env"?"Saat ini server key diambil dari environment (MIDTRANS_SERVER_KEY) dan mengalahkan isian ini.":`Formatnya ${keyHint}`}</small>
+          </label>
+          {settings.server_key_set&&settings.key_source==="panel"&&(
+            <label className="cms-check"><input type="checkbox" checked={form.clear_server_key} onChange={e=>set("clear_server_key",e.target.checked)}/> Hapus server key tersimpan</label>
+          )}
+        </section>
+
+        <section className="cms-card">
+          <header><h2>Cara menagih</h2><p>Berlaku untuk pemesanan online. Booking yang dibuat kasir tidak terpengaruh.</p></header>
+          <fieldset className="chip-field"><legend>Nominal yang dibayar online</legend>
+            <div className="chip-group">
+              <button type="button" aria-pressed={form.mode==="full"} onClick={()=>set("mode","full")}>Bayar penuh</button>
+              <button type="button" aria-pressed={form.mode==="dp"} onClick={()=>set("mode","dp")}>DP sebagian</button>
+            </div>
+          </fieldset>
+          {form.mode==="dp"&&(
+            <label className="cms-field"><span className="cms-label">Besar DP (%)</span>
+              <input type="number" min={10} max={90} step={1} value={form.dp_percent} onChange={e=>set("dp_percent",Number(e.target.value))}/>
+              <small className="cms-hint">Contoh: tagihan {money(300000)} menjadi {money(Math.min(300000,Math.max(1000,Math.ceil(300000*form.dp_percent/100/1000)*1000)))} dibayar online, sisanya di venue.</small>
+            </label>
+          )}
+          <label className="cms-field"><span className="cms-label">Batas waktu bayar (menit)</span>
+            <input type="number" min={10} max={120} step={1} value={form.hold_minutes} onChange={e=>set("hold_minutes",Number(e.target.value))}/>
+            <small className="cms-hint">Selama itu slot ditahan. Lewat batas, booking otomatis kedaluwarsa dan slotnya terbuka lagi.</small>
+          </label>
+          <label className="cms-field"><span className="cms-label">Catatan di halaman pembayaran</span>
+            <textarea rows={3} maxLength={300} value={form.note} onChange={e=>set("note",e.target.value)} placeholder="Mis. bukti pembayaran otomatis dikirim ke email."/>
+          </label>
+        </section>
+
+        <section className="cms-card wide">
+          <header><h2>Webhook Midtrans</h2><p>Tempel alamat ini di dashboard Midtrans: Settings → Configuration → Payment Notification URL. Tanpa itu, pembayaran yang masuk tidak otomatis mengonfirmasi booking.</p></header>
+          <div className="pay-copy">
+            <input readOnly value={settings.webhook_url} onFocus={e=>e.target.select()}/>
+            <button type="button" className="ops-secondary" onClick={()=>void copy(settings.webhook_url,"Alamat webhook")}><Copy size={14}/> Salin</button>
+          </div>
+          <ul className="pay-steps">
+            <li>Pastikan alamat ini dapat diakses dari internet. Saat mencoba di komputer sendiri, gunakan terowongan seperti ngrok, lalu isi <code>PUBLIC_URL</code> pada .env.</li>
+            <li>Pelanggan kembali ke <code>{settings.finish_url}&lt;kode&gt;</code> setelah membayar, dan halaman itu juga menanyakan status ke Midtrans sebagai cadangan.</li>
+            <li>Uji dulu di sandbox memakai kartu atau QRIS simulator Midtrans sebelum berpindah ke produksi.</li>
+          </ul>
+        </section>
+      </div>
+      <div className={`cms-savebar${dirty?" dirty":""}`}>
+        <span>{dirty?"Ada perubahan yang belum disimpan.":settings.updated_at?`Terakhir disimpan ${new Date(settings.updated_at).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}.`:"Belum pernah disimpan."}</span>
+        <button className="ops-primary" type="submit" disabled={!dirty||!!busy}>{busy==="simpan"?"Menyimpan…":"Simpan pengaturan"}</button>
+      </div>
+    </form>
+
+    <div className="ops-section-title"><div><h2>Transaksi terakhir</h2><p>Dari checkout pelanggan dan link tagihan kasir. Zona waktu venue: {data.timezone}.</p></div></div>
+    <div className="manage-table-card ops-table table-cards"><table>
+      <thead><tr><th>WAKTU</th><th>PESANAN</th><th>JADWAL</th><th>NOMINAL</th><th>METODE</th><th>STATUS</th><th>AKSI</th></tr></thead>
+      <tbody>{data.intents.map(intent=><tr key={intent.order_id}>
+        <td data-label="Waktu">{new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}<small className="table-description">{intent.environment==="production"?"Produksi":"Sandbox"}</small></td>
+        <td className="wide" data-label="Pesanan"><b>{intent.customer}</b><small className="table-description">{intent.order_id} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</small></td>
+        <td data-label="Jadwal">{intent.court_name}<small className="table-description">{formatShortDay(intent.date)} · {intent.start_time} – {intent.end_time}</small></td>
+        <td data-label="Nominal">{money(intent.amount)}</td>
+        <td data-label="Metode">{intent.payment_type?(methodLabel[intent.payment_type]??payTypeLabel(intent.payment_type)):"—"}</td>
+        <td data-label="Status"><span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span></td>
+        <td className="actions"><div className="row-actions">
+          <button onClick={()=>void recheck(intent.order_id)} disabled={!!busy} aria-label={`Periksa status ${intent.order_id}`} title="Tanya status ke Midtrans"><RefreshCw/></button>
+          <a href={`/pesanan/${intent.booking_id}`} target="_blank" rel="noopener" aria-label={`Buka halaman pesanan ${intent.order_id}`} title="Buka halaman pesanan pelanggan"><ExternalLink/></a>
+        </div></td>
+      </tr>)}</tbody>
+    </table>{!data.intents.length&&<p className="empty-state">Belum ada transaksi online.</p>}</div>
+  </div>;
+}

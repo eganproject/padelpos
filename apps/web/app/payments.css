@@ -1,0 +1,91 @@
+/* Pembayaran online: panel admin Midtrans, form checkout, dan halaman status pesanan. */
+
+/* Panel admin */
+.pay-status{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:18px 20px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.pay-badge{display:flex;align-items:center;gap:12px;min-width:260px;flex:1}
+.pay-badge b{display:block;font-size:15px}
+.pay-badge small{display:block;margin-top:3px;font-size:12px;line-height:1.6;color:var(--muted)}
+.pay-badge.on>svg{color:var(--lime)}
+.pay-badge.off>svg{color:var(--orange)}
+.pay-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px;margin:0}
+.pay-meta dt{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.pay-meta dd{margin:2px 0 0;font-size:13px;font-weight:600}
+.pay-test{display:flex;align-items:center;gap:8px;margin:0;padding:11px 14px;border-radius:10px;font-size:13px;line-height:1.6}
+.pay-test.ok{border:1px solid #7e983288;background:#c8ff3d0d;color:var(--text)}
+.pay-test.warn{border:1px solid #ff9c5166;background:#ff9c510d;color:var(--orange)}
+.pay-copy{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pay-copy input{flex:1;min-width:240px;min-height:42px;border:1px solid #30383a;border-radius:8px;background:#0c1012;color:var(--text);padding:9px 12px;font-size:13px}
+.pay-copy button{flex:none;height:42px}
+.pay-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.65;color:var(--muted)}
+.pay-steps code{padding:1px 6px;border-radius:5px;background:#ffffff12;color:var(--text);font-size:12px}
+.row-actions a{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;color:var(--muted)}
+.row-actions a:hover{color:var(--text)}
+@media(max-width:600px){.pay-meta{grid-template-columns:1fr}.pay-status{padding:16px}}
+
+html[data-theme="light"] .pay-status{background:#fff;border-color:#dce1db}
+html[data-theme="light"] .pay-badge.on>svg{color:#4d6b0a}
+html[data-theme="light"] .pay-badge.off>svg{color:#9a5410}
+html[data-theme="light"] .pay-copy input{background:#f8faf7;border-color:#d8ded8;color:#222925}
+html[data-theme="light"] .pay-test.ok{background:#eef8d9;border-color:#9fcc45}
+html[data-theme="light"] .pay-test.warn{background:#fdf0e1;border-color:#efc79b;color:#9a5410}
+html[data-theme="light"] .pay-steps code{background:#eef1ec;color:#222925}
+
+/* Formulir checkout pelanggan */
+.shop-modal-backdrop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:#141a0f80;backdrop-filter:blur(3px);overflow:auto}
+.shop-modal{width:min(520px,100%);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 24px 60px #1b220c33;max-height:92vh;overflow:auto}
+.shop-modal>header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 20px;border-bottom:1px solid var(--line)}
+.shop-modal>header h2{font-size:19px}
+.shop-modal>header button{width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink-soft);cursor:pointer}
+.shop-modal-summary{padding:16px 20px;background:var(--paper);border-bottom:1px solid var(--line)}
+.shop-modal-summary b{display:block;font-size:16px}
+.shop-modal-summary>span{display:block;margin-top:2px;font-size:14px;color:var(--ink-soft)}
+.shop-modal-summary dl,.shop-order-bill{margin:12px 0 0;display:flex;flex-direction:column;gap:6px}
+.shop-modal-summary dl div,.shop-order-bill div{display:flex;justify-content:space-between;gap:16px;font-size:14px}
+.shop-modal-summary dt,.shop-order-bill dt{color:var(--ink-soft);margin:0}
+.shop-modal-summary dd,.shop-order-bill dd{margin:0;font-variant-numeric:tabular-nums}
+.shop-modal-summary .total,.shop-order-bill .total{padding-top:8px;border-top:1px dashed var(--line);font-weight:700}
+.shop-modal-summary .total dt,.shop-order-bill .total dt{color:var(--ink)}
+.shop-modal form{padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.shop-modal form label{display:flex;flex-direction:column;gap:6px;font-size:13px;font-weight:600;color:var(--ink-soft)}
+.shop-modal form input{min-height:46px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);padding:10px 12px;font-size:15px;font-weight:400}
+.shop-modal form input:focus{outline:2px solid var(--brand-deep);outline-offset:1px}
+.shop-modal-pay{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-top:6px}
+.shop-modal-pay small{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--brand-deep)}
+.shop-modal-pay b{display:block;font-family:var(--font-space);font-size:22px}
+.shop-modal-pay span{display:block;font-size:13px;color:var(--ink-faint)}
+.shop-modal-note{display:flex;gap:8px;align-items:flex-start;margin:0;font-size:12px;line-height:1.6;color:var(--ink-faint)}
+.shop-modal-note svg{flex:none;margin-top:2px}
+@media(max-width:600px){.shop-modal-pay .shop-cta{width:100%}}
+
+/* Halaman status pesanan */
+.shop-order{max-width:760px;display:flex;flex-direction:column;gap:16px;padding-top:36px}
+.shop-order-head h1{font-size:clamp(26px,4vw,36px);margin:12px 0 8px}
+.shop-order-head p{margin:0;font-size:15px;line-height:1.6;color:var(--ink-soft)}
+.shop-order .status-pill{font-size:12px}
+.shop-order-pay{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px;padding:18px 20px;border:1px solid #e2c98a;border-radius:var(--radius);background:var(--care-wash)}
+.shop-order-pay small{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#8a6110}
+.shop-order-pay b{display:block;font-family:var(--font-space);font-size:24px}
+.shop-order-pay span{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:13px;color:#8a6110}
+.shop-order-pay .actions{display:flex;flex-wrap:wrap;gap:10px}
+.shop-order-confirmed{display:flex;align-items:center;gap:8px;margin:0;font-size:15px;font-weight:600;color:var(--brand-deep)}
+.shop-order-facts{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.shop-order-facts li{display:flex;align-items:flex-start;gap:12px}
+.shop-order-facts svg{flex:none;width:38px;height:38px;padding:10px;border-radius:10px;background:var(--brand-wash);color:var(--brand-deep)}
+.shop-order-facts small{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-faint)}
+.shop-order-facts span{font-size:15px}
+.shop-order-bill .due dd{color:#8a6110;font-weight:700}
+.shop-order-meta{margin:0;font-size:13px;color:var(--ink-faint)}
+.shop-order-actions{display:flex;flex-wrap:wrap;gap:10px}
+@media(max-width:600px){
+  .shop-order{padding-top:24px}
+  .shop-order-pay .actions,.shop-order-pay .actions a,.shop-order-pay .actions button{width:100%}
+  .shop-order-actions a{flex:1}
+}
+
+/* Tagihan online di detail booking staf */
+.pay-links{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.pay-links li{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
+.pay-links li>div{flex:1;min-width:180px;display:flex;flex-direction:column;gap:3px}
+.pay-links small{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.pay-links .ops-link-button{display:inline-flex;align-items:center;gap:5px}
+html[data-theme="light"] .pay-links li{background:#f8faf7;border-color:#dde2dc}

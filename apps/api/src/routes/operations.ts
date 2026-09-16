@@ -4,8 +4,17 @@ import * as ops from "../operations.js";
 import * as content from "../content.js";
 import { addPhoto,maxPhotoSize,orderPhotos,photoIndex,photoTypes,removePhoto } from "../photos.js";
 import * as addons from "../addons.js";
+import { adminPayment,savePaymentSettings,testCredentials } from "../midtrans.js";
+import { bookingIntents,createPaymentLink,expireHolds,recentIntents,refreshIntent } from "../payments.js";
 import { z } from "zod";
 const router=Router();
+router.get("/payments",requireMenu("payments"),(_req,res)=>res.json({settings:adminPayment(),intents:recentIntents(),...ops.localClock()}));
+router.put("/payments/settings",requireMenu("payments"),(req:AuthRequest,res)=>res.json({settings:savePaymentSettings(req.body,req.auth!.sub)}));
+router.post("/payments/test",requireMenu("payments"),async(_req,res)=>res.json(await testCredentials()));
+router.post("/payments/intents/:orderId/refresh",requireMenu("payments"),async(req,res)=>{
+  await refreshIntent(String(req.params.orderId));
+  res.json({settings:adminPayment(),intents:recentIntents()});
+});
 const windowQuery=z.object({date:ops.dateSchema,start:ops.timeSchema,end:z.union([ops.timeSchema,z.literal("24:00")]),booking:z.string().min(1).max(64).optional()})
   .refine(v=>v.start<v.end,"Jam selesai harus setelah jam mulai.");
 router.get("/addons",requireMenu("addons"),(_req,res)=>res.json({addons:addons.manageAddons(),summary:addons.addonSummary(),...ops.localClock()}));
@@ -24,6 +33,7 @@ router.get("/addons/:id/stock",requireMenu("addons"),(req,res)=>res.json({moves:
 router.post("/addons/:id/stock",requireMenu("addons"),(req:AuthRequest,res)=>res.status(201).json(addons.adjustStock(String(req.params.id),req.body,req.auth!.sub)));
 router.get("/context",requireAnyMenu(["bookings","courts"]),(req,res)=>{
   const date=req.query.date===undefined?ops.localClock().date:ops.dateSchema.parse(req.query.date);
+  expireHolds();
   res.json({courts:ops.courts(),maintenance:ops.maintenances(date),price_rules:ops.priceRules(),schedule:ops.bookings(date).filter(b=>b.status!=="cancelled").map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
 });
 router.get("/courts",requireMenu("courts"),(_req,res)=>{
@@ -53,10 +63,12 @@ router.post("/maintenance",requireMenu("courts"),(req:AuthRequest,res)=>res.stat
 router.delete("/maintenance/:id",requireMenu("courts"),(req:AuthRequest,res)=>{ops.removeMaintenance(String(req.params.id),req.auth!.sub);res.status(204).send()});
 router.get("/bookings",requireMenu("bookings"),(req,res)=>{
   const date=req.query.date===undefined?undefined:ops.dateSchema.parse(req.query.date);
+  expireHolds();
   res.json({bookings:ops.bookings(date),...ops.localClock()});
 });
 router.post("/bookings",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json({booking:ops.createBooking(req.body,req.auth!.sub)}));
-router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id),addons:addons.bookingAddons(booking.id)})});
+router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id),addons:addons.bookingAddons(booking.id),intents:bookingIntents(booking.id)})});
+router.post("/bookings/:id/payment-link",requireMenu("bookings"),async(req:AuthRequest,res)=>res.status(201).json({intent:await createPaymentLink(String(req.params.id),req.body,req.auth!.sub)}));
 router.patch("/bookings/:id/status",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.changeBookingStatus(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/payments",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json(ops.recordPayment(String(req.params.id),req.body,req.auth!.sub)));
 router.put("/bookings/:id/addons",requireMenu("bookings"),(req:AuthRequest,res)=>res.json(ops.updateBookingAddons(String(req.params.id),req.body,req.auth!.sub)));

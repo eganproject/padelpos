@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, CalendarDays, Circle, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, WalletCards } from "lucide-react";
+import { Activity, CalendarDays, Circle, CreditCard, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, ApiError, forgetSession } from "@/lib/api";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 export type NavigationMenu = { id:string; name:string; path:string; icon:string; group:string; order:number; active:boolean };
 type NavigationResponse = { menus:NavigationMenu[]; role:{ name:string; slug:string } };
 
-const icons = { Activity, CalendarDays, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, WalletCards };
+const icons = { Activity, CalendarDays, CreditCard, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, WalletCards };
 
 export function useAdminNavigation() {
   const [navigation, setNavigation] = useState<NavigationResponse>({ menus: [], role: { name: "", slug: "" } });
