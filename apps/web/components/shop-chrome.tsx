@@ -2,20 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AtSign, CalendarDays, Clock3, Mail, MapPin, MessageCircle, Phone } from "lucide-react";
+import { AtSign, CalendarDays, Clock3, Mail, MapPin, MessageCircle, Phone, ShoppingBag } from "lucide-react";
 import { useVenueInfo } from "@/lib/use-venue-info";
+import { useCart } from "@/lib/cart";
 import { formatWhatsapp, hasPolicies, whatsappLink } from "@/lib/venue-info";
 
 /** Navigasi atas. Tautan Lokasi dan FAQ hanya muncul bila admin sudah mengisinya. */
 export function ShopNav() {
   const { data } = useVenueInfo();
   const pathname = usePathname();
+  const cart = useCart();
   const hasLocation = !!data?.info.address;
   return (
     <nav className="shop-nav" aria-label="Navigasi utama">
       <Link href="/#lapangan" className="link">Lapangan</Link>
       {hasLocation && <Link href="/#lokasi" className="link">Lokasi</Link>}
       {!!data?.faqs.length && <Link href="/faq" className="link" aria-current={pathname === "/faq" ? "page" : undefined}>FAQ</Link>}
+      <Link href="/keranjang" className="shop-cart-button" aria-current={pathname === "/keranjang" ? "page" : undefined}
+        aria-label={cart.length ? `Keranjang, ${cart.length} sesi` : "Keranjang, masih kosong"}>
+        <ShoppingBag size={17} aria-hidden="true" />
+        <span className="long">Keranjang</span>
+        {cart.length > 0 && <em aria-hidden="true">{cart.length}</em>}
+      </Link>
       <Link href="/ketersediaan" className="primary" aria-current={pathname === "/ketersediaan" ? "page" : undefined}>
         <CalendarDays size={16} aria-hidden="true" />
         <span className="long">Cek ketersediaan</span>

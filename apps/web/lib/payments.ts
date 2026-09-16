@@ -18,12 +18,16 @@ export type PaymentIntent = {
   environment: string; expires_at: number; created_at: string; updated_at: string; raw_status: string | null;
 };
 export type AdminIntent = PaymentIntent & { customer: string; date: string; start_time: string; end_time: string; booking_status: string; court_name: string };
+export type OrderSession = {
+  id: string; code: string; court_name: string; date: string; start_time: string; end_time: string;
+  status: string; court_total: number; total: number; paid: number; cancel_reason: string;
+  addons: { name: string; quantity: number; subtotal: number }[];
+};
 export type OrderView = {
   order: {
-    id: string; code: string; court_name: string; date: string; start_time: string; end_time: string;
-    customer: string; phone: string; status: string; total: number; court_total: number; paid: number;
-    notes: string; cancel_reason: string; created_at: string;
-    addons: { name: string; quantity: number; subtotal: number }[];
+    id: string; code: string; customer: string; phone: string; status: string;
+    total: number; paid: number; notes: string; created_at: string;
+    sessions: OrderSession[];
   };
   payment: { order_id: string; status: IntentStatus; amount: number; kind: "booking" | "tagihan"; redirect_url: string | null; expires_at: number; payment_type: string | null; updated_at: string } | null;
 };
@@ -48,12 +52,17 @@ export function countdown(expiresAt: number, now: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export type CheckoutBody = {
-  court_id: string; date: string; start_time: string; end_time: string;
-  customer: string; phone: string; email: string; notes: string;
-  addons: { addon_id: string; quantity: number }[];
+export type CartLine = { court_id: string; date: string; start_time: string; end_time: string; addons: { addon_id: string; quantity: number }[] };
+export type CheckoutBody = { items: CartLine[]; customer: string; phone: string; email: string; notes: string };
+export type CheckoutResult = { order_id: string; code: string; transaction_id: string; sessions: number; amount: number; total: number; expires_at: number; redirect_url: string; token: string };
+/** Hasil pemeriksaan keranjang oleh server: harga terbaru dan alasan bila satu sesi tidak bisa dipesan. */
+export type CartQuoteItem = {
+  index: number; court_id: string; court_name: string; date: string; start_time: string; end_time: string;
+  ok: boolean; reason?: string; court_total: number; total: number;
+  addons: { addon_id: string; name: string; quantity: number; unit_price: number; pricing: "per_booking" | "per_hour"; subtotal: number; ok: boolean }[];
 };
-export type CheckoutResult = { booking_id: string; code: string; order_id: string; amount: number; total: number; expires_at: number; redirect_url: string; token: string };
+export type CartQuote = { items: CartQuoteItem[]; total: number; amount: number };
+export const quoteCart = (items: CartLine[]) => api<CartQuote>("/public/cart/quote", { method: "POST", body: JSON.stringify({ items }) });
 export const startCheckout = (body: CheckoutBody) => api<CheckoutResult>("/public/checkout", { method: "POST", body: JSON.stringify(body) });
 export const fetchOrder = (id: string) => api<OrderView>(`/public/orders/${encodeURIComponent(id)}`);
 export const refreshOrder = (id: string) => api<OrderView>(`/public/orders/${encodeURIComponent(id)}/refresh`, { method: "POST", body: "{}" });

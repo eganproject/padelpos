@@ -6,7 +6,7 @@ import { content } from "../content.js";
 import { photoFile } from "../photos.js";
 import { publicAddons } from "../addons.js";
 import { publicPayment } from "../midtrans.js";
-import { createCheckout, expireHolds, handleNotification, orderView, refreshOrder } from "../payments.js";
+import { createCheckout, expireHolds, handleNotification, orderView, quoteCart, refreshOrder } from "../payments.js";
 import { check } from "../errors.js";
 
 const router = Router();
@@ -71,6 +71,9 @@ router.get("/addons", (req, res) => {
     .refine(v => v.start < v.end, "Jam selesai harus setelah jam mulai.").parse(req.query);
   res.json({ addons: publicAddons({ date, start, end }) });
 });
+
+/** Periksa isi keranjang: harga terbaru, ketersediaan slot, dan stok tambahan. */
+router.post("/cart/quote", (req, res) => res.json(quoteCart(req.body)));
 
 /** Pesan dan bayar online. Dibatasi lebih ketat karena setiap panggilan mengunci satu slot. */
 router.post("/checkout", rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false, message: { message: "Terlalu banyak percobaan pemesanan. Coba lagi sebentar lagi." } }), async (req, res) => {

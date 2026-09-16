@@ -1,10 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
-import { minutes } from "./clock.js";
-import { applyLines, bookingAddons, releaseAddons } from "./addons.js";
-import { closeSchema, dateSchema, ensureSlot, getBooking, priceRules, quote, timeSchema, type Booking } from "./operations.js";
+import { localClock, minutes } from "./clock.js";
+import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
+import { closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, timeSchema, type Booking } from "./operations.js";
 import {
   createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod,
   payableAmount, signatureFor, signatureMatches, type MidtransStatus, type Outcome,
@@ -12,30 +12,39 @@ import {
 import { publicUrl } from "./config.js";
 
 /**
- * Pembayaran online lewat Midtrans Snap.
+ * Pemesanan online lewat Midtrans Snap, dengan keranjang.
  *
- * Alur pelanggan: pilih jadwal -> booking berstatus `pending` dengan `hold_expires_at`, sehingga
- * slotnya terkunci oleh trigger jadwal -> halaman pembayaran Snap -> webhook Midtrans mengubah
- * booking menjadi `confirmed` dan mencatat pembayaran. Bila tidak dibayar sampai batas waktu,
- * booking menjadi `expired`, slot terbuka lagi, dan stok barang jual kembali.
+ * Satu pesanan (`orders`) berisi satu atau beberapa sesi. Setiap sesi tetap menjadi satu booking
+ * tersendiri agar jadwal, tambahan, dan pembayarannya tercatat seperti booking biasa. Seluruh sesi
+ * dibuat dalam satu transaksi: bila satu jam keburu diambil orang lain, tidak ada yang tersimpan.
  *
- * Staf juga dapat membuat link tagihan untuk booking yang sudah berjalan (kind `tagihan`);
+ * Booking berstatus `pending` mengunci slotnya lewat trigger jadwal sampai `hold_expires_at`.
+ * Setelah pembayaran masuk, webhook mengonfirmasi semua sesi dan mencatat pembayaran per sesi.
+ *
+ * Staf juga dapat membuat link tagihan untuk satu booking yang sudah berjalan (kind `tagihan`);
  * link itu hanya mencatat pembayaran, tidak mengubah status booking.
  */
 export interface PaymentIntent {
-  order_id: string; booking_id: string; amount: number; kind: "booking" | "tagihan"; status: Outcome;
+  order_id: string; booking_id: string; order_ref: string | null; amount: number; kind: "booking" | "tagihan"; status: Outcome;
   snap_token: string | null; redirect_url: string | null; payment_type: string | null; transaction_id: string | null;
   environment: string; expires_at: number; created_by: string | null; created_at: string; updated_at: string; raw_status: string | null;
+}
+export interface Order {
+  id: string; code: string; customer_id: string | null; customer: string; phone: string;
+  email: string; notes: string; total: number; created_at: string;
 }
 export const bookingCode = (id: string) => id.slice(0, 8).toUpperCase();
 const intentOf = (orderId: string) => db.prepare("SELECT * FROM payment_intents WHERE order_id=?").get(orderId) as unknown as PaymentIntent | undefined;
 export const bookingIntents = (bookingId: string) =>
   db.prepare("SELECT * FROM payment_intents WHERE booking_id=? ORDER BY created_at DESC").all(bookingId) as unknown as PaymentIntent[];
-/** Transaksi terbaru untuk panel admin, lengkap dengan data booking-nya. */
+const orderBookings = (orderId: string) =>
+  db.prepare("SELECT id FROM bookings WHERE order_id=? ORDER BY date,start_time").all(orderId).map(row => getBooking((row as { id: string }).id));
+/** Transaksi terbaru untuk panel admin, lengkap dengan data booking pertamanya. */
 export const recentIntents = (limit = 30) =>
-  db.prepare(`SELECT i.*,b.customer,b.date,b.start_time,b.end_time,b.status booking_status,c.name court_name
+  db.prepare(`SELECT i.*,b.customer,b.date,b.start_time,b.end_time,b.status booking_status,c.name court_name,
+      (SELECT count(*) FROM bookings WHERE order_id=i.order_ref) sessions
     FROM payment_intents i JOIN bookings b ON b.id=i.booking_id JOIN courts c ON c.id=b.court_id
-    ORDER BY i.created_at DESC LIMIT ?`).all(limit) as unknown as (PaymentIntent & { customer: string; date: string; start_time: string; end_time: string; booking_status: string; court_name: string })[];
+    ORDER BY i.created_at DESC LIMIT ?`).all(limit) as unknown as (PaymentIntent & { customer: string; date: string; start_time: string; end_time: string; booking_status: string; court_name: string; sessions: number })[];
 
 /**
  * Booking yang batas bayarnya lewat dilepas: slot terbuka kembali dan stok barang jual dikembalikan.
@@ -56,15 +65,84 @@ export function expireHolds() {
   });
 }
 
-export const checkoutSchema = z.object({
+const addonPick = z.object({ addon_id: z.string().min(1).max(64), quantity: z.number().int().min(1).max(99) });
+export const cartItemSchema = z.object({
   court_id: z.string().min(1),
   date: dateSchema, start_time: timeSchema, end_time: closeSchema,
+  addons: z.array(addonPick).max(20).default([]),
+});
+export const maxCartItems = 6;
+export const checkoutSchema = z.object({
+  items: z.array(cartItemSchema).min(1, "Keranjang masih kosong.").max(maxCartItems, `Maksimal ${maxCartItems} sesi dalam satu pesanan.`),
   customer: z.string().trim().min(2, "Isi nama pemesan.").max(80),
   phone: z.string().trim().min(9, "Nomor telepon tidak valid.").max(18),
   email: z.union([z.email("Email tidak valid."), z.literal("")]).default(""),
   notes: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
-  addons: z.array(z.object({ addon_id: z.string().min(1).max(64), quantity: z.number().int().min(1).max(99) })).max(20).default([]),
 });
+export const cartSchema = z.object({ items: z.array(cartItemSchema).max(maxCartItems) });
+type CartItem = z.infer<typeof cartItemSchema>;
+
+const label = (item: { date: string; start_time: string; end_time: string }, courtName: string) =>
+  `${courtName} pukul ${item.start_time}–${item.end_time} pada ${item.date}`;
+const overlapping = (a: CartItem, b: CartItem) =>
+  a.court_id === b.court_id && a.date === b.date && a.start_time < b.end_time && a.end_time > b.start_time;
+/** Slot yang sudah dipegang booking lain atau sedang dirawat. */
+function slotTaken(item: CartItem) {
+  const busy = db.prepare(`SELECT 1 FROM bookings WHERE court_id=? AND date=? AND start_time<? AND end_time>?
+    AND (status IN ('confirmed','completed') OR (status='pending' AND hold_expires_at>unixepoch())) LIMIT 1`)
+    .get(item.court_id, item.date, item.end_time, item.start_time);
+  if (busy) return "sudah dipesan orang lain";
+  const care = maintenances(item.date).some(entry => entry.court_id === item.court_id && entry.start_time < item.end_time && entry.end_time > item.start_time);
+  return care ? "sedang dijadwalkan perawatan" : "";
+}
+
+/**
+ * Periksa keranjang sebelum bayar: harga terbaru, ketersediaan slot, dan stok tambahan.
+ * Tidak mengubah apa pun, jadi aman dipanggil setiap kali halaman keranjang dibuka.
+ */
+export function quoteCart(input: unknown) {
+  const { items } = cartSchema.parse(input);
+  expireHolds();
+  const rules = priceRules();
+  const catalog = publicAddons();
+  const now = localClock();
+  const results = items.map((item, index) => {
+    const duration = minutes(item.end_time) - minutes(item.start_time);
+    const court = db.prepare("SELECT id,name,hourly_rate,opens_at,closes_at,active FROM courts WHERE id=?").get(item.court_id) as
+      { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; active: number } | undefined;
+    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time };
+    if (!court || !court.active) return { ...base, ok: false, reason: "Lapangan ini sedang tidak tersedia.", court_total: 0, total: 0, addons: [] };
+    // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat.
+    if (item.date < now.date || (item.date === now.date && item.start_time <= now.time))
+      return { ...base, ok: false, reason: "Jam main ini sudah lewat.", court_total: 0, total: 0, addons: [] };
+    if (duration < 60 || duration > 180) return { ...base, ok: false, reason: "Durasi main antara 1 sampai 3 jam.", court_total: 0, total: 0, addons: [] };
+    if (item.start_time < court.opens_at || item.end_time > court.closes_at)
+      return { ...base, ok: false, reason: "Jam itu di luar jam operasional lapangan.", court_total: 0, total: 0, addons: [] };
+    const clash = items.findIndex((other, position) => position !== index && overlapping(item, other));
+    if (clash >= 0 && clash < index) return { ...base, ok: false, reason: "Sesi ini bertabrakan dengan sesi lain di keranjang.", court_total: 0, total: 0, addons: [] };
+    const taken = slotTaken(item);
+    const courtTotal = quote(court, rules, item.date, item.start_time, item.end_time);
+    const addons = item.addons.map(pick => {
+      const option = catalog.find(entry => entry.id === pick.addon_id);
+      const quantity = option ? Math.min(pick.quantity, option.max_per_booking) : 0;
+      const subtotal = option ? (option.pricing === "per_hour" ? Math.round(option.price * quantity * duration / 60) : option.price * quantity) : 0;
+      return {
+        addon_id: pick.addon_id, name: option?.name ?? "Item tidak tersedia", quantity,
+        unit_price: option?.price ?? 0, pricing: option?.pricing ?? "per_booking", subtotal,
+        ok: !!option && quantity === pick.quantity,
+      };
+    });
+    const total = courtTotal + addons.reduce((sum, line) => sum + line.subtotal, 0);
+    return {
+      ...base, ok: !taken && addons.every(line => line.ok),
+      reason: taken ? `Jam ini ${taken}.` : addons.some(line => !line.ok) ? "Ada tambahan yang stoknya tidak mencukupi." : "",
+      court_total: courtTotal, total, addons,
+    };
+  });
+  const total = results.filter(item => item.ok).reduce((sum, item) => sum + item.total, 0);
+  const config = paymentConfig();
+  return { items: results, total, amount: results.filter(item => item.ok).reduce((sum, item) => sum + payableAmount(item.total, config), 0) };
+}
 
 /** 08xx dan +62xx disimpan seragam sebagai 62xx agar pelanggan lama dikenali. */
 function normalizePhone(value: string) {
@@ -82,85 +160,116 @@ function upsertCustomer(name: string, phone: string, email: string) {
   db.prepare("INSERT INTO customers (id,name,phone,email,created_at) VALUES (?,?,?,?,?)").run(id, name, normalized, email || null, new Date().toISOString());
   return id;
 }
+/** Kode pendek yang mudah dibacakan lewat telepon. */
+function newOrderCode() {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const code = "PDX-" + [...randomBytes(6)].map(byte => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[byte % 32]).join("");
+    if (!db.prepare("SELECT 1 FROM orders WHERE code=?").get(code)) return code;
+  }
+  return "PDX-" + Date.now().toString(36).toUpperCase();
+}
 
 /** Rincian item untuk halaman Midtrans; jumlahnya wajib sama persis dengan nominal tagihan. */
-function itemsFor(booking: Booking, amount: number) {
-  if (amount !== booking.total)
-    return [{ id: "dp", price: amount, quantity: 1, name: `DP ${booking.court_name}`.slice(0, 50) }];
-  const items = [
-    { id: "lapangan", price: booking.court_total, quantity: 1, name: `Sewa ${booking.court_name}`.slice(0, 50) },
-    ...bookingAddons(booking.id).map(line => ({
-      id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50),
-    })),
-  ];
+function itemsFor(bookings: Booking[], amount: number, full: boolean) {
+  const items = full
+    ? bookings.flatMap(booking => [
+      { id: `court-${booking.id.slice(0, 8)}`, price: booking.court_total, quantity: 1, name: `${booking.court_name} ${booking.start_time}-${booking.end_time}`.slice(0, 50) },
+      ...bookingAddons(booking.id).map(line => ({
+        id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50),
+      })),
+    ])
+    : bookings.map(booking => ({
+      id: `dp-${booking.id.slice(0, 8)}`, price: payableAmount(booking.total, paymentConfig()), quantity: 1,
+      name: `DP ${booking.court_name} ${booking.start_time}`.slice(0, 50),
+    }));
   // Harga per jam yang dibagi rata bisa menyisakan selisih rupiah; catat sebagai penyesuaian.
   const sum = items.reduce((total, item) => total + item.price * item.quantity, 0);
   if (sum !== amount) items.push({ id: "penyesuaian", price: amount - sum, quantity: 1, name: "Penyesuaian pembulatan" });
   return items;
 }
-async function openSnap(booking: Booking, intent: PaymentIntent, email: string, expiryMinutes: number) {
+async function openSnap(bookings: Booking[], intent: PaymentIntent, contact: { name: string; phone: string; email: string }, expiryMinutes: number, full: boolean) {
   const snap = await createSnapTransaction({
     transaction_details: { order_id: intent.order_id, gross_amount: intent.amount },
-    item_details: itemsFor(booking, intent.amount),
-    customer_details: { first_name: booking.customer.slice(0, 20), phone: booking.phone.slice(0, 19), ...(email ? { email: email.slice(0, 45) } : {}) },
+    item_details: itemsFor(bookings, intent.amount, full),
+    customer_details: { first_name: contact.name.slice(0, 20), phone: contact.phone.slice(0, 19), ...(contact.email ? { email: contact.email.slice(0, 45) } : {}) },
     // Tanpa start_time, Midtrans memakai waktu transaksi sebagai awal hitungan.
     expiry: { unit: "minute", duration: expiryMinutes },
-    callbacks: { finish: `${publicUrl}/pesanan/${booking.id}` },
+    callbacks: { finish: `${publicUrl}/pesanan/${intent.order_ref ?? bookings[0].id}` },
   });
   db.prepare("UPDATE payment_intents SET snap_token=?,redirect_url=?,updated_at=? WHERE order_id=?")
     .run(snap.token, snap.redirect_url, new Date().toISOString(), intent.order_id);
   return snap;
 }
-const newOrderId = (bookingId: string) => `PDX-${bookingCode(bookingId)}-${Date.now().toString(36).toUpperCase()}`;
-function insertIntent(bookingId: string, amount: number, kind: "booking" | "tagihan", expiresAt: number, actor: string | null) {
-  const stamp = new Date().toISOString(), orderId = newOrderId(bookingId);
-  db.prepare("INSERT INTO payment_intents (order_id,booking_id,amount,kind,status,environment,expires_at,created_by,created_at,updated_at) VALUES (?,?,?,?,'pending',?,?,?,?,?)")
-    .run(orderId, bookingId, amount, kind, paymentConfig().environment, expiresAt, actor, stamp, stamp);
+const newTransactionId = (reference: string) => `PDX-${reference.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+function insertIntent(bookingId: string, orderRef: string | null, amount: number, kind: "booking" | "tagihan", expiresAt: number, actor: string | null) {
+  const stamp = new Date().toISOString(), orderId = newTransactionId(orderRef ?? bookingId);
+  db.prepare("INSERT INTO payment_intents (order_id,booking_id,order_ref,amount,kind,status,environment,expires_at,created_by,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?,?,?,?)")
+    .run(orderId, bookingId, orderRef, amount, kind, paymentConfig().environment, expiresAt, actor, stamp, stamp);
   return intentOf(orderId)!;
 }
 
-/** Pelanggan memesan dan membayar sendiri. Slot terkunci begitu booking pending tersimpan. */
+/** Pelanggan memesan dan membayar sendiri. Seluruh sesi dikunci bersama atau tidak sama sekali. */
 export async function createCheckout(input: unknown) {
   const data = checkoutSchema.parse(input);
   const config = paymentConfig();
   check(config.enabled && config.serverKey, 409, "Pembayaran online belum aktif. Silakan hubungi venue lewat WhatsApp.");
-  const duration = minutes(data.end_time) - minutes(data.start_time);
-  check(duration >= 60 && duration <= 180, 400, "Durasi main antara 1 sampai 3 jam.");
+  for (const [index, item] of data.items.entries()) {
+    const duration = minutes(item.end_time) - minutes(item.start_time);
+    check(duration >= 60 && duration <= 180, 400, "Durasi main antara 1 sampai 3 jam.");
+    const clash = data.items.findIndex((other, position) => position !== index && overlapping(item, other));
+    check(clash < 0, 400, "Ada dua sesi yang bertabrakan di keranjang. Hapus salah satunya.");
+  }
   expireHolds();
 
-  const booking = transaction(() => {
-    const court = ensureSlot(data.court_id, data.date, data.start_time, data.end_time);
-    const total = quote(court, priceRules(), data.date, data.start_time, data.end_time);
+  const { order, bookings } = transaction(() => {
     const customerId = upsertCustomer(data.customer, data.phone, data.email);
-    const id = randomUUID();
-    db.prepare(`INSERT INTO bookings (id,court_id,customer_id,customer,phone,date,start_time,end_time,total,court_total,status,source,hold_expires_at,notes,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,'pending','online',unixepoch()+?,?,?)`)
-      .run(id, data.court_id, customerId, data.customer, data.phone, data.date, data.start_time, data.end_time, total, total, config.hold_minutes * 60, data.notes, new Date().toISOString());
-    if (data.addons.length) applyLines(getBooking(id), data.addons, customerId);
-    audit(customerId, "booking.checkout", id);
-    return getBooking(id);
+    const orderId = randomUUID(), stamp = new Date().toISOString();
+    const created: Booking[] = [];
+    for (const item of data.items) {
+      const court = ensureSlot(item.court_id, item.date, item.start_time, item.end_time);
+      check(!slotTaken(item), 409, `${label(item, court.name)} sudah dipesan orang lain. Hapus sesi itu dari keranjang.`);
+      const total = quote(court, priceRules(), item.date, item.start_time, item.end_time);
+      const id = randomUUID();
+      // Baris pesanan baru dibuat setelah seluruh tagihan diketahui, jadi order_id diisi menyusul.
+      db.prepare(`INSERT INTO bookings (id,court_id,customer_id,customer,phone,date,start_time,end_time,total,court_total,status,source,hold_expires_at,notes,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,'pending','online',unixepoch()+?,?,?)`)
+        .run(id, item.court_id, customerId, data.customer, data.phone, item.date, item.start_time, item.end_time, total, total, config.hold_minutes * 60, data.notes, stamp);
+      if (item.addons.length) applyLines(getBooking(id), item.addons, customerId);
+      created.push(getBooking(id));
+    }
+    const total = created.reduce((sum, booking) => sum + booking.total, 0);
+    db.prepare("INSERT INTO orders (id,code,customer_id,customer,phone,email,notes,total,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(orderId, newOrderCode(), customerId, data.customer, data.phone, data.email, data.notes, total, stamp);
+    for (const booking of created) db.prepare("UPDATE bookings SET order_id=? WHERE id=?").run(orderId, booking.id);
+    audit(customerId, "order.checkout", orderId);
+    return { order: db.prepare("SELECT * FROM orders WHERE id=?").get(orderId) as unknown as Order, bookings: created };
   });
 
-  const intent = insertIntent(booking.id, payableAmount(booking.total, config), "booking", booking.hold_expires_at!, null);
+  const amount = bookings.reduce((sum, booking) => sum + payableAmount(booking.total, config), 0);
+  const intent = insertIntent(bookings[0].id, order.id, amount, "booking", bookings[0].hold_expires_at!, null);
   try {
-    const snap = await openSnap(booking, intent, data.email, config.hold_minutes);
+    const snap = await openSnap(bookings, intent, { name: data.customer, phone: data.phone, email: data.email }, config.hold_minutes, config.mode === "full");
     return {
-      booking_id: booking.id, code: bookingCode(booking.id), order_id: intent.order_id,
-      amount: intent.amount, total: booking.total, expires_at: booking.hold_expires_at,
+      order_id: order.id, code: order.code, transaction_id: intent.order_id, sessions: bookings.length,
+      amount, total: order.total, expires_at: bookings[0].hold_expires_at,
       redirect_url: snap.redirect_url, token: snap.token,
     };
   } catch (error) {
     // Halaman pembayaran gagal dibuat: slot tidak boleh ikut tertahan.
     transaction(() => {
       db.prepare("UPDATE payment_intents SET status='failed',updated_at=? WHERE order_id=?").run(new Date().toISOString(), intent.order_id);
-      db.prepare("UPDATE bookings SET status='expired' WHERE id=? AND status='pending'").run(booking.id);
-      releaseAddons(booking.id, "sistem");
+      for (const booking of bookings) {
+        db.prepare("UPDATE bookings SET status='expired' WHERE id=? AND status='pending'").run(booking.id);
+        releaseAddons(booking.id, "sistem");
+      }
     });
-    throw error;
+    // Pesan asli Midtrans berguna untuk admin, tetapi membingungkan pelanggan.
+    console.error("Snap gagal untuk pesanan", order.code, (error as Error).message);
+    check(false, 502, "Pembayaran lewat Midtrans belum dapat dimulai. Coba lagi sebentar lagi atau hubungi venue.");
   }
 }
 
-/** Staf membuat link pembayaran untuk sisa tagihan booking yang sudah ada. */
+/** Staf membuat link pembayaran untuk sisa tagihan satu booking yang sudah ada. */
 export async function createPaymentLink(bookingId: string, input: unknown, actor: string) {
   const { amount: requested } = z.object({ amount: z.number().int().positive().max(240000000).optional() }).parse(input ?? {});
   const config = paymentConfig();
@@ -173,8 +282,8 @@ export async function createPaymentLink(bookingId: string, input: unknown, actor
   check(amount >= 1000, 400, "Nominal minimal Rp1.000.");
   check(amount <= remaining, 400, "Nominal melebihi sisa tagihan.");
   const hours = 24;
-  const intent = insertIntent(booking.id, amount, "tagihan", Math.floor(Date.now() / 1000) + hours * 3600, actor);
-  const snap = await openSnap(booking, intent, "", hours * 60);
+  const intent = insertIntent(booking.id, null, amount, "tagihan", Math.floor(Date.now() / 1000) + hours * 3600, actor);
+  const snap = await openSnap([booking], intent, { name: booking.customer, phone: booking.phone, email: "" }, hours * 60, amount === booking.total);
   audit(actor, "payment.link", booking.id);
   return { ...intentOf(intent.order_id)!, redirect_url: snap.redirect_url };
 }
@@ -190,35 +299,46 @@ const notificationSchema = z.object({
   payment_type: z.string().max(40).optional(),
 });
 
-/** Terapkan status dari Midtrans ke intent dan booking-nya. Idempoten: notifikasi ganda aman. */
+/** Terapkan status dari Midtrans ke intent dan seluruh sesi pesanannya. Idempoten. */
 function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
   const outcome = outcomeOf(status);
   return transaction(() => {
     const stamp = new Date().toISOString();
     db.prepare("UPDATE payment_intents SET status=?,payment_type=?,transaction_id=?,raw_status=?,updated_at=? WHERE order_id=?")
       .run(outcome, status.payment_type ?? intent.payment_type, status.transaction_id ?? intent.transaction_id, status.transaction_status ?? intent.raw_status, stamp, intent.order_id);
-    const booking = getBooking(intent.booking_id);
+    const bookings = intent.order_ref ? orderBookings(intent.order_ref) : [getBooking(intent.booking_id)];
+    const config = paymentConfig();
     if (outcome === "paid") {
       const reference = status.transaction_id ?? intent.order_id;
-      if (!db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(reference)) {
-        db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,'payment',?,'gateway',?,?,?)")
-          .run(randomUUID(), booking.id, intent.amount, paymentMethod(status.payment_type), reference, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
-      }
-      if (booking.status === "pending") {
-        try {
-          db.prepare("UPDATE bookings SET status='confirmed',hold_expires_at=NULL WHERE id=?").run(booking.id);
-        } catch {
-          // Slot keburu terisi booking lain: pembayaran tetap tercatat agar staf bisa mengembalikannya.
-          db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=?")
-            .run("Slot keburu terisi setelah pembayaran masuk. Dana perlu dikembalikan.", booking.id);
-          releaseAddons(booking.id, "midtrans");
+      // Satu pembayaran Midtrans dibagi ke tiap sesi agar pembukuan per booking tetap utuh.
+      const shares = bookings.length === 1
+        ? [intent.amount]
+        : bookings.map(booking => payableAmount(booking.total, config));
+      bookings.forEach((booking, index) => {
+        const key = `${reference}:${booking.id.slice(0, 8)}`;
+        if (!db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(key)) {
+          db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,'payment',?,'gateway',?,?,?)")
+            .run(randomUUID(), booking.id, shares[index], paymentMethod(status.payment_type), key, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
         }
+        if (booking.status === "pending") {
+          try {
+            db.prepare("UPDATE bookings SET status='confirmed',hold_expires_at=NULL WHERE id=?").run(booking.id);
+          } catch {
+            // Slot keburu terisi booking lain: pembayaran tetap tercatat agar staf bisa mengembalikannya.
+            db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=?")
+              .run("Slot keburu terisi setelah pembayaran masuk. Dana perlu dikembalikan.", booking.id);
+            releaseAddons(booking.id, "midtrans");
+          }
+        }
+      });
+      audit("midtrans", "payment.settled", intent.order_ref ?? intent.booking_id);
+    } else if (outcome !== "pending" && intent.kind === "booking") {
+      for (const booking of bookings) {
+        if (booking.status !== "pending") continue;
+        db.prepare("UPDATE bookings SET status='expired' WHERE id=?").run(booking.id);
+        releaseAddons(booking.id, "midtrans");
       }
-      audit("midtrans", "payment.settled", booking.id);
-    } else if (outcome !== "pending" && intent.kind === "booking" && booking.status === "pending") {
-      db.prepare("UPDATE bookings SET status='expired' WHERE id=?").run(booking.id);
-      releaseAddons(booking.id, "midtrans");
-      audit("midtrans", "payment." + outcome, booking.id);
+      audit("midtrans", "payment." + outcome, intent.order_ref ?? intent.booking_id);
     }
     return { handled: true, outcome, booking: getBooking(intent.booking_id) };
   });
@@ -246,26 +366,47 @@ export async function refreshIntent(orderId: string) {
   if (!status) { expireHolds(); return { handled: false, outcome: "pending" as Outcome }; }
   return applyStatus(intent, status);
 }
-export async function refreshOrder(bookingId: string) {
-  const [latest] = bookingIntents(bookingId);
-  check(latest, 404, "Pesanan tidak ditemukan.");
-  return refreshIntent(latest.order_id);
+
+/** Pesanan dicari dari id order; id booking lama tetap dilayani agar tautan lama tidak mati. */
+function findOrder(id: string) {
+  const direct = db.prepare("SELECT * FROM orders WHERE id=?").get(id) as unknown as Order | undefined;
+  if (direct) return direct;
+  const booking = db.prepare("SELECT order_id FROM bookings WHERE id=?").get(id) as { order_id: string | null } | undefined;
+  const linked = booking?.order_id ? db.prepare("SELECT * FROM orders WHERE id=?").get(booking.order_id) as unknown as Order | undefined : undefined;
+  check(linked, 404, "Pesanan tidak ditemukan.");
+  return linked;
+}
+const latestIntent = (orderId: string) =>
+  db.prepare("SELECT * FROM payment_intents WHERE order_ref=? ORDER BY created_at DESC LIMIT 1").get(orderId) as unknown as PaymentIntent | undefined;
+
+export async function refreshOrder(id: string) {
+  const order = findOrder(id);
+  const intent = latestIntent(order.id);
+  check(intent, 404, "Pesanan ini belum punya transaksi pembayaran.");
+  return refreshIntent(intent.order_id);
 }
 
-/** Halaman status pesanan pelanggan. Nomor telepon disamarkan karena tautannya bisa diteruskan. */
-export function orderView(bookingId: string) {
+/** Halaman status pesanan. Nomor telepon disamarkan karena tautannya bisa diteruskan. */
+export function orderView(id: string) {
   expireHolds();
-  const booking = getBooking(bookingId);
-  check(booking.source === "online", 404, "Pesanan tidak ditemukan.");
-  const [intent] = bookingIntents(bookingId);
-  const phone = booking.phone.replace(/\d(?=\d{3})/g, "•");
+  const order = findOrder(id);
+  const sessions = orderBookings(order.id);
+  const intent = latestIntent(order.id);
+  const paid = sessions.reduce((sum, booking) => sum + booking.paid, 0);
+  const total = sessions.reduce((sum, booking) => sum + booking.total, 0);
+  const states = new Set(sessions.map(booking => booking.status));
   return {
     order: {
-      id: booking.id, code: bookingCode(booking.id), court_name: booking.court_name, date: booking.date,
-      start_time: booking.start_time, end_time: booking.end_time, customer: booking.customer, phone,
-      status: booking.status, total: booking.total, court_total: booking.court_total, paid: booking.paid,
-      notes: booking.notes, cancel_reason: booking.cancel_reason, created_at: booking.created_at,
-      addons: bookingAddons(bookingId).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
+      id: order.id, code: order.code, customer: order.customer,
+      phone: order.phone.replace(/\d(?=\d{3})/g, "•"),
+      status: states.size === 1 ? [...states][0] : sessions.some(booking => booking.status === "confirmed") ? "confirmed" : "pending",
+      total, paid, notes: order.notes, created_at: order.created_at,
+      sessions: sessions.map(booking => ({
+        id: booking.id, code: bookingCode(booking.id), court_name: booking.court_name, date: booking.date,
+        start_time: booking.start_time, end_time: booking.end_time, status: booking.status,
+        court_total: booking.court_total, total: booking.total, paid: booking.paid, cancel_reason: booking.cancel_reason,
+        addons: bookingAddons(booking.id).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
+      })),
     },
     payment: intent ? {
       order_id: intent.order_id, status: intent.status, amount: intent.amount, kind: intent.kind,

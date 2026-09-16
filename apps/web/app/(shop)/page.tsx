@@ -264,20 +264,25 @@ export default function ShopLandingPage() {
           </li>
           <li className="shop-step">
             <span>2</span>
-            <h3>Pilih jam dan durasi</h3>
-            <p>Tentukan jam mulai dan lama bermain, lalu tambahkan sewa raket atau bola bila perlu. Total biaya langsung terlihat.</p>
+            <h3>Masukkan ke keranjang</h3>
+            <p>Tentukan jam mulai, lama bermain, dan sewa raket atau bola bila perlu. Beberapa sesi sekaligus boleh masuk satu keranjang.</p>
           </li>
           <li className="shop-step">
             <span>3</span>
-            {info?.whatsapp ? (
+            {venue?.payment.enabled ? (
+              <>
+                <h3>Bayar sekali</h3>
+                <p>Isi data pemesan di keranjang, lalu bayar seluruh sesi sekaligus lewat QRIS, virtual account, e-wallet, atau kartu. Slot dikunci selama pembayaran berlangsung.</p>
+              </>
+            ) : info?.whatsapp ? (
               <>
                 <h3>Kirim ke venue</h3>
-                <p>Kirim pilihan Anda lewat WhatsApp dengan satu ketukan, lalu staf mengonfirmasi slotnya. Pembayaran online segera hadir.</p>
+                <p>Kirim isi keranjang lewat WhatsApp dengan satu ketukan, lalu staf mengonfirmasi slotnya.</p>
               </>
             ) : (
               <>
-                <h3>Bayar online <em className="shop-badge">Segera hadir</em></h3>
-                <p>Selama pembayaran online disiapkan, tunjukkan ringkasan pilihan Anda ke staf venue untuk mengamankan slot.</p>
+                <h3>Tunjukkan ke staf</h3>
+                <p>Bawa daftar di keranjang Anda ke resepsionis venue untuk mengamankan slotnya.</p>
               </>
             )}
           </li>

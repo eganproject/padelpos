@@ -93,9 +93,20 @@ Kunci juga dapat diisi lewat environment (`MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIEN
 `MIDTRANS_IS_PRODUCTION`). Bila diisi, nilai itu yang dipakai dan panel hanya menampilkan statusnya.
 Server key tidak pernah dikirim kembali ke browser.
 
+### Keranjang
+
+Pelanggan dapat mengumpulkan beberapa sesi (lapangan, tanggal, atau jam berbeda) di keranjang, lalu
+membayarnya sekali. Keranjang disimpan di browser pelanggan; server baru menyentuhnya saat checkout,
+jadi tidak ada slot yang terkunci sebelum pembayaran dimulai. Maksimal 6 sesi per pesanan.
+
+Saat checkout, seluruh sesi dibuat dalam satu transaksi: bila satu jam keburu diambil orang lain,
+tidak ada satu pun yang tersimpan dan pelanggan diberi tahu sesi mana yang bermasalah. Setiap sesi
+tetap menjadi booking tersendiri di menu Booking, dan pembayarannya dibagi ke tiap sesi agar
+pembukuan per lapangan tetap utuh.
+
 ### Alur pemesanan online
 
-Pelanggan memilih jadwal dan tambahan, menekan **Bayar online**, lalu diarahkan ke halaman pembayaran
+Pelanggan memilih jadwal dan tambahan, memasukkannya ke keranjang, lalu diarahkan ke halaman pembayaran
 Midtrans (QRIS, virtual account, e-wallet, atau kartu). Booking langsung dibuat berstatus *menunggu
 pembayaran* sehingga slotnya terkunci selama batas waktu yang Anda tentukan. Setelah pembayaran masuk,
 webhook mengubahnya menjadi terkonfirmasi dan mencatat pembayaran. Bila tidak dibayar sampai batas

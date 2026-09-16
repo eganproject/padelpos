@@ -12,6 +12,7 @@ import "./shop.css";
 import "./shop-content.css";
 import "./addons.css";
 import "./payments.css";
+import "./cart.css";
 
 // Variabel ini sudah lama dirujuk seluruh CSS, tetapi fontnya belum pernah dimuat.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });

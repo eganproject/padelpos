@@ -3,17 +3,17 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, CreditCard, Info, Layers, MessageCircle, PackagePlus, RefreshCw, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronDown, Info, Layers, PackagePlus, RefreshCw, ShoppingBag, X } from "lucide-react";
+import { toast } from "sonner";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
 import { CourtCover } from "@/components/photo-gallery";
 import { ShopAddonPicker } from "@/components/shop-addons";
-import { CheckoutModal } from "@/components/checkout-modal";
 import { type AddonOption, fetchAddonOptions, lineTotal, maxFor } from "@/lib/addons";
-import { amountDue } from "@/lib/payments";
+import { addToCart, cartTotal, maxCartItems, useCart } from "@/lib/cart";
 import { minute, timeSlots } from "@/lib/operations";
 import { useVenueInfo } from "@/lib/use-venue-info";
-import { environmentLabel, policySummary, whatsappLink } from "@/lib/venue-info";
+import { environmentLabel, policySummary } from "@/lib/venue-info";
 import {
   addDays, fetchAvailability, floorLabel, formatDay, formatShortDay, priceFor, rangeIsFree, rulesFor, venueNow,
   type Availability, type ShopCourt,
@@ -44,7 +44,7 @@ function AvailabilityView() {
   const [addonOptions, setAddonOptions] = useState<AddonOption[] | null>(null);
   const [picks, setPicks] = useState<Record<string, number>>({});
   const [addonsOpen, setAddonsOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const cart = useCart();
 
   const focusCourt = useCallback((courtId: string) => {
     blocks.current.get(courtId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -147,7 +147,31 @@ function AvailabilityView() {
   const grandTotal = total + extras;
   const payment = venue?.payment;
   const payOnline = !!payment?.enabled;
-  const payNow = payment ? amountDue(payment, grandTotal) : grandTotal;
+  // Slot yang sudah masuk keranjang ditandai agar tidak dipilih dua kali.
+  const cartToday = cart.filter(item => item.date === date);
+  const inCart = (courtId: string, start: string) =>
+    cartToday.some(item => item.court_id === courtId && minute(start) >= minute(item.start_time) && minute(start) < minute(item.end_time));
+  const pickedInCart = !!picked && !!pickedCourt && cartToday.some(item => item.court_id === pickedCourt.id && item.start_time === picked.start);
+
+  function addPickedToCart() {
+    if (!picked || !pickedCourt || !end || !effective) return;
+    const result = addToCart({
+      court_id: pickedCourt.id, court_name: pickedCourt.name, floor: pickedFloor ?? "",
+      date, start_time: picked.start, end_time: end, duration: effective, court_total: total,
+      addons: chosenAddons.map(({ option, quantity }) => ({
+        addon_id: option.id, name: option.name, quantity, unit_price: option.price, pricing: option.pricing,
+      })),
+    });
+    if (result === "ok") {
+      toast.success("Ditambahkan ke keranjang", {
+        description: `${pickedCourt.name} · ${formatShortDay(date)} ${picked.start}–${end}`,
+        action: { label: "Lihat", onClick: () => router.push("/keranjang") },
+      });
+      setPicked(null);
+    } else if (result === "duplicate") toast.info("Sesi ini sudah ada di keranjang.");
+    else if (result === "overlap") toast.error("Jam ini bertabrakan dengan sesi lain di keranjang.");
+    else toast.error(`Keranjang penuh: maksimal ${maxCartItems} sesi dalam satu pesanan.`);
+  }
 
   const info = venue?.info;
   const policyLine = venue ? policySummary(venue.policies) : null;
@@ -159,23 +183,6 @@ function AvailabilityView() {
       ? floors.map(floor => ({ floor, entries: data.courts.filter(entry => (entry.court.floor_id ?? floors[0].id) === floor.id) })).filter(group => group.entries.length)
       : [{ floor: null, entries: data.courts }]
     : [];
-  const message = pickedCourt && picked && end ? [
-    `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin memesan lapangan padel:`,
-    "",
-    `Lapangan: ${pickedCourt.name}${pickedFloor ? ` (${pickedFloor})` : ""}`,
-    `Tanggal: ${formatDay(date)}`,
-    `Jam: ${picked.start}–${end} (${durationLabel(effective)})`,
-    ...(chosenAddons.length ? [
-      `Sewa lapangan: ${money(total)}`,
-      "",
-      "Tambahan:",
-      ...chosenAddons.map(item => `- ${item.quantity}× ${item.option.name}: ${money(item.subtotal)}`),
-      "",
-    ] : []),
-    `Total: ${money(total + extras)}`,
-    "",
-    chosenAddons.length ? "Apakah slot dan tambahan ini masih tersedia?" : "Apakah slot ini masih tersedia?",
-  ].join("\n") : "";
 
   return (
     <section className="shop-section shop-availability-page">
@@ -189,6 +196,14 @@ function AvailabilityView() {
           <span>{refreshing ? "Memperbarui…" : "Perbarui"}</span>
         </button>
       </div>
+
+      {cart.length > 0 && (
+        <Link className="shop-cart-strip" href="/keranjang">
+          <ShoppingBag size={17} aria-hidden="true" />
+          <span><b>{cart.length} sesi</b> di keranjang · {money(cartTotal(cart))}</span>
+          <span className="go">Lihat keranjang <ArrowRight size={15} aria-hidden="true" /></span>
+        </Link>
+      )}
 
       <div className="shop-days" role="group" aria-label="Pilih tanggal">
         {days.map(value => {
@@ -246,6 +261,7 @@ function AvailabilityView() {
             <span><i className="busy" />Sudah dipesan</span>
             <span><i className="care" />Perawatan</span>
             {anySpecial && <span><i className="special" />Tarif khusus</span>}
+            {cartToday.length > 0 && <span><i className="incart" />Di keranjang</span>}
           </div>
 
           {groups.map(group => (
@@ -299,17 +315,18 @@ function AvailabilityView() {
                     <div className="shop-slots">
                       {shown.map(slot => {
                         const chosen = covered(court.id, slot.start);
+                        const booked = inCart(court.id, slot.start);
                         const special = slot.state === "available" && !!slot.rule;
                         const label = slot.state === "booked" ? "sudah dipesan" : slot.state === "maintenance" ? "sedang perawatan" : "tersedia";
                         return (
                           <button
                             key={slot.start}
                             type="button"
-                            className={`shop-slot ${chosen ? "picked" : slot.state}${special ? " special" : ""}`}
+                            className={`shop-slot ${chosen ? "picked" : slot.state}${special ? " special" : ""}${booked ? " incart" : ""}`}
                             disabled={slot.state !== "available"}
                             aria-pressed={chosen}
                             title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
-                            aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : label}${special ? `, tarif ${slot.rule} ${money(slot.rate)} per jam` : ""}`}
+                            aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : booked ? "sudah di keranjang" : label}${special ? `, tarif ${slot.rule} ${money(slot.rate)} per jam` : ""}`}
                             onClick={() => { setNotice(""); setPicked({ courtId: court.id, start: slot.start }); setDuration(60); }}
                           >
                             {slot.start}
@@ -349,28 +366,19 @@ function AvailabilityView() {
           </div>
           <div className="pay">
             <span className="total">{money(grandTotal)}</span>
-            {payOnline ? (
-              <>
-                <button className="shop-cta" type="button" onClick={() => setCheckoutOpen(true)} aria-describedby="catatan-bayar">
-                  <CreditCard size={18} aria-hidden="true" /> Bayar online
-                </button>
-                {info?.whatsapp && message && (
-                  <a className="shop-ghost small" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
-                    <MessageCircle size={16} aria-hidden="true" /> Tanya dulu
-                  </a>
-                )}
-              </>
-            ) : info?.whatsapp && message ? (
-              <a className="shop-cta" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener" aria-describedby="catatan-bayar">
-                <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
-              </a>
+            {pickedInCart ? (
+              <Link className="shop-cta" href="/keranjang" aria-describedby="catatan-bayar">
+                <ShoppingBag size={18} aria-hidden="true" /> Sudah di keranjang · Lihat
+              </Link>
             ) : (
-              <button className="shop-cta" type="button" disabled aria-describedby="catatan-bayar">Lanjut ke pembayaran</button>
+              <button className="shop-cta" type="button" onClick={addPickedToCart} aria-describedby="catatan-bayar">
+                <ShoppingBag size={18} aria-hidden="true" /> Tambah ke keranjang
+              </button>
             )}
             <small id="catatan-bayar">
               {payOnline
-                ? `Slot dikunci ${payment!.hold_minutes} menit setelah Anda menekan bayar. ${payNow < grandTotal ? `Bayar ${money(payNow)} sekarang, sisanya di venue.` : "Bayar lewat QRIS, virtual account, e-wallet, atau kartu."}`
-                : info?.whatsapp ? "Slot belum terkunci sampai dikonfirmasi staf. Pembayaran online segera hadir." : "Pembayaran online segera hadir. Tunjukkan ringkasan ini ke staf venue."}
+                ? "Pilih sesi lain bila perlu, lalu bayar semuanya sekaligus dari keranjang."
+                : info?.whatsapp ? "Kumpulkan sesi di keranjang, lalu kirim ke staf lewat WhatsApp." : "Kumpulkan sesi di keranjang, lalu tunjukkan ke staf venue."}
               {policyLine && <> <Link href="/kebijakan#pembatalan">{policyLine}.</Link></>}
             </small>
           </div>
@@ -390,19 +398,6 @@ function AvailabilityView() {
         </div>
       )}
 
-      {checkoutOpen && payment && picked && pickedCourt && end && effective && (
-        <CheckoutModal
-          payment={payment}
-          booking={{
-            court_id: pickedCourt.id, court_name: pickedCourt.name, floor: pickedFloor,
-            date, dateLabel: formatDay(date), start_time: picked.start, end_time: end,
-            durationLabel: durationLabel(effective), courtTotal: total, total: grandTotal,
-            picks: chosenAddons.map(item => ({ addon_id: item.option.id, name: item.option.name, quantity: item.quantity, subtotal: item.subtotal })),
-          }}
-          onClose={() => setCheckoutOpen(false)}
-          onTaken={() => { setCheckoutOpen(false); setPicked(null); void load(date, true); }}
-        />
-      )}
     </section>
   );
 }

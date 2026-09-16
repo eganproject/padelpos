@@ -17,6 +17,8 @@ const statusCopy: Record<string, { title: string; tone: string; note: string }> 
   expired: { title: "Waktu pembayaran habis", tone: "off", note: "Slot sudah dilepas. Silakan pilih jadwal lain." },
   cancelled: { title: "Pesanan dibatalkan", tone: "off", note: "Hubungi venue bila ada dana yang perlu dikembalikan." },
 };
+const sessionTone: Record<string, string> = { pending: "wait", confirmed: "on", completed: "done", expired: "off", cancelled: "off" };
+const sessionLabel: Record<string, string> = { pending: "Menunggu bayar", confirmed: "Dikonfirmasi", completed: "Selesai", expired: "Kedaluwarsa", cancelled: "Dibatalkan" };
 
 export default function OrderPage() {
   const { id } = useParams<{ id: string }>();
@@ -44,9 +46,9 @@ export default function OrderPage() {
   const waiting = data?.payment?.status === "pending" && data.order.status === "pending";
   useEffect(() => {
     if (!waiting) return;
-    const timer = window.setInterval(() => { setNow(Date.now()); void check(); }, 15000);
+    const poll = window.setInterval(() => void check(), 15000);
     const ticker = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => { window.clearInterval(timer); window.clearInterval(ticker); };
+    return () => { window.clearInterval(poll); window.clearInterval(ticker); };
   }, [waiting, check]);
 
   const order = data?.order;
@@ -55,7 +57,9 @@ export default function OrderPage() {
   const copy = order ? statusCopy[order.status] ?? statusCopy.pending : null;
   const remaining = order ? order.total - order.paid : 0;
   const timeLeft = payment && waiting ? countdown(payment.expires_at, now) : "";
-  const message = order ? `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin menanyakan pesanan ${order.code} (${order.court_name}, ${formatDay(order.date)} ${order.start_time}–${order.end_time}).` : "";
+  const message = order
+    ? `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin menanyakan pesanan ${order.code}.`
+    : "";
 
   return (
     <section className="shop-section shop-order">
@@ -91,22 +95,36 @@ export default function OrderPage() {
           {order.status === "confirmed" && (
             <p className="shop-order-confirmed"><CheckCircle2 size={18} aria-hidden="true" /> Pembayaran diterima{payment?.payment_type ? ` lewat ${payTypeLabel(payment.payment_type)}` : ""}.</p>
           )}
-          {order.status === "cancelled" && order.cancel_reason && (
-            <p className="shop-note error"><TriangleAlert size={16} aria-hidden="true" /> {order.cancel_reason}</p>
-          )}
 
           <div className="shop-doc-card">
-            <h2>Rincian</h2>
-            <ul className="shop-order-facts">
-              <li><CalendarDays size={18} aria-hidden="true" /><div><small>Jadwal</small><span>{formatDay(order.date)} · {order.start_time} – {order.end_time}</span></div></li>
-              <li><Clock3 size={18} aria-hidden="true" /><div><small>Lapangan</small><span>{order.court_name}</span></div></li>
+            <h2>{order.sessions.length > 1 ? `${order.sessions.length} sesi dalam pesanan ini` : "Rincian"}</h2>
+            <ul className="shop-order-sessions">
+              {order.sessions.map(session => (
+                <li key={session.id}>
+                  <div className="when">
+                    <b>{session.court_name}</b>
+                    <span><CalendarDays size={14} aria-hidden="true" /> {formatDay(session.date)}</span>
+                    <span><Clock3 size={14} aria-hidden="true" /> {session.start_time} – {session.end_time}</span>
+                    {session.addons.length > 0 && (
+                      <ul className="lines">
+                        {session.addons.map(line => <li key={line.name}>{line.quantity}× {line.name} · {money(line.subtotal)}</li>)}
+                      </ul>
+                    )}
+                    {session.cancel_reason && <em className="warn"><TriangleAlert size={14} aria-hidden="true" /> {session.cancel_reason}</em>}
+                  </div>
+                  <div className="cost">
+                    <b>{money(session.total)}</b>
+                    {order.sessions.length > 1 && <span className={`status-pill ${sessionTone[session.status] ?? "wait"}`}>{sessionLabel[session.status] ?? session.status}</span>}
+                  </div>
+                </li>
+              ))}
             </ul>
             <dl className="shop-order-bill">
-              <div><dt>Sewa lapangan</dt><dd>{money(order.court_total)}</dd></div>
-              {order.addons.map(line => <div key={line.name}><dt>{line.quantity}× {line.name}</dt><dd>{money(line.subtotal)}</dd></div>)}
               <div className="total"><dt>Total</dt><dd>{money(order.total)}</dd></div>
               <div><dt>Sudah dibayar</dt><dd>{money(order.paid)}</dd></div>
-              {remaining > 0 && order.status !== "expired" && <div className="due"><dt>{order.paid > 0 ? "Dibayar di venue" : "Belum dibayar"}</dt><dd>{money(remaining)}</dd></div>}
+              {remaining > 0 && order.status !== "expired" && (
+                <div className="due"><dt>{order.paid > 0 ? "Dibayar di venue" : "Belum dibayar"}</dt><dd>{money(remaining)}</dd></div>
+              )}
             </dl>
             <p className="shop-order-meta">Atas nama {order.customer} · {order.phone}{payment ? ` · ${intentLabel[payment.status]}` : ""}</p>
           </div>

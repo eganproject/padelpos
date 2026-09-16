@@ -407,6 +407,36 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 9").get()) transaction
   }
   db.prepare("INSERT INTO migrations VALUES (9, ?)").run(new Date().toISOString());
 });
+/**
+ * Keranjang: satu pesanan pelanggan dapat berisi beberapa sesi (lapangan/jam berbeda) yang dibayar
+ * sekali. `orders` mengelompokkan booking-booking itu dan menjadi alamat halaman status
+ * (`/pesanan/<id>`). Pesanan lama tetap bisa dibuka karena id order disamakan dengan id booking-nya.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 10").get()) transaction(() => {
+  db.exec(`
+    CREATE TABLE orders (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      customer_id TEXT REFERENCES customers(id),
+      customer TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      total INTEGER NOT NULL CHECK(total > 0),
+      created_at TEXT NOT NULL
+    );
+    ALTER TABLE bookings ADD COLUMN order_id TEXT REFERENCES orders(id);
+    ALTER TABLE payment_intents ADD COLUMN order_ref TEXT REFERENCES orders(id);
+    CREATE INDEX bookings_order ON bookings (order_id);
+    CREATE INDEX payment_intents_order ON payment_intents (order_ref);
+
+    INSERT INTO orders (id,code,customer_id,customer,phone,email,notes,total,created_at)
+      SELECT id,upper(substr(id,1,8)),customer_id,customer,phone,'',notes,total,created_at FROM bookings WHERE source='online';
+    UPDATE bookings SET order_id=id WHERE source='online';
+    UPDATE payment_intents SET order_ref=(SELECT order_id FROM bookings WHERE bookings.id=payment_intents.booking_id) WHERE kind='booking';
+  `);
+  db.prepare("INSERT INTO migrations VALUES (10, ?)").run(new Date().toISOString());
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

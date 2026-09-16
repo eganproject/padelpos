@@ -68,11 +68,6 @@ html[data-theme="light"] .pay-steps code{background:#eef1ec;color:#222925}
 .shop-order-pay span{display:flex;align-items:center;gap:6px;margin-top:2px;font-size:13px;color:#8a6110}
 .shop-order-pay .actions{display:flex;flex-wrap:wrap;gap:10px}
 .shop-order-confirmed{display:flex;align-items:center;gap:8px;margin:0;font-size:15px;font-weight:600;color:var(--brand-deep)}
-.shop-order-facts{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
-.shop-order-facts li{display:flex;align-items:flex-start;gap:12px}
-.shop-order-facts svg{flex:none;width:38px;height:38px;padding:10px;border-radius:10px;background:var(--brand-wash);color:var(--brand-deep)}
-.shop-order-facts small{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-faint)}
-.shop-order-facts span{font-size:15px}
 .shop-order-bill .due dd{color:#8a6110;font-weight:700}
 .shop-order-meta{margin:0;font-size:13px;color:var(--ink-faint)}
 .shop-order-actions{display:flex;flex-wrap:wrap;gap:10px}
@@ -82,6 +77,19 @@ html[data-theme="light"] .pay-steps code{background:#eef1ec;color:#222925}
   .shop-order-actions a{flex:1}
 }
 
+
+/* Daftar sesi dalam satu pesanan */
+.shop-order-sessions{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.shop-order-sessions li{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}
+.shop-order-sessions .when{display:flex;flex-direction:column;gap:5px;min-width:0}
+.shop-order-sessions .when b{font-size:16px}
+.shop-order-sessions .when>span{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-soft)}
+.shop-order-sessions .when svg{flex:none;color:var(--ink-faint)}
+.shop-order-sessions .lines{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:13px;color:var(--ink-faint)}
+.shop-order-sessions .warn{display:flex;align-items:center;gap:6px;margin-top:4px;font-style:normal;font-size:13px;color:#9d4227}
+.shop-order-sessions .cost{display:flex;flex-direction:column;align-items:flex-end;gap:7px;white-space:nowrap}
+.shop-order-sessions .cost b{font-family:var(--font-space);font-size:17px}
+@media(max-width:600px){.shop-order-sessions li{flex-direction:column;gap:10px}.shop-order-sessions .cost{align-items:flex-start}}
 /* Tagihan online di detail booking staf */
 .pay-links{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .pay-links li{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
