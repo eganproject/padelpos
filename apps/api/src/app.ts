@@ -24,7 +24,7 @@ app.use(helmet());
 const origin=process.env.CLIENT_URL||"http://localhost:3000";
 app.use(cors({origin,credentials:true}));
 /** Endpoint yang menerima berkas biner: unggah foto lapangan dan foto item tambahan. */
-const photoUpload=/^\/api\/operations\/(?:courts\/[^/]+\/photos|addons\/[^/]+\/photo)$/;
+const photoUpload=/^\/api\/operations\/(?:courts\/[^/]+\/photos|addons\/[^/]+\/photo|finance\/records\/[^/]+\/receipt)$/;
 app.use((req,res,next)=>{
   if(!["GET","HEAD","OPTIONS"].includes(req.method)){
     if(req.headers.origin&&req.headers.origin!==origin)return res.status(403).json({message:"Asal permintaan tidak diizinkan."});

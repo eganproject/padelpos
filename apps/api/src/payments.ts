@@ -4,6 +4,7 @@ import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { localClock, minutes } from "./clock.js";
 import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
+import { syncBooking } from "./finance.js";
 import { closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, timeSchema, type Booking } from "./operations.js";
 import {
   createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod,
@@ -58,6 +59,7 @@ export function expireHolds() {
     for (const booking of stale) {
       db.prepare("UPDATE bookings SET status='expired' WHERE id=? AND status='pending'").run(booking.id);
       releaseAddons(booking.id, "sistem");
+      syncBooking(booking.id);
       db.prepare("UPDATE payment_intents SET status='expired',updated_at=? WHERE booking_id=? AND status='pending'").run(stamp, booking.id);
       audit("sistem", "booking.expired", booking.id);
     }
@@ -331,12 +333,14 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
           }
         }
       });
+      for (const booking of bookings) syncBooking(booking.id);
       audit("midtrans", "payment.settled", intent.order_ref ?? intent.booking_id);
     } else if (outcome !== "pending" && intent.kind === "booking") {
       for (const booking of bookings) {
         if (booking.status !== "pending") continue;
         db.prepare("UPDATE bookings SET status='expired' WHERE id=?").run(booking.id);
         releaseAddons(booking.id, "midtrans");
+        syncBooking(booking.id);
       }
       audit("midtrans", "payment." + outcome, intent.order_ref ?? intent.booking_id);
     }

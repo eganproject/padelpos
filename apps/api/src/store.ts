@@ -437,6 +437,142 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 10").get()) transactio
   `);
   db.prepare("INSERT INTO migrations VALUES (10, ?)").run(new Date().toISOString());
 });
+/**
+ * Pembukuan venue: pencatatan pengeluaran operasional dan pemasukan lain yang langsung menjadi
+ * laporan laba rugi, neraca, buku besar, dan buku besar pembantu. Semua angka berasal dari satu
+ * jurnal berpasangan (debit = kredit) sehingga neraca selalu seimbang tanpa perhitungan terpisah.
+ * Pendapatan booking dan penerimaan kas dijurnal otomatis; lihat apps/api/src/finance.ts.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 11").get()) transaction(() => {
+  db.exec(`
+    CREATE TABLE accounts (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      type TEXT NOT NULL CHECK(type IN ('aset','liabilitas','ekuitas','pendapatan','beban')),
+      subtype TEXT NOT NULL CHECK(subtype IN ('kas_bank','piutang','persediaan','aset_tetap','utang','modal','pendapatan','beban')),
+      is_cash INTEGER NOT NULL DEFAULT 0 CHECK(is_cash IN (0,1) AND (is_cash=0 OR subtype='kas_bank')),
+      system_key TEXT UNIQUE,
+      description TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      position INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE partners (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+      kind TEXT NOT NULL CHECK(kind IN ('pemasok','pelanggan','karyawan','lainnya')),
+      phone TEXT NOT NULL DEFAULT '',
+      note TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE journal_entries (
+      id TEXT PRIMARY KEY,
+      number TEXT NOT NULL UNIQUE,
+      date TEXT NOT NULL,
+      memo TEXT NOT NULL DEFAULT '',
+      source TEXT NOT NULL CHECK(source IN ('manual','catatan','pelunasan','transfer','modal','booking','pembayaran')),
+      ref_id TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX journal_entries_date ON journal_entries (date, number);
+    CREATE UNIQUE INDEX journal_entries_ref ON journal_entries (source, ref_id) WHERE ref_id IS NOT NULL;
+    CREATE TABLE journal_lines (
+      id TEXT PRIMARY KEY,
+      entry_id TEXT NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+      account_id TEXT NOT NULL REFERENCES accounts(id),
+      debit INTEGER NOT NULL DEFAULT 0 CHECK(debit >= 0),
+      credit INTEGER NOT NULL DEFAULT 0 CHECK(credit >= 0),
+      memo TEXT NOT NULL DEFAULT '',
+      partner_id TEXT REFERENCES partners(id),
+      booking_id TEXT REFERENCES bookings(id),
+      position INTEGER NOT NULL,
+      CHECK ((debit = 0) <> (credit = 0))
+    );
+    CREATE INDEX journal_lines_entry ON journal_lines (entry_id, position);
+    CREATE INDEX journal_lines_account ON journal_lines (account_id);
+    CREATE INDEX journal_lines_partner ON journal_lines (partner_id);
+    CREATE INDEX journal_lines_booking ON journal_lines (booking_id);
+    CREATE TABLE finance_records (
+      id TEXT PRIMARY KEY,
+      number TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL CHECK(kind IN ('pengeluaran','pemasukan')),
+      date TEXT NOT NULL,
+      account_id TEXT NOT NULL REFERENCES accounts(id),
+      amount INTEGER NOT NULL CHECK(amount > 0),
+      settle TEXT NOT NULL CHECK(settle IN ('tunai','tempo')),
+      cash_account_id TEXT REFERENCES accounts(id),
+      partner_id TEXT REFERENCES partners(id),
+      description TEXT NOT NULL,
+      due_date TEXT,
+      settled_at TEXT,
+      settled_entry_id TEXT REFERENCES journal_entries(id),
+      entry_id TEXT REFERENCES journal_entries(id),
+      photo_id TEXT UNIQUE,
+      photo_mime TEXT CHECK(photo_mime IS NULL OR photo_mime IN ('image/jpeg','image/png','image/webp')),
+      photo_data BLOB,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      CHECK ((settle='tunai') = (cash_account_id IS NOT NULL))
+    );
+    CREATE INDEX finance_records_date ON finance_records (date, number);
+    CREATE INDEX finance_records_partner ON finance_records (partner_id);
+  `);
+  const stamp = new Date().toISOString();
+  // Bagan akun bawaan: sudah memakai istilah sehari-hari agar tidak perlu latar belakang akuntansi.
+  const seed: [string, string, string, string, number, string | null, string][] = [
+    ["1-100", "Kas", "aset", "kas_bank", 1, "kas", "Uang tunai di laci kasir."],
+    ["1-200", "Bank", "aset", "kas_bank", 1, "bank", "Saldo rekening bank venue, termasuk hasil pembayaran online."],
+    ["1-300", "Piutang Usaha", "aset", "piutang", 0, "piutang", "Tagihan booking yang belum dibayar pelanggan."],
+    ["1-350", "Piutang Lain-lain", "aset", "piutang", 0, "piutang_lain", "Tagihan di luar booking, misalnya sewa ruang untuk acara."],
+    ["1-400", "Perlengkapan & Persediaan", "aset", "persediaan", 0, null, "Stok bola, minuman, dan barang lain yang belum terpakai."],
+    ["1-500", "Peralatan & Inventaris", "aset", "aset_tetap", 0, null, "Raket, jaring, lampu, dan peralatan yang dipakai bertahun-tahun."],
+    ["1-600", "Akumulasi Penyusutan", "aset", "aset_tetap", 0, null, "Pengurang nilai peralatan karena umur pakai. Saldonya negatif."],
+    ["2-100", "Utang Usaha", "liabilitas", "utang", 0, "utang", "Tagihan pemasok yang belum dibayar."],
+    ["2-200", "Utang Lain-lain", "liabilitas", "utang", 0, null, "Pinjaman dan kewajiban di luar pemasok."],
+    ["3-100", "Modal Pemilik", "ekuitas", "modal", 0, "modal", "Uang yang disetor pemilik ke venue."],
+    ["3-200", "Prive Pemilik", "ekuitas", "modal", 0, "prive", "Uang venue yang diambil pemilik untuk keperluan pribadi."],
+    ["4-100", "Pendapatan Sewa Lapangan", "pendapatan", "pendapatan", 0, "pendapatan_lapangan", "Tarif jam main lapangan."],
+    ["4-200", "Pendapatan Sewa Alat", "pendapatan", "pendapatan", 0, "pendapatan_sewa", "Sewa raket, sepatu, dan alat lain."],
+    ["4-300", "Penjualan Barang", "pendapatan", "pendapatan", 0, "pendapatan_barang", "Bola, minuman, dan barang habis pakai."],
+    ["4-400", "Pendapatan Jasa & Pelatih", "pendapatan", "pendapatan", 0, "pendapatan_jasa", "Jasa pelatih dan layanan lain."],
+    ["4-900", "Pendapatan Lain-lain", "pendapatan", "pendapatan", 0, "pendapatan_lain", "Pemasukan di luar operasional harian."],
+    ["5-100", "Gaji & Upah", "beban", "beban", 0, null, "Gaji staf, honor pelatih, dan lembur."],
+    ["5-200", "Listrik, Air & Internet", "beban", "beban", 0, null, "Tagihan utilitas bulanan."],
+    ["5-300", "Sewa Tempat", "beban", "beban", 0, null, "Sewa lahan atau bangunan venue."],
+    ["5-400", "Perawatan Lapangan & Peralatan", "beban", "beban", 0, null, "Perbaikan karpet, jaring, lampu, dan servis alat."],
+    ["5-500", "Perlengkapan & Bahan Habis Pakai", "beban", "beban", 0, null, "Bola, air minum, dan barang yang dibeli untuk dipakai."],
+    ["5-600", "Pemasaran & Promosi", "beban", "beban", 0, null, "Iklan, endorse, cetak spanduk, dan turnamen."],
+    ["5-700", "Kebersihan & Keamanan", "beban", "beban", 0, null, "Cleaning service, sampah, dan satpam."],
+    ["5-800", "Biaya Bank & Payment Gateway", "beban", "beban", 0, null, "Potongan Midtrans, biaya transfer, dan admin bank."],
+    ["5-900", "Beban Penyusutan", "beban", "beban", 0, null, "Penurunan nilai peralatan yang dicatat tiap periode."],
+    ["5-950", "Beban Lain-lain", "beban", "beban", 0, null, "Pengeluaran yang tidak masuk kategori mana pun."],
+  ];
+  const insertAccount = db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)");
+  seed.forEach(([code, name, type, subtype, isCash, key, description], position) => insertAccount.run(randomUUID(), code, name, type, subtype, isCash, key, description, position, stamp));
+  const accountId = (key: string) => (db.prepare("SELECT id FROM accounts WHERE system_key=?").get(key) as { id: string }).id;
+  const kas = accountId("kas"), bank = accountId("bank");
+  // Pembayaran online masuk ke rekening bank; tunai masuk ke laci kasir. Dapat diubah di panel.
+  db.prepare("INSERT INTO settings (key,document) VALUES ('finance',?)").run(JSON.stringify({
+    cash_accounts: { cash: kas, transfer: bank, qris: bank, va: bank, ewallet: bank, card: bank },
+    default_cash_account: kas, locked_until: "", updated_at: stamp,
+  }));
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "finance" || menu.path === "/admin/keuangan")) {
+    const anchor = menus.find(menu => menu.id === "payments") ?? menus.find(menu => menu.id === "bookings");
+    const order = (anchor?.order ?? 0) + 1;
+    for (const menu of menus) if (menu.order >= order) menu.order += 1;
+    menus.push({ id: "finance", name: "Keuangan", path: "/admin/keuangan", icon: "Wallet", group: anchor?.group ?? "Operasional", order, active: true, createdAt: stamp });
+    saveCollection("menus", menus);
+    // Pembukuan memuat angka sensitif, jadi bawaannya hanya admin. Role lain dapat diberi akses manual.
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("finance")) role.menuIds.push("finance");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (11, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

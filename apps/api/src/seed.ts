@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db, transaction } from "./store.js";
 import { floors, localClock, priceRules, quote } from "./operations.js";
 import { applyLines } from "./addons.js";
+import { createEquity, createTransfer, savePartner, saveRecord, syncBooking } from "./finance.js";
 
 /**
  * Data contoh untuk mencoba aplikasi.
@@ -222,6 +223,8 @@ transaction(() => {
       .run(id, court.id, item.customer, item.phone, day(item.day), item.start, item.end, total, total, "confirmed", "", actor, new Date().toISOString());
     if (addonIds.length && item.addons)
       applyLines({ id, date: day(item.day), start_time: item.start, end_time: item.end, paid: 0, court_total: total }, item.addons.map(([index, quantity]) => ({ addon_id: addonIds[index], quantity })), actor);
+    // Booking di sini ditulis langsung ke tabel, jadi jurnal pendapatannya dibuat menyusul.
+    syncBooking(id);
   }
 
   const care = scenario.maintenance;
@@ -259,4 +262,33 @@ transaction(() => {
   console.log(`Data contoh ${scenario.label} dibuat: ${scenario.floors.length} lantai, ${ids.length} lapangan, ${scenario.rules.length} tarif khusus, ${scenario.reservations.length} booking, ${addonIds.length} item sewa & tambahan, ${scenario.features.length} elemen denah, info venue, kebijakan, dan FAQ.`);
   console.log(`Tanggal yang terisi: ${day(0)} (hari ini), ${day(1)}, ${day(2)}.`);
 });
+// Contoh pembukuan: setoran modal, biaya operasional dua bulan terakhir, satu tagihan pemasok yang
+// belum dibayar, dan satu pemasukan di luar booking, supaya laporan keuangan langsung ada isinya.
+if (!(db.prepare("SELECT 1 FROM finance_records LIMIT 1").get())) {
+  const account = (code: string) => (db.prepare("SELECT id FROM accounts WHERE code=?").get(code) as { id: string }).id;
+  const kas = account("1-100"), bank = account("1-200");
+  const supplier = savePartner({ name: "Toko Olahraga Sentosa", kind: "pemasok", phone: "081200001111", note: "Bola, grip, dan perlengkapan lapangan.", active: true }, actor);
+  createEquity({ date: day(-40), direction: "setor", cash_account_id: bank, amount: 20000000, memo: "Setoran modal awal pemilik" }, actor);
+  createTransfer({ date: day(-38), from_account_id: bank, to_account_id: kas, amount: 3000000, memo: "Isi kas kasir dari rekening venue" }, actor);
+  const samples: [number, "pengeluaran" | "pemasukan", string, number, string | null, string][] = [
+    [-35, "pengeluaran", "5-300", 4000000, bank, "Sewa tempat bulan lalu"],
+    [-32, "pengeluaran", "5-100", 3500000, bank, "Gaji staf bulan lalu"],
+    [-30, "pengeluaran", "5-200", 950000, bank, "Listrik dan internet bulan lalu"],
+    [-8, "pengeluaran", "5-100", 3500000, bank, "Gaji staf bulan ini"],
+    [-6, "pengeluaran", "5-200", 1020000, bank, "Token listrik dan tagihan internet"],
+    [-5, "pengeluaran", "5-700", 600000, kas, "Jasa kebersihan mingguan"],
+    [-4, "pengeluaran", "5-500", 1250000, null, "Bola latihan 10 tabung"],
+    [-2, "pengeluaran", "5-600", 450000, kas, "Iklan Instagram turnamen internal"],
+    [-1, "pengeluaran", "5-400", 800000, kas, "Servis lampu lapangan 2"],
+    [-1, "pemasukan", "4-900", 2500000, bank, "Sewa venue untuk turnamen komunitas"],
+  ];
+  for (const [offset, kind, code, amount, cash, description] of samples) {
+    saveRecord({
+      kind, date: day(offset), account_id: account(code), amount, description,
+      settle: cash ? "tunai" : "tempo", cash_account_id: cash,
+      partner_id: cash ? null : supplier.id, due_date: cash ? "" : day(10),
+    }, actor);
+  }
+  console.log(`Contoh pembukuan dibuat: ${samples.length} catatan keuangan, 1 pemasok, dan setoran modal awal.`);
+}
 db.close();

@@ -34,7 +34,8 @@ pada `.env`. Hapus variabel itu setelah admin pertama dibuat.
 ## Data contoh
 
 - `npm run seed -w apps/api` — venue satu lantai: tiga lapangan, tarif khusus, booking dengan sewa
-  raket dan tambahan lain, denah lengkap dengan pintu masuk, serta info venue, kebijakan, dan FAQ.
+  raket dan tambahan lain, denah lengkap dengan pintu masuk, info venue, kebijakan, FAQ, serta contoh
+  pembukuan berisi setoran modal, biaya operasional dua bulan terakhir, dan satu tagihan pemasok.
 - `npm run seed:dua-lantai -w apps/api` — gedung dua lantai: tiga lapangan indoor dan pintu masuk
   di Lantai 1, dua lapangan rooftop dan tribun di Lantai 2, tangga dan lift di posisi yang sama
   pada kedua lantai.
@@ -126,6 +127,65 @@ notifikasi ganda tidak pernah menambah pembayaran dua kali.
 Webhook dikirim dari server Midtrans, jadi `localhost` tidak dapat dihubungi. Jalankan terowongan
 (mis. `ngrok http 3000`), isi `PUBLIC_URL` dengan alamat terowongan itu, lalu pakai alamat webhook yang
 tampil di menu Pembayaran. Coba dulu dengan kunci sandbox sebelum berpindah ke produksi.
+
+## Pembukuan & laporan keuangan
+
+Menu **Keuangan** mencatat pengeluaran operasional dan pemasukan di luar booking, lalu menyusunnya
+sendiri menjadi laba rugi, neraca, buku besar, dan buku besar pembantu. Isinya empat bagian:
+
+- **Ringkasan** — saldo kas dan bank, pemasukan, pengeluaran, laba bersih beserta perbandingan dengan
+  periode sebelumnya, grafik enam bulan, piutang pelanggan, utang pemasok, dan tagihan yang jatuh tempo.
+- **Catatan** — daftar pengeluaran dan pemasukan. Setiap catatan dapat dibayar langsung atau ditunda
+  sebagai utang, dan boleh dilampiri foto nota sebagai bukti.
+- **Laporan** — laba rugi, neraca, buku besar, buku besar pembantu, dan jurnal umum. Semuanya dapat
+  diunduh sebagai CSV atau dicetak.
+- **Pengaturan** — bagan akun, daftar pemasok, rekening tujuan tiap metode pembayaran, dan penguncian
+  pembukuan.
+
+### Dari mana angkanya datang
+
+Seluruh laporan dihitung dari satu jurnal berpasangan: tiap pencatatan punya sisi debit dan kredit yang
+jumlahnya sama, sehingga neraca tidak pernah perlu dicocokkan manual.
+
+- **Booking** yang aktif atau selesai otomatis menjadi pendapatan pada **tanggal sesi bermain**, bukan
+  tanggal pemesanan. Nilainya dipecah ke Pendapatan Sewa Lapangan, Sewa Alat, Penjualan Barang, dan
+  Pendapatan Jasa sesuai isi booking.
+- **Pembayaran dan pengembalian dana** dicatat pada tanggal transaksinya, masuk ke akun Kas atau Bank
+  sesuai metode pembayarannya. Pemetaan metode ke rekening diatur di bagian Pengaturan.
+- **Uang yang sudah diterima untuk sesi yang belum dimainkan** tampil di neraca sebagai kewajiban
+  *Uang Muka Pelanggan*, bukan sebagai pendapatan.
+- **Pembatalan booking** menarik kembali pendapatannya, dan pengembalian dana mengurangi kas.
+
+Karena itu, membatalkan booking atau mengubah tambahannya langsung terlihat di laporan tanpa pencatatan
+ulang. Jurnal yang dibuat otomatis ditandai sumbernya dan tidak dapat diubah dari menu Keuangan; yang
+berubah adalah data operasionalnya.
+
+### Mencatat pengeluaran
+
+Formulirnya memakai bahasa sehari-hari: tanggal, jumlah, untuk apa uangnya, keterangan, lalu apakah
+sudah dibayar. Bila belum dibayar, pilih pemasoknya supaya tagihannya muncul di buku besar pembantu
+utang, dan tandai lunas begitu dibayar. Sebelum disimpan, formulir menampilkan pratinjau **"Nanti
+tercatat begini"** berisi sisi debit dan kredit — berguna untuk staf yang belum terbiasa dengan istilah
+akuntansi.
+
+Pemasukan di luar booking (misalnya sewa venue untuk acara) dicatat dengan cara yang sama. Untuk
+memindahkan uang antar kas dan bank, atau mencatat setoran dan pengambilan pemilik, gunakan tombol
+**Pindah dana** dan **Modal pemilik** — keduanya tidak memengaruhi laba rugi.
+
+### Buku besar pembantu
+
+Tiga rincian yang paling sering ditanyakan:
+
+- **Piutang pelanggan** — sisa tagihan tiap pelanggan, lengkap dengan sesi yang belum lunas.
+- **Utang pemasok** — tagihan yang belum dibayar per pemasok, beserta jatuh temponya.
+- **Kas & bank** — saldo awal, uang masuk, uang keluar, dan saldo akhir tiap tempat penyimpanan uang.
+
+### Akun dan penguncian
+
+Bagan akun bawaan sudah memakai istilah sehari-hari dan cukup untuk kebanyakan venue. Akun baru boleh
+ditambahkan; akun bawaan tidak dapat dihapus, dan jenis akun yang sudah dipakai jurnal tidak dapat
+diubah lagi agar riwayatnya tetap benar. Setelah laporan sebuah bulan selesai, isi **Kunci pembukuan**
+agar catatan manual pada periode itu tidak berubah diam-diam.
 
 ## Penyimpanan data
 

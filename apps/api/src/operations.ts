@@ -5,6 +5,7 @@ import { check } from "./errors.js";
 import { photoIndex } from "./photos.js";
 import { clockLabel,localClock,minutes } from "./clock.js";
 import { applyLines,bookingAddons,linesSchema,releaseAddons,setReturned } from "./addons.js";
+import { syncBooking } from "./finance.js";
 export { clockLabel,localClock,minutes };
 
 export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id:string|null}
@@ -65,6 +66,7 @@ export function createBooking(input:unknown,actor:string){
     const total=quote(court,priceRules(),data.date,data.start_time,data.end_time);
     db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.date,data.start_time,data.end_time,total,total,"confirmed",data.notes,actor,new Date().toISOString());
     if(data.addons.length)applyLines(getBooking(id),data.addons,actor);
+    syncBooking(id);
     audit(actor,"booking.create",id);return getBooking(id);
   });
 }
@@ -91,6 +93,7 @@ export function changeBookingStatus(id:string,input:unknown,actor:string){
     }
     db.prepare("UPDATE bookings SET status=?,cancel_reason=? WHERE id=?").run(data.status,data.reason,id);
     if(data.status==="cancelled")releaseAddons(id,actor);
+    syncBooking(id);
     audit(actor,"booking."+data.status,id);return getBooking(id);
   });
 }
@@ -112,6 +115,7 @@ export function recordPayment(id:string,input:unknown,actor:string){
       check(data.note.length>=3,400,"Isi catatan pengembalian.");
     }
     db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());
+    syncBooking(id);
     audit(actor,data.kind,data.id);return {booking:getBooking(id),payments:payments(id)};
   });
 }
@@ -122,6 +126,7 @@ export function updateBookingAddons(id:string,input:unknown,actor:string){
     const booking=getBooking(id);
     check(booking.status==="confirmed",409,"Tambahan hanya dapat diubah pada booking yang masih aktif.");
     applyLines(booking,lines,actor);
+    syncBooking(id);
     audit(actor,"booking.addons",id);return {booking:getBooking(id),addons:bookingAddons(id)};
   });
 }
