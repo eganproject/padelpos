@@ -1,12 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
+import "./tokens.css";
 import "./globals.css";
-import "./admin-ui.css";
 import "./management.css";
 import "./operations.css";
 import "./layout-editor.css";
-import "./admin-polish.css";
 import "./admin-content.css";
 import "./shop.css";
 import "./shop-content.css";
@@ -15,7 +14,6 @@ import "./payments.css";
 import "./cart.css";
 import "./finance.css";
 
-// Variabel ini sudah lama dirujuk seluruh CSS, tetapi fontnya belum pernah dimuat.
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", display: "swap" });
 
@@ -23,13 +21,25 @@ export const metadata: Metadata = {
   title: { default: "Padelix — Booking Lapangan Padel", template: "%s · Padelix" },
   description: "Cek ketersediaan lapangan padel dan pesan jam main Anda secara online.",
 };
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#090c0e" }, { media: "(prefers-color-scheme: light)", color: "#f2f4f0" }],
+};
+
+/**
+ * Tema panel staf dipasang sebelum halaman digambar. Tanpa ini, tema terang sempat
+ * berkedip gelap lebih dulu dan React melaporkan beda isi antara server dan browser.
+ */
+const themeBoot = `try{var t=localStorage.getItem("padelix_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="id" className={`${inter.variable} ${spaceGrotesk.variable}`}>
+    <html lang="id" className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
       <body>
         {children}
-        <Toaster theme="dark" richColors position="top-right" />
+        <Toaster theme="dark" richColors position="top-right" closeButton />
       </body>
     </html>
   );

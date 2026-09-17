@@ -1,0 +1,134 @@
+/* Fondasi tampilan: satu-satunya tempat skala huruf, jarak, sudut, dan warna ditetapkan.
+   Berkas lain memakai variabel di sini, tidak menulis ulang angka atau kode warna sendiri.
+
+   Aturan yang dijaga di seluruh aplikasi:
+   - Tidak ada teks di bawah 12px. Label mungil memakai --fs-xs dengan huruf kapital dan tebal.
+   - Setiap teks memenuhi kontras WCAG AA (4.5:1) pada kedua tema.
+   - Setiap kontrol yang dapat diklik setinggi minimal 40px, atau 36px untuk tombol ikon padat. */
+
+:root{
+  /* Huruf */
+  --font-ui:var(--font-inter),"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  --font-display:var(--font-space),var(--font-inter),"Segoe UI",system-ui,sans-serif;
+  --fs-xs:12px;   /* batas terkecil: label kapital, keterangan tabel */
+  --fs-sm:13px;   /* tombol, isian, teks pendukung */
+  --fs-md:14px;   /* ukuran dasar antarmuka staf */
+  --fs-lg:16px;   /* judul kartu, teks utama situs pelanggan */
+  --fs-xl:18px;
+  --fs-2xl:21px;
+  --fs-3xl:26px;
+  --fs-4xl:32px;
+  --lh-tight:1.3;
+  --lh-snug:1.5;
+  --lh-normal:1.65;
+  --track-label:.07em;   /* renggang huruf untuk label kapital */
+
+  /* Jarak — kelipatan 4 supaya margin seluruh halaman selaras */
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:32px;--s8:40px;--s9:56px;--s10:72px;
+
+  /* Sudut dan bayangan */
+  --r-xs:6px;--r-sm:8px;--r-md:10px;--r-lg:14px;--r-xl:18px;--r-full:999px;
+  --shadow-1:0 1px 2px #0000000f;
+  --shadow-2:0 2px 6px #00000014,0 8px 24px #0000000f;
+  --shadow-3:0 18px 50px #00000026;
+
+  /* Kontrol: tinggi seragam supaya deretan tombol dan isian tidak bergerigi */
+  --control:40px;
+  --control-sm:36px;
+  --control-lg:46px;
+  --tap:40px;          /* target sentuh terkecil */
+
+  /* Lebar isi dan tepi halaman */
+  --page-max:1320px;
+  --gutter:clamp(16px,3.4vw,40px);
+
+  /* Gerak */
+  --ease:cubic-bezier(.2,.7,.3,1);
+  --fast:.14s;--normal:.22s;
+}
+
+/* --- Tema gelap (bawaan panel staf) ------------------------------------- */
+:root{
+  --bg:#090c0e;
+  --panel:#111619;        /* permukaan kartu */
+  --panel2:#161c20;       /* permukaan cekung: isian, kepala tabel */
+  --rail:#0c1114;         /* sidebar */
+  --line:#252d31;
+  --line-strong:#384347;
+  --text:#f1f5f3;
+  --text-soft:#cdd5d2;    /* teks pendukung yang masih menonjol */
+  --muted:#9ba5a2;        /* keterangan; 7:1 di atas --panel */
+  --lime:#c8ff3d;
+  --lime-ink:#152000;     /* teks di atas lime */
+  --lime-text:#cdf95f;    /* lime sebagai teks di atas latar gelap */
+  --lime-wash:#c8ff3d14;
+  --lime-edge:#c8ff3d33;
+  --cyan:#5ee7f0;
+  --violet:#bb9bff;
+  --orange:#ffab6b;
+  --danger:#ff8b85;
+  --danger-wash:#ff5d5714;
+  --hover:#ffffff0a;      /* sorotan baris dan tombol */
+  --focus:#8fe3ea;
+  color-scheme:dark;
+}
+
+/* --- Tema terang --------------------------------------------------------- */
+html[data-theme="light"]{
+  --bg:#f2f4f0;
+  --panel:#ffffff;
+  --panel2:#f6f8f4;
+  --rail:#ffffff;
+  --line:#dde2da;
+  --line-strong:#c3cbbf;
+  --text:#121711;
+  --text-soft:#39423a;
+  --muted:#5a6560;        /* 6:1 di atas putih */
+  --lime:#c8ff3d;
+  --lime-ink:#1b2600;
+  --lime-text:#456a08;    /* lime tidak terbaca di atas putih; pakai hijau tua */
+  --lime-wash:#eef8d7;
+  --lime-edge:#b6d95f;
+  --cyan:#0e6a72;
+  --violet:#5c3ba0;
+  --orange:#93520e;
+  --danger:#b23a32;
+  --danger-wash:#fdeceb;
+  --hover:#f4f7f1;
+  --focus:#2f7d86;
+  color-scheme:light;
+}
+
+/* --- Dasar --------------------------------------------------------------- */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+html,body{margin:0;min-height:100%}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:var(--font-ui);font-size:var(--fs-md);line-height:var(--lh-snug);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:not-allowed;opacity:.5}
+a{color:inherit}
+img,svg,video{max-width:100%}
+h1,h2,h3,h4,h5,h6{margin:0;line-height:var(--lh-tight)}
+small{font-size:var(--fs-xs)}
+p{margin:0}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--r-xs)}
+::selection{background:var(--lime);color:var(--lime-ink)}
+
+/* Bilah geser yang serasi dengan tema, bukan bawaan sistem yang selalu terang. */
+*{scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:var(--r-full);border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:var(--muted);background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+}

@@ -9,7 +9,7 @@
 .addon-cell{display:flex;align-items:center;gap:12px;min-width:0}
 .addon-cell>div{min-width:0}
 .addon-table tr.inactive td:not(.actions){opacity:.6}
-.addon-type{display:inline-flex;padding:3px 9px;border-radius:99px;font-size:11px;font-weight:700;border:1px solid var(--line);white-space:nowrap}
+.addon-type{display:inline-flex;padding:3px 9px;border-radius:99px;font-size:var(--fs-xs);font-weight:700;border:1px solid var(--line);white-space:nowrap}
 .addon-type.sewa{color:#7cc4ff;border-color:#7cc4ff44}
 .addon-type.jual{color:var(--lime);border-color:#c8ff3d44}
 .addon-type.layanan{color:#d6a6ff;border-color:#d6a6ff44}
@@ -24,7 +24,7 @@
 .addon-type-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .addon-type-picker button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border:1px solid #30383a;border-radius:10px;background:#0c1012;color:var(--muted);text-align:left;cursor:pointer}
 .addon-type-picker button b{color:var(--text);font-size:13px}
-.addon-type-picker button small{font-size:11px;line-height:1.45}
+.addon-type-picker button small{font-size:var(--fs-xs);line-height:1.45}
 .addon-type-picker button[aria-pressed=true]{border-color:#7e9832;background:#c8ff3d10}
 .addon-type-picker button[aria-pressed=true] b{color:var(--lime)}
 .addon-photo-field{display:flex;align-items:center;gap:14px}
@@ -34,7 +34,7 @@
 
 /* Stok */
 .stock-now{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
-.stock-now small{display:block;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
+.stock-now small{display:block;font-size:var(--fs-xs);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
 .stock-now strong{font:700 30px var(--font-space)}
 .stock-form{display:flex;flex-direction:column;gap:14px;padding-bottom:6px}
 .stock-form>button{align-self:flex-start}
@@ -55,8 +55,8 @@
 .addon-lines .addon-thumb{width:38px;height:38px;border-radius:9px}
 .addon-lines .info{display:flex;flex-direction:column;gap:2px;min-width:0}
 .addon-lines .info b{font-size:13px}
-.addon-lines .info small{font-size:11px;color:var(--muted)}
-.addon-lines .info em{font-style:normal;font-size:11px;font-weight:600;color:var(--orange)}
+.addon-lines .info small{font-size:var(--fs-xs);color:var(--muted)}
+.addon-lines .info em{font-style:normal;font-size:var(--fs-xs);font-weight:600;color:var(--orange)}
 .addon-lines .info em.out{color:#ff8a80}
 .addon-lines strong{text-align:right;font-size:13px;white-space:nowrap}
 .qty-stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
@@ -73,10 +73,10 @@
 .addon-summary-lines li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
 .addon-summary-lines li:first-child{padding-top:0}
 .addon-summary-lines li>div{display:flex;flex-direction:column;gap:3px;min-width:0}
-.addon-summary-lines small{font-size:11px;color:var(--muted)}
+.addon-summary-lines small{font-size:var(--fs-xs);color:var(--muted)}
 .addon-summary-lines strong{white-space:nowrap}
 .addon-return-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:3px}
-.addon-return{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;color:var(--orange);background:#ff9c5114}
+.addon-return{font-size:var(--fs-xs);font-weight:700;padding:2px 8px;border-radius:99px;color:var(--orange);background:#ff9c5114}
 .addon-return.done{color:var(--lime);background:#c8ff3d12}
 .ops-link-button{background:none;border:0;padding:0;color:var(--lime);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .addon-edit-actions{display:flex;justify-content:flex-end;gap:8px}

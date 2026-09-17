@@ -187,6 +187,25 @@ ditambahkan; akun bawaan tidak dapat dihapus, dan jenis akun yang sudah dipakai 
 diubah lagi agar riwayatnya tetap benar. Setelah laporan sebuah bulan selesai, isi **Kunci pembukuan**
 agar catatan manual pada periode itu tidak berubah diam-diam.
 
+## Tampilan
+
+Seluruh ukuran huruf, jarak, sudut, dan warna berasal dari satu berkas: `apps/web/app/tokens.css`.
+Berkas lain memakai variabel dari sana dan tidak menulis ulang angka sendiri, sehingga panel staf dan
+situs pelanggan terasa satu produk.
+
+Tiga aturan yang dijaga di seluruh halaman:
+
+- **Tidak ada teks di bawah 12px.** Label mungil memakai `--fs-xs` dengan huruf kapital dan tebal.
+- **Setiap teks memenuhi kontras WCAG AA** (4,5:1) pada tema gelap maupun terang.
+- **Setiap kontrol dapat disentuh** dengan area minimal 32px. Pengecualiannya hanya elemen denah,
+  yang ukurannya memang mengikuti data, dan tautan di tengah kalimat.
+
+Panel staf punya tema gelap dan terang; temanya dipasang sebelum halaman digambar sehingga tidak
+berkedip saat dimuat. Situs pelanggan sengaja selalu terang dengan palet sendiri.
+
+Di layar sempit, tabel panel staf berubah menjadi kartu dan sidebar menjadi laci. Halaman laporan
+keuangan punya gaya cetak tersendiri: hanya laporannya yang keluar di kertas.
+
 ## Penyimpanan data
 
 Data tersimpan pada `apps/api/data/padelix.sqlite` (mode WAL) dan dibuat otomatis saat

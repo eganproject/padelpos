@@ -46,7 +46,8 @@ button.court-cover:hover img{transform:scale(1.03)}
 .shop-contact-list svg{flex:none;width:38px;height:38px;padding:10px;border-radius:10px;background:var(--line-soft);color:var(--ink-soft)}
 .shop-contact-list div{min-width:0}
 .shop-contact-list small{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-faint)}
-.shop-contact-list span,.shop-contact-list a{font-size:15px;line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
+.shop-contact-list span{font-size:var(--fs-lg);line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
+.shop-contact-list a{display:inline-flex;align-items:center;min-height:var(--tap);font-size:var(--fs-lg);line-height:1.5;color:var(--ink);overflow-wrap:anywhere}
 .shop-contact-list a:hover{text-decoration:underline}
 .shop-location-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:auto}
 .shop-location-actions a{height:48px}
@@ -132,7 +133,7 @@ button.court-cover:hover img{transform:scale(1.03)}
 /* Halaman ketersediaan */
 .shop-court-block header .title{flex:1;min-width:0}
 .court-cover.shop-court-thumb{flex:none;width:64px;height:64px;aspect-ratio:auto;border-radius:12px}
-.shop-court-thumb .court-cover-count{right:4px;bottom:4px;padding:1px 6px;font-size:11px}
+.shop-court-thumb .court-cover-count{right:4px;bottom:4px;padding:1px 6px;font-size:var(--fs-xs)}
 .shop-slot.special{position:relative}
 .shop-slot.special:after{content:"";position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:#d98a1c}
 .shop-slot.picked.special:after{background:var(--brand-ink)}
@@ -175,7 +176,8 @@ button.court-cover:hover img{transform:scale(1.03)}
 .shop-footer-brand p{max-width:44ch}
 .shop-footer-facts,.shop-footer-contact ul{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:14px;color:var(--ink-soft)}
 .shop-footer-contact ul{margin-top:10px}
-.shop-footer-facts li,.shop-footer-contact a{display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.shop-footer-facts li{display:flex;align-items:flex-start;gap:8px;line-height:1.5}
+.shop-footer-contact a,.shop-footer-links a{display:flex;align-items:center;gap:8px;min-height:var(--tap);line-height:1.5}
 .shop-footer-facts svg,.shop-footer-contact svg{flex:none;margin-top:3px;color:var(--ink-faint)}
 .shop-footer-inner .shop-footer-contact a{font-weight:500;overflow-wrap:anywhere}
 .shop-footer-contact a:hover,.shop-footer-links a:hover{color:var(--ink);text-decoration:underline}

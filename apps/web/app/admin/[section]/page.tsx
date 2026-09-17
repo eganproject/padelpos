@@ -4,13 +4,21 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Check, KeyRound, LoaderCircle, Pencil, Plus, Search, ShieldCheck, Trash2, UserRound, X } from "lucide-react";
 import { toast } from "sonner";
-import { CourtsPanel } from "@/components/courts-panel";
-import { BookingsPanel } from "@/components/bookings-panel";
-import { VenueLayoutPanel } from "@/components/venue-layout-panel";
-import { VenueInfoPanel } from "@/components/venue-info-panel";
-import { AddonsPanel } from "@/components/addons-panel";
-import { PaymentsPanel } from "@/components/payments-panel";
-import { FinancePanel } from "@/components/finance-panel";
+import dynamic from "next/dynamic";
+
+/**
+ * Satu halaman hanya menampilkan satu panel, jadi kodenya diambil saat panel itu dibuka.
+ * Sebelumnya setiap halaman admin ikut mengunduh editor denah, modul keuangan, dan panel
+ * lain yang tidak dipakai.
+ */
+const loading = () => <p className="empty-state">Memuat…</p>;
+const CourtsPanel = dynamic(() => import("@/components/courts-panel").then(m => m.CourtsPanel), { loading });
+const BookingsPanel = dynamic(() => import("@/components/bookings-panel").then(m => m.BookingsPanel), { loading });
+const VenueLayoutPanel = dynamic(() => import("@/components/venue-layout-panel").then(m => m.VenueLayoutPanel), { loading });
+const VenueInfoPanel = dynamic(() => import("@/components/venue-info-panel").then(m => m.VenueInfoPanel), { loading });
+const AddonsPanel = dynamic(() => import("@/components/addons-panel").then(m => m.AddonsPanel), { loading });
+const PaymentsPanel = dynamic(() => import("@/components/payments-panel").then(m => m.PaymentsPanel), { loading });
+const FinancePanel = dynamic(() => import("@/components/finance-panel").then(m => m.FinancePanel), { loading });
 import { AdminSectionShell } from "@/components/admin-section-shell";
 import { api, saveSession, type User } from "@/lib/api";
 

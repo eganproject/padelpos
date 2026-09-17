@@ -8,7 +8,7 @@
 .pay-badge.on>svg{color:var(--lime)}
 .pay-badge.off>svg{color:var(--orange)}
 .pay-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px;margin:0}
-.pay-meta dt{font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
+.pay-meta dt{font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
 .pay-meta dd{margin:2px 0 0;font-size:13px;font-weight:600}
 .pay-test{display:flex;align-items:center;gap:8px;margin:0;padding:11px 14px;border-radius:10px;font-size:13px;line-height:1.6}
 .pay-test.ok{border:1px solid #7e983288;background:#c8ff3d0d;color:var(--text)}
@@ -94,6 +94,6 @@ html[data-theme="light"] .pay-steps code{background:#eef1ec;color:#222925}
 .pay-links{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .pay-links li{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);font-size:13px}
 .pay-links li>div{flex:1;min-width:180px;display:flex;flex-direction:column;gap:3px}
-.pay-links small{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+.pay-links small{font-size:var(--fs-xs);color:var(--muted);overflow-wrap:anywhere}
 .pay-links .ops-link-button{display:inline-flex;align-items:center;gap:5px}
 html[data-theme="light"] .pay-links li{background:#f8faf7;border-color:#dde2dc}
