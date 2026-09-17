@@ -11,7 +11,7 @@ import { formatDay, formatShortDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { policySummary, whatsappLink } from "@/lib/venue-info";
 import {
-  addonsTotal, cartPayload, cartTotal, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart, type CartItem,
+  addonsTotal, cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
 } from "@/lib/cart";
 import { amountDue, quoteCart, startCheckout, type CartQuote } from "@/lib/payments";
 
@@ -39,7 +39,7 @@ export default function CartPage() {
         .catch(() => { if (active) setQuote(null); })
         .finally(() => { if (active) setChecking(false); });
     }, 300);
-    return () => { active = false; window.clearTimeout(timer); setChecking(false); window.clearTimeout(timer); };
+    return () => { active = false; window.clearTimeout(timer); setChecking(false); };
   }, [items]);
 
   const info = venue?.info;
@@ -98,39 +98,39 @@ export default function CartPage() {
 
   if (!items.length) {
     return (
-      <section className="shop-section shop-cart">
-        <div className="shop-cart-empty">
+      <section className="shop-band shop-wrap">
+        <div className="cart-empty">
           <span><ShoppingBag size={30} aria-hidden="true" /></span>
           <h1>Keranjang masih kosong</h1>
           <p>Pilih jam main di halaman jadwal, lalu tambahkan ke keranjang. Anda bisa memesan beberapa sesi sekaligus dan membayarnya satu kali.</p>
-          <Link className="shop-cta" href="/ketersediaan"><CalendarDays size={18} aria-hidden="true" /> Lihat jadwal</Link>
+          <Link className="shop-btn primary" href="/ketersediaan"><CalendarDays size={18} aria-hidden="true" /> Lihat jadwal</Link>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="shop-section shop-cart">
-      <div className="shop-page-head">
+    <section className="shop-band shop-wrap">
+      <div className="book-head">
         <div>
           <h1>Keranjang</h1>
           <p>{items.length} sesi dipilih{checking ? " · memeriksa ketersediaan…" : ""}</p>
         </div>
-        <Link className="shop-ghost small" href="/ketersediaan"><CalendarDays size={16} aria-hidden="true" /> Tambah sesi</Link>
+        <Link className="shop-btn outline sm" href="/ketersediaan"><CalendarDays size={16} aria-hidden="true" /> Tambah sesi</Link>
       </div>
 
-      <div className="shop-cart-grid">
-        <div className="shop-cart-list">
+      <div className="cart-grid">
+        <div className="cart-list">
           {priced.map(({ item, courtTotal, total: itemPrice, problem }) => {
             const open = openPicker === item.key;
             return (
-              <article className={`shop-cart-item${problem ? " problem" : ""}`} key={item.key}>
+              <article className={`cart-item${problem ? " problem" : ""}`} key={item.key}>
                 <header>
                   <div className="what">
                     <h2>{item.court_name}</h2>
                     <p><CalendarDays size={15} aria-hidden="true" /> {formatDay(item.date)}</p>
                     <p><Clock3 size={15} aria-hidden="true" /> {item.start_time} – {item.end_time} · {durationLabel(item.duration)}</p>
-                    {item.floor && <span className="shop-cart-floor">{item.floor}</span>}
+                    {item.floor && <span className="floor">{item.floor}</span>}
                   </div>
                   <div className="cost">
                     <b>{money(courtTotal)}</b>
@@ -139,7 +139,7 @@ export default function CartPage() {
                 </header>
 
                 {problem && (
-                  <p className="shop-cart-problem" role="alert">
+                  <p className="cart-problem" role="alert">
                     <TriangleAlert size={16} aria-hidden="true" />
                     <span>{problem}</span>
                     <button type="button" onClick={() => removeFromCart(item.key)}>Hapus sesi</button>
@@ -147,7 +147,7 @@ export default function CartPage() {
                 )}
 
                 {item.addons.length > 0 && (
-                  <ul className="shop-cart-lines">
+                  <ul className="cart-lines">
                     {item.addons.map(line => (
                       <li key={line.addon_id}>
                         <span>{line.quantity}× {line.name}</span>
@@ -159,13 +159,13 @@ export default function CartPage() {
 
                 {catalog.length > 0 && (
                   <>
-                    <button type="button" className="shop-cart-more" aria-expanded={open} onClick={() => setOpenPicker(open ? null : item.key)}>
+                    <button type="button" className="cart-more" aria-expanded={open} onClick={() => setOpenPicker(open ? null : item.key)}>
                       <PackagePlus size={16} aria-hidden="true" />
                       {item.addons.length ? "Ubah sewa & tambahan" : "Tambah sewa raket, bola & lainnya"}
                       <ChevronDown size={15} aria-hidden="true" className="chevron" />
                     </button>
                     {open && (
-                      <ul className="shop-cart-picker">
+                      <ul className="cart-picker">
                         {catalog.map(option => {
                           const chosen = item.addons.find(line => line.addon_id === option.id);
                           return (
@@ -190,7 +190,7 @@ export default function CartPage() {
                 )}
 
                 <footer>
-                  <button type="button" className="shop-cart-remove" onClick={() => removeFromCart(item.key)}>
+                  <button type="button" className="cart-remove" onClick={() => removeFromCart(item.key)}>
                     <Trash2 size={15} aria-hidden="true" /> Hapus sesi
                   </button>
                   <div>
@@ -201,13 +201,13 @@ export default function CartPage() {
               </article>
             );
           })}
-          {items.length >= maxCartItems && <p className="shop-cart-note">Keranjang penuh: maksimal {maxCartItems} sesi dalam satu pesanan.</p>}
+          {items.length >= maxCartItems && <p className="cart-note">Keranjang penuh: maksimal {maxCartItems} sesi dalam satu pesanan.</p>}
         </div>
 
-        <aside className="shop-cart-summary">
-          <div className="shop-cart-card">
+        <aside className="cart-summary">
+          <div className="cart-card">
             <h2>Ringkasan pesanan</h2>
-            <dl className="shop-cart-bill">
+            <dl className="cart-bill">
               {priced.map(({ item, total: itemPrice, problem }) => (
                 <div key={item.key} className={problem ? "muted" : ""}>
                   <dt>{item.court_name} · {formatShortDay(item.date)} {item.start_time}</dt>
@@ -227,7 +227,7 @@ export default function CartPage() {
             {error && <p className="shop-note error" role="alert">{error}</p>}
 
             {payment?.enabled ? (
-              <form ref={formRef} onSubmit={submit} className="shop-cart-form">
+              <form ref={formRef} onSubmit={submit} className="cart-form">
                 <h3>Data pemesan</h3>
                 <label>Nama pemesan
                   <input required minLength={2} maxLength={80} value={form.customer} onChange={event => setForm({ ...form, customer: event.target.value })} />
@@ -241,41 +241,41 @@ export default function CartPage() {
                 <label>Catatan (opsional)
                   <input maxLength={300} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} />
                 </label>
-                <button className="shop-cta" type="submit" disabled={!ready || busy}>
+                <button className="shop-btn primary wide" type="submit" disabled={!ready || busy}>
                   {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan…</> : <><CreditCard size={18} aria-hidden="true" /> Bayar {money(payNow)}</>}
                 </button>
-                <p className="shop-cart-note">
+                <p className="cart-note">
                   <ShieldCheck size={15} aria-hidden="true" />
                   Slot dikunci {payment.hold_minutes} menit setelah pembayaran dimulai. Pembayaran diproses Midtrans: QRIS, virtual account, e-wallet, atau kartu.
                 </p>
-                {payment.note && <p className="shop-cart-note">{payment.note}</p>}
+                {payment.note && <p className="cart-note">{payment.note}</p>}
               </form>
             ) : (
-              <div className="shop-cart-form">
+              <div className="cart-form">
                 {info?.whatsapp ? (
                   <>
-                    <a className="shop-cta" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
+                    <a className="shop-btn primary wide" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
                       <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
                     </a>
-                    <p className="shop-cart-note">Pembayaran online belum aktif. Kirim daftar ini ke staf venue; slot baru terkunci setelah staf mengonfirmasi.</p>
+                    <p className="cart-note">Pembayaran online belum aktif. Kirim daftar ini ke staf venue; slot baru terkunci setelah staf mengonfirmasi.</p>
                   </>
                 ) : (
-                  <p className="shop-cart-note">Pemesanan online belum aktif. Tunjukkan daftar ini ke staf venue.</p>
+                  <p className="cart-note">Pemesanan online belum aktif. Tunjukkan daftar ini ke staf venue.</p>
                 )}
               </div>
             )}
 
-            {policyLine && <Link className="shop-text-link" href="/kebijakan#pembatalan">{policyLine} <ArrowRight size={15} aria-hidden="true" /></Link>}
+            {policyLine && <Link className="shop-tlink" href="/kebijakan#pembatalan">{policyLine} <ArrowRight size={15} aria-hidden="true" /></Link>}
           </div>
         </aside>
       </div>
 
-      <div className="shop-cart-bar">
+      <div className="cart-bar">
         <div>
           <small>{items.length} sesi</small>
           <b>{money(payment?.enabled ? payNow : total)}</b>
         </div>
-        <button type="button" className="shop-cta" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+        <button type="button" className="shop-btn primary sm" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
           Isi data pemesan <ArrowRight size={17} aria-hidden="true" />
         </button>
       </div>

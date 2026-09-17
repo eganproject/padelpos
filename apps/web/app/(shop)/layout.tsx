@@ -1,22 +1,25 @@
-import Link from "next/link";
-import { Orbit } from "lucide-react";
-import { ShopFooter, ShopNav } from "@/components/shop-chrome";
+import { ShopFooter } from "@/components/shop-footer";
+import { ShopHeader } from "@/components/shop-header";
+import { venueInfo } from "@/lib/server-data";
+import { hasPolicies } from "@/lib/venue-info";
 
-export default function ShopLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Rangka situs pelanggan. Profil venue diambil di server sehingga kepala dan kaki
+ * halaman sudah berisi nama, kontak, dan tautan yang benar pada gambar pertama —
+ * tidak ada teks yang berganti sendiri setelah halaman tampil.
+ */
+export default async function ShopLayout({ children }: { children: React.ReactNode }) {
+  const data = await venueInfo();
+  const info = data?.info ?? null;
+  const faqs = data?.faqs.length ?? 0;
+  const policies = !!data && hasPolicies(data.policies);
+
   return (
-    <div className="shop-page">
+    <div className="shop">
       <a className="shop-skip" href="#konten">Lewati ke konten</a>
-      <header className="shop-header">
-        <div className="shop-header-inner">
-          <Link href="/" className="shop-logo" aria-label="Padelix, ke beranda">
-            <span className="shop-logo-mark"><Orbit size={20} strokeWidth={2.4} /></span>
-            <span className="shop-logo-name">PADEL<span>IX</span></span>
-          </Link>
-          <ShopNav />
-        </div>
-      </header>
-      <main id="konten" className="shop-main">{children}</main>
-      <ShopFooter />
+      <ShopHeader name={info?.name || "Padelix"} hasLocation={!!info?.address} hasFaq={faqs > 0} hasPolicies={policies} />
+      <main id="konten" className="shop-body">{children}</main>
+      <ShopFooter info={info} hasFaq={faqs > 0} hasPolicies={policies} />
     </div>
   );
 }

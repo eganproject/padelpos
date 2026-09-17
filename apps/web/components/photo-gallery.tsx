@@ -4,16 +4,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Images, X } from "lucide-react";
 import { photoUrl } from "@/lib/venue-info";
 
-/** Foto sampul lapangan. Ketuk untuk membuka galeri; tanpa foto tampil gambar garis lapangan. */
-export function CourtCover({ name, photos, className = "" }: { name: string; photos: string[]; className?: string }) {
+/**
+ * Sampul foto lapangan. Ketuk untuk membuka galeri layar penuh.
+ * Tanpa foto, sampulnya digambar sebagai lapangan bergaris sehingga kartu tetap
+ * punya gambar dan tingginya tidak berubah begitu foto ditambahkan admin.
+ */
+export function CourtCover({ name, photos, className = "", priority = false }: {
+  name: string; photos: string[]; className?: string; priority?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
-  if (!photos.length) return <div className={`court-cover empty ${className}`} aria-hidden="true"><span className="court-cover-lines" /></div>;
+  if (!photos.length) return <div className={`court-cover empty ${className}`.trim()} aria-hidden="true"><span className="court-cover-lines" /></div>;
   return (
     <>
-      <button type="button" className={`court-cover ${className}`} onClick={() => setOpen(true)} aria-label={`Lihat ${photos.length} foto ${name}`}>
+      <button type="button" className={`court-cover ${className}`.trim()} onClick={() => setOpen(true)} aria-label={`Lihat ${photos.length} foto ${name}`}>
         {/* eslint-disable-next-line @next/next/no-img-element -- foto berasal dari API sendiri dan sudah diperkecil saat diunggah */}
-        <img src={photoUrl(photos[0])} alt="" loading="lazy" decoding="async" />
+        <img src={photoUrl(photos[0])} alt="" loading={priority ? "eager" : "lazy"} decoding="async" fetchPriority={priority ? "high" : "auto"} />
         {photos.length > 1 && <span className="court-cover-count"><Images size={14} aria-hidden="true" /> {photos.length}</span>}
       </button>
       {open && <PhotoLightbox name={name} photos={photos} close={close} />}
@@ -46,7 +52,7 @@ export function PhotoLightbox({ name, photos, close, start = 0 }: { name: string
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="lightbox-bar">
         <span><b>{name}</b> · {index + 1} dari {photos.length}</span>
-        <button type="button" onClick={close} aria-label="Tutup galeri"><X size={20} /></button>
+        <button type="button" onClick={close} aria-label="Tutup galeri"><X size={20} aria-hidden="true" /></button>
       </div>
       <figure className="lightbox-stage"
         onClick={event => { if (event.target === event.currentTarget) close(); }}
@@ -62,11 +68,11 @@ export function PhotoLightbox({ name, photos, close, start = 0 }: { name: string
       </figure>
       {photos.length > 1 && (
         <>
-          <button type="button" className="lightbox-nav prev" onClick={() => step(-1)} aria-label="Foto sebelumnya"><ChevronLeft size={26} /></button>
-          <button type="button" className="lightbox-nav next" onClick={() => step(1)} aria-label="Foto berikutnya"><ChevronRight size={26} /></button>
+          <button type="button" className="lightbox-nav prev" onClick={() => step(-1)} aria-label="Foto sebelumnya"><ChevronLeft size={26} aria-hidden="true" /></button>
+          <button type="button" className="lightbox-nav next" onClick={() => step(1)} aria-label="Foto berikutnya"><ChevronRight size={26} aria-hidden="true" /></button>
           <div className="lightbox-thumbs">
-            {photos.map((id, i) => (
-              <button type="button" key={id} aria-current={i === index} onClick={() => setIndex(i)} aria-label={`Foto ${i + 1}`}>
+            {photos.map((id, position) => (
+              <button type="button" key={id} aria-current={position === index} onClick={() => setIndex(position)} aria-label={`Foto ${position + 1}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={photoUrl(id)} alt="" loading="lazy" />
               </button>

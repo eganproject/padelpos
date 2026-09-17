@@ -34,6 +34,7 @@ function AvailabilityView() {
   const [data, setData] = useState<Availability | null>(null);
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<Selection | null>(null);
+  /** Pilihan durasi bertahan antarsesi: pemain yang selalu main 2 jam tidak perlu memilihnya berulang. */
   const [duration, setDuration] = useState(60);
   const [notice, setNotice] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -135,6 +136,7 @@ function AvailabilityView() {
     return () => { active = false; };
   }, [date, picked, end, data]);
   useEffect(() => { if (!picked) { setPicks({}); setAddonsOpen(false); } }, [picked]);
+
   const catalog = addonOptions ?? venue?.addons ?? [];
   const chosenAddons = effective
     ? catalog.flatMap(option => {
@@ -145,13 +147,23 @@ function AvailabilityView() {
   const extras = chosenAddons.reduce((sum, item) => sum + item.subtotal, 0);
   const pickedCount = chosenAddons.reduce((sum, item) => sum + item.quantity, 0);
   const grandTotal = total + extras;
-  const payment = venue?.payment;
-  const payOnline = !!payment?.enabled;
+  const payOnline = !!venue?.payment.enabled;
   // Slot yang sudah masuk keranjang ditandai agar tidak dipilih dua kali.
   const cartToday = cart.filter(item => item.date === date);
   const inCart = (courtId: string, start: string) =>
     cartToday.some(item => item.court_id === courtId && minute(start) >= minute(item.start_time) && minute(start) < minute(item.end_time));
   const pickedInCart = !!picked && !!pickedCourt && cartToday.some(item => item.court_id === pickedCourt.id && item.start_time === picked.start);
+
+  const info = venue?.info;
+  const policyLine = venue ? policySummary(venue.policies) : null;
+  const floors = data?.floors ?? [];
+  const pickedFloor = pickedCourt ? floorLabel(floors, pickedCourt.floor_id) : undefined;
+  // Venue bertingkat: jadwal dikelompokkan per lantai sesuai urutan lantai di denah.
+  const groups = data
+    ? floors.length > 1
+      ? floors.map(floor => ({ floor, entries: data.courts.filter(entry => (entry.court.floor_id ?? floors[0].id) === floor.id) })).filter(group => group.entries.length)
+      : [{ floor: null, entries: data.courts }]
+    : [];
 
   function addPickedToCart() {
     if (!picked || !pickedCourt || !end || !effective) return;
@@ -173,53 +185,45 @@ function AvailabilityView() {
     else toast.error(`Keranjang penuh: maksimal ${maxCartItems} sesi dalam satu pesanan.`);
   }
 
-  const info = venue?.info;
-  const policyLine = venue ? policySummary(venue.policies) : null;
-  const floors = data?.floors ?? [];
-  const pickedFloor = pickedCourt ? floorLabel(floors, pickedCourt.floor_id) : undefined;
-  // Venue bertingkat: jadwal dikelompokkan per lantai sesuai urutan lantai di denah.
-  const groups = data
-    ? floors.length > 1
-      ? floors.map(floor => ({ floor, entries: data.courts.filter(entry => (entry.court.floor_id ?? floors[0].id) === floor.id) })).filter(group => group.entries.length)
-      : [{ floor: null, entries: data.courts }]
-    : [];
-
   return (
-    <section className="shop-section shop-availability-page">
-      <div className="shop-page-head">
+    <section className="shop-band shop-wrap">
+      <div className="book-head">
         <div>
           <h1>Cek ketersediaan</h1>
           <p>{date ? formatDay(date) : "Memuat tanggal…"}{data ? ` · ${totalFree} slot kosong` : ""}</p>
         </div>
-        <button type="button" className="shop-refresh" onClick={() => date && void load(date, true)} disabled={!date || refreshing} aria-label="Perbarui jadwal">
+        <button type="button" className="book-refresh" onClick={() => date && void load(date, true)} disabled={!date || refreshing} aria-label="Perbarui jadwal">
           <RefreshCw size={16} className={refreshing ? "spin" : ""} aria-hidden="true" />
           <span>{refreshing ? "Memperbarui…" : "Perbarui"}</span>
         </button>
       </div>
 
       {cart.length > 0 && (
-        <Link className="shop-cart-strip" href="/keranjang">
+        <Link className="book-cart-strip" href="/keranjang">
           <ShoppingBag size={17} aria-hidden="true" />
           <span><b>{cart.length} sesi</b> di keranjang · {money(cartTotal(cart))}</span>
           <span className="go">Lihat keranjang <ArrowRight size={15} aria-hidden="true" /></span>
         </Link>
       )}
 
-      <div className="shop-days" role="group" aria-label="Pilih tanggal">
-        {days.map(value => {
-          const [weekday, dayMonth] = formatShortDay(value).split(", ");
-          return (
-            <button key={value} type="button" aria-pressed={value === date} onClick={() => goto(value)}>
-              <small>{value === today ? "Hari ini" : value === addDays(today, 1) ? "Besok" : weekday}</small>
-              <b>{dayMonth}</b>
-            </button>
-          );
-        })}
-        <label className="shop-days-other">
-          <CalendarDays size={16} aria-hidden="true" />
-          <span>Tanggal lain</span>
-          <input type="date" value={date} min={today} max={lastDay} onChange={event => event.target.value && goto(event.target.value)} />
-        </label>
+      <div className="book-tools">
+        <div className="book-days" role="group" aria-label="Pilih tanggal">
+          {days.map(value => {
+            const [weekday, dayMonth] = formatShortDay(value).split(", ");
+            return (
+              <button className="book-day" key={value} type="button" aria-pressed={value === date} onClick={() => goto(value)}>
+                <small>{value === today ? "Hari ini" : value === addDays(today, 1) ? "Besok" : weekday}</small>
+                <b>{dayMonth}</b>
+              </button>
+            );
+          })}
+          {/* Labelnya melekat pada isian, bukan teks tersembunyi: teks berposisi absolut
+              di dalam deretan yang dapat digeser ikut melebarkan halaman. */}
+          <label className="book-day-other">
+            <CalendarDays size={16} aria-hidden="true" />
+            <input type="date" aria-label="Tanggal lain" value={date} min={today} max={lastDay} onChange={event => event.target.value && goto(event.target.value)} />
+          </label>
+        </div>
       </div>
 
       {error && (
@@ -232,22 +236,20 @@ function AvailabilityView() {
       {!data ? (
         !error && (
           <div aria-busy="true" aria-label="Memuat jadwal">
-            <div className="shop-court-block skeleton" />
-            <div className="shop-court-block skeleton" />
+            <div className="skeleton" style={{ minHeight: 200, marginBottom: 16 }} />
+            <div className="skeleton" style={{ minHeight: 200 }} />
           </div>
         )
       ) : data.courts.length === 0 ? (
         <p className="shop-empty">Belum ada lapangan yang dibuka untuk pemesanan.</p>
       ) : (
         <>
-          <div className="shop-map-card">
+          <div className="book-map">
             <header>
               <h2>Denah venue</h2>
               <p>Ketuk lapangan untuk melompat ke jadwalnya.</p>
             </header>
-            <div className="venue-map-scroll">
-              <VenueMap venue={data.venue} floors={data.floors} courts={data.courts} features={data.features} selected={picked?.courtId} onSelect={focusCourt} />
-            </div>
+            <VenueMap venue={data.venue} floors={data.floors} courts={data.courts} features={data.features} selected={picked?.courtId} onSelect={focusCourt} />
             <div className="venue-map-legend">
               <span><i className="open" />Banyak slot kosong</span>
               <span><i className="few" />Tinggal sedikit</span>
@@ -255,7 +257,7 @@ function AvailabilityView() {
             </div>
           </div>
 
-          <div className="shop-legend" aria-label="Keterangan warna slot">
+          <div className="book-legend" aria-label="Keterangan warna slot">
             <span><i className="free" />Tersedia</span>
             <span><i className="pick" />Pilihan Anda</span>
             <span><i className="busy" />Sudah dipesan</span>
@@ -267,111 +269,116 @@ function AvailabilityView() {
           {groups.map(group => (
             <Fragment key={group.floor?.id ?? "semua"}>
               {group.floor && (
-                <h2 className="shop-floor-title">
+                <h2 className="book-floor">
                   <Layers size={18} aria-hidden="true" /> {group.floor.name}
                   <small>{group.entries.length} lapangan</small>
                 </h2>
               )}
-          {group.entries.map(({ court, slots }) => {
-            // Slot yang sudah lewat hanya memenuhi layar; cukup sebutkan jumlahnya.
-            const shown = date === data.today ? slots.filter(slot => slot.state !== "past") : slots;
-            const passed = slots.length - shown.length;
-            const free = slots.filter(slot => slot.state === "available").length;
-            const rates = (shown.length ? shown : slots).map(slot => slot.rate);
-            const low = rates.length ? Math.min(...rates) : court.hourly_rate, high = rates.length ? Math.max(...rates) : court.hourly_rate;
-            return (
-              <article
-                className="shop-court-block"
-                key={court.id}
-                id={`lapangan-${court.id}`}
-                ref={node => { if (node) blocks.current.set(court.id, node); else blocks.current.delete(court.id); }}
-              >
-                <header>
-                  {court.photos.length > 0 && <CourtCover name={court.name} photos={court.photos} className="shop-court-thumb" />}
-                  <div className="title">
-                    <h3>{court.name}</h3>
-                    <small>
-                      {[court.environment && environmentLabel[court.environment], court.surface].filter(Boolean).join(" · ")}
-                      {(court.environment || court.surface) && <br />}
-                      Buka {court.opens_at} – {court.closes_at} · {free === 0 ? "penuh" : `${free} slot kosong`}
-                    </small>
-                  </div>
-                  <div className="rate">
-                    <b>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</b>
-                    <small>per jam</small>
-                  </div>
-                </header>
-                {free === 0 ? (
-                  <div className="shop-court-full">
-                    <p>{shown.length === 0 ? "Jam operasional di tanggal ini sudah lewat." : "Semua slot di tanggal ini sudah terisi."}</p>
-                    {nextDay <= lastDay && (
-                      <button type="button" className="shop-ghost small" onClick={() => goto(nextDay)}>
-                        Lihat {date === today ? "besok" : formatShortDay(nextDay)}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="shop-slots">
-                      {shown.map(slot => {
-                        const chosen = covered(court.id, slot.start);
-                        const booked = inCart(court.id, slot.start);
-                        const special = slot.state === "available" && !!slot.rule;
-                        const label = slot.state === "booked" ? "sudah dipesan" : slot.state === "maintenance" ? "sedang perawatan" : "tersedia";
-                        return (
-                          <button
-                            key={slot.start}
-                            type="button"
-                            className={`shop-slot ${chosen ? "picked" : slot.state}${special ? " special" : ""}${booked ? " incart" : ""}`}
-                            disabled={slot.state !== "available"}
-                            aria-pressed={chosen}
-                            title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
-                            aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : booked ? "sudah di keranjang" : label}${special ? `, tarif ${slot.rule} ${money(slot.rate)} per jam` : ""}`}
-                            onClick={() => { setNotice(""); setPicked({ courtId: court.id, start: slot.start }); setDuration(60); }}
-                          >
-                            {slot.start}
+              {group.entries.map(({ court, slots }) => {
+                // Slot yang sudah lewat hanya memenuhi layar; cukup sebutkan jumlahnya.
+                const shown = date === data.today ? slots.filter(slot => slot.state !== "past") : slots;
+                const passed = slots.length - shown.length;
+                const free = slots.filter(slot => slot.state === "available").length;
+                const rates = (shown.length ? shown : slots).map(slot => slot.rate);
+                const low = rates.length ? Math.min(...rates) : court.hourly_rate;
+                const high = rates.length ? Math.max(...rates) : court.hourly_rate;
+                return (
+                  <article
+                    className="book-court"
+                    key={court.id}
+                    id={`lapangan-${court.id}`}
+                    ref={node => { if (node) blocks.current.set(court.id, node); else blocks.current.delete(court.id); }}
+                  >
+                    <header>
+                      {court.photos.length > 0 && <CourtCover name={court.name} photos={court.photos} className="thumb" />}
+                      <div className="title">
+                        <h3>{court.name}</h3>
+                        <small>
+                          {[court.environment && environmentLabel[court.environment], court.surface].filter(Boolean).join(" · ")}
+                          {(court.environment || court.surface) && <br />}
+                          Buka {court.opens_at} – {court.closes_at} · {free === 0 ? "penuh" : `${free} slot kosong`}
+                        </small>
+                      </div>
+                      <div className="rate">
+                        <b>{low === high ? money(low) : `${money(low)} – ${money(high)}`}</b>
+                        <small>per jam</small>
+                      </div>
+                    </header>
+                    {free === 0 ? (
+                      <div className="book-court-full">
+                        <p>{shown.length === 0 ? "Jam operasional di tanggal ini sudah lewat." : "Semua slot di tanggal ini sudah terisi."}</p>
+                        {nextDay <= lastDay && (
+                          <button type="button" className="shop-btn outline sm" onClick={() => goto(nextDay)}>
+                            Lihat {date === today ? "besok" : formatShortDay(nextDay)}
                           </button>
-                        );
-                      })}
-                    </div>
-                    {passed > 0 && (
-                      <p className="shop-slot-note"><Info size={14} aria-hidden="true" /> {passed} slot sebelum pukul {data.time} disembunyikan karena sudah lewat.</p>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="book-slots">
+                          {shown.map(slot => {
+                            const chosen = covered(court.id, slot.start);
+                            const booked = inCart(court.id, slot.start);
+                            const special = slot.state === "available" && !!slot.rule;
+                            const label = slot.state === "booked" ? "sudah dipesan" : slot.state === "maintenance" ? "sedang perawatan" : "tersedia";
+                            return (
+                              <button
+                                key={slot.start}
+                                type="button"
+                                className={`book-slot ${chosen ? "picked" : slot.state}${special ? " special" : ""}${booked ? " incart" : ""}`}
+                                disabled={slot.state !== "available"}
+                                aria-pressed={chosen}
+                                title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
+                                aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : booked ? "sudah di keranjang" : label}${special ? `, tarif ${slot.rule} ${money(slot.rate)} per jam` : ""}`}
+                                onClick={() => { setNotice(""); setPicked({ courtId: court.id, start: slot.start }); }}
+                              >
+                                {slot.start}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {passed > 0 && (
+                          <p className="book-slot-note"><Info size={14} aria-hidden="true" /> {passed} slot sebelum pukul {data.time} disembunyikan karena sudah lewat.</p>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </article>
-            );
-          })}
+                  </article>
+                );
+              })}
             </Fragment>
           ))}
         </>
       )}
 
       {picked && pickedCourt && (
-        <div className="shop-summary" role="region" aria-label="Ringkasan pilihan">
-          <button type="button" className="shop-summary-close" onClick={() => setPicked(null)} aria-label="Batalkan pilihan"><X size={16} /></button>
+        <div className="book-pick" role="region" aria-label="Ringkasan pilihan">
+          <button type="button" className="book-pick-close" onClick={() => setPicked(null)} aria-label="Batalkan pilihan"><X size={16} aria-hidden="true" /></button>
           <div className="what">
             <small>Pilihan Anda</small>
             <b>{pickedCourt.name}</b>
             <span>{pickedFloor ? `${pickedFloor} · ` : ""}{formatShortDay(date)} · {picked.start}{end ? ` – ${end}` : ""}</span>
             {appliedRules.length > 0 && <em>Termasuk tarif {appliedRules.join(" & ")}</em>}
+            {effective !== duration && <em>{durationLabel(duration)} tidak muat di jam ini</em>}
             {pickedCount > 0 && <span className="extras">Lapangan {money(total)} + {pickedCount} tambahan {money(extras)}</span>}
           </div>
-          <div className="shop-duration" role="group" aria-label="Durasi main">
-            {durations.map(value => (
-              <button key={value} type="button" aria-pressed={effective === value} disabled={!available.includes(value)} onClick={() => setDuration(value)}>
-                {durationLabel(value)}
-              </button>
-            ))}
+          <div className="book-duration">
+            <span id="label-durasi">Durasi</span>
+            <div className="book-segment" role="group" aria-labelledby="label-durasi">
+              {durations.map(value => (
+                <button key={value} type="button" aria-pressed={effective === value} disabled={!available.includes(value)} onClick={() => setDuration(value)}>
+                  {durationLabel(value)}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="pay">
             <span className="total">{money(grandTotal)}</span>
             {pickedInCart ? (
-              <Link className="shop-cta" href="/keranjang" aria-describedby="catatan-bayar">
-                <ShoppingBag size={18} aria-hidden="true" /> Sudah di keranjang · Lihat
+              <Link className="shop-btn primary" href="/keranjang" aria-describedby="catatan-bayar">
+                <ShoppingBag size={18} aria-hidden="true" /> Sudah di keranjang
               </Link>
             ) : (
-              <button className="shop-cta" type="button" onClick={addPickedToCart} aria-describedby="catatan-bayar">
+              <button className="shop-btn primary" type="button" onClick={addPickedToCart} aria-describedby="catatan-bayar">
                 <ShoppingBag size={18} aria-hidden="true" /> Tambah ke keranjang
               </button>
             )}
@@ -383,8 +390,8 @@ function AvailabilityView() {
             </small>
           </div>
           {catalog.length > 0 && (
-            <div className={`shop-summary-addons${addonsOpen ? " open" : ""}`}>
-              <button type="button" className="shop-addons-toggle" aria-expanded={addonsOpen} aria-controls="pilihan-tambahan" onClick={() => setAddonsOpen(open => !open)}>
+            <div className="book-addons">
+              <button type="button" className="book-addons-toggle" aria-expanded={addonsOpen} aria-controls="pilihan-tambahan" onClick={() => setAddonsOpen(open => !open)}>
                 <PackagePlus size={17} aria-hidden="true" />
                 <span>{pickedCount ? `${pickedCount} tambahan dipilih · ${money(extras)}` : "Tambah sewa raket, bola & lainnya"}</span>
                 <ChevronDown size={16} aria-hidden="true" className="chevron" />
@@ -397,14 +404,13 @@ function AvailabilityView() {
           )}
         </div>
       )}
-
     </section>
   );
 }
 
 export default function AvailabilityPage() {
   return (
-    <Suspense fallback={<section className="shop-section"><p className="shop-empty">Memuat jadwal…</p></section>}>
+    <Suspense fallback={<section className="shop-band shop-wrap"><p className="shop-empty">Memuat jadwal…</p></section>}>
       <AvailabilityView />
     </Suspense>
   );

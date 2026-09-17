@@ -206,6 +206,22 @@ berkedip saat dimuat. Situs pelanggan sengaja selalu terang dengan palet sendiri
 Di layar sempit, tabel panel staf berubah menjadi kartu dan sidebar menjadi laci. Halaman laporan
 keuangan punya gaya cetak tersendiri: hanya laporannya yang keluar di kertas.
 
+### Situs pelanggan
+
+Gayanya terpisah dari panel staf dan tersimpan di tiga berkas: `shop.css` (rangka, tombol, beranda),
+`shop-booking.css` (cek ketersediaan, keranjang, status pesanan), dan `shop-pages.css` (FAQ,
+kebijakan, galeri foto, 404). Paletnya ditetapkan sekali pada kelas `.shop`, jadi tema gelap atau
+terang milik staf tidak pernah merembes ke halaman pelanggan.
+
+Beranda, FAQ, dan kebijakan digambar di server (`apps/web/lib/server-data.ts`) sehingga isinya sudah
+nyata pada gambar pertama. Alur pemesanan tetap berjalan di browser karena jadwalnya harus hidup.
+Bila API sedang mati, halaman tetap tampil dengan pesan yang jelas, bukan layar galat.
+
+Beranda dibuka dengan hero gelap. Bila venue sudah mengunggah foto, fotonya dipakai sebagai latar
+penuh; bila belum, kolom kanan diisi gambar lapangan yang digambar dengan CSS supaya venue baru pun
+punya suasana. Kepekatan lapisan gelap di atas foto ditentukan dari pengukuran: tulisan paling tipis
+di hero tetap di atas 5:1 walau fotonya terang.
+
 ## Penyimpanan data
 
 Data tersimpan pada `apps/api/data/padelix.sqlite` (mode WAL) dan dibuat otomatis saat

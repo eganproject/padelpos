@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Layers } from "lucide-react";
 import { featureName, type Floor, type VenueFeature } from "@/lib/venue";
@@ -11,14 +12,14 @@ import type { CourtAvailability, Venue } from "@/lib/shop";
  * Elemen informasi digambar di belakang lapangan dan tidak dapat diklik.
  * Venue bertingkat menampilkan tab per lantai lengkap dengan jumlah slot kosongnya.
  */
-export function VenueMap({ venue, floors = [], courts, features = [], selected, onSelect, compact = false }: {
+export function VenueMap({ venue, floors = [], courts, features = [], selected, onSelect }: {
   venue: Venue;
   floors?: Floor[];
   courts: CourtAvailability[];
   features?: VenueFeature[];
   selected?: string | null;
   onSelect?: (courtId: string) => void;
-  compact?: boolean;
+
 }) {
   const levels: Floor[] = floors.length ? floors : [{ id: "", name: "", width: venue.width, height: venue.height }];
   const first = levels[0].id;
@@ -41,7 +42,7 @@ export function VenueMap({ venue, floors = [], courts, features = [], selected, 
   });
 
   return (
-    <div className={`venue-map-block${compact ? " compact" : ""}`}>
+    <div className="venue-map-block">
       {levels.length > 1 && (
         <div className="venue-map-floors" role="tablist" aria-label="Pilih lantai">
           {levels.map(item => (
@@ -53,7 +54,7 @@ export function VenueMap({ venue, floors = [], courts, features = [], selected, 
           ))}
         </div>
       )}
-      <div className={`venue-map${compact ? " compact" : ""}`} style={{ aspectRatio: `${floor.width} / ${floor.height}` }} aria-label={floor.name ? `Denah ${floor.name}` : undefined}>
+      <div className="venue-map" style={{ aspectRatio: `${floor.width} / ${floor.height}` }} aria-label={floor.name ? `Denah ${floor.name}` : undefined}>
         {features.filter(item => floorOf(item.floor_id) === floor.id).map(item => (
           <div key={item.id} className={`venue-map-feature kind-${item.kind}`} style={place(item)} title={featureName(item)}>
             <span>{featureName(item)}</span>
@@ -82,4 +83,14 @@ export function VenueMap({ venue, floors = [], courts, features = [], selected, 
       </div>
     </div>
   );
+}
+
+/**
+ * Denah di beranda. Halaman beranda digambar di server sehingga tidak dapat
+ * mengoper fungsi `onSelect`; pembungkus kecil ini yang membawa pengunjung ke
+ * jadwal lapangan yang diketuk.
+ */
+export function VenueMapNav({ date, ...props }: Omit<Parameters<typeof VenueMap>[0], "onSelect" | "selected"> & { date: string }) {
+  const router = useRouter();
+  return <VenueMap {...props} onSelect={courtId => router.push(`/ketersediaan?date=${date}#lapangan-${encodeURIComponent(courtId)}`)} />;
 }

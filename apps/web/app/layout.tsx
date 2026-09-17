@@ -1,18 +1,21 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
+/* Panel staf lebih dulu, lalu situs pelanggan. Urutan ini disengaja: aturan
+   .shop ditulis terakhir sehingga tema terang/gelap staf tidak pernah merembes
+   ke halaman pelanggan lewat elemen yang dipakai bersama. */
 import "./tokens.css";
 import "./globals.css";
 import "./management.css";
 import "./operations.css";
 import "./layout-editor.css";
 import "./admin-content.css";
-import "./shop.css";
-import "./shop-content.css";
 import "./addons.css";
 import "./payments.css";
-import "./cart.css";
 import "./finance.css";
+import "./shop.css";
+import "./shop-booking.css";
+import "./shop-pages.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", display: "swap" });

@@ -1,0 +1,105 @@
+/* Halaman teks pelanggan: FAQ, kebijakan, galeri foto layar penuh, dan 404.
+   Memakai palet .shop dari shop.css. */
+
+/* --- Teks bebas dari admin ----------------------------------------------- */
+.shop .rich-text p{margin-bottom:var(--s3);white-space:pre-line;line-height:var(--lh-normal)}
+.shop .rich-text ul,.shop .rich-text ol{margin:0 0 var(--s3);padding-left:var(--s6);line-height:var(--lh-normal)}
+.shop .rich-text li+li{margin-top:var(--s1)}
+.shop .rich-text>:last-child{margin-bottom:0}
+
+/* --- Rangka halaman teks -------------------------------------------------- */
+.doc{max-width:840px;display:flex;flex-direction:column;gap:var(--s5)}
+.doc-head h1{font-size:clamp(30px,5vw,46px);line-height:1.08;margin:var(--s4) 0 var(--s3)}
+.doc-head p{font-size:var(--fs-lg);line-height:var(--lh-normal);color:var(--ink-soft)}
+.doc-toc{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s5)}
+.doc-toc a{
+  display:inline-flex;align-items:center;min-height:var(--control-sm);padding:0 var(--s4);
+  border:1px solid var(--edge);border-radius:var(--r-full);background:var(--surface);
+  font-size:var(--fs-md);font-weight:600;color:var(--ink-soft);
+}
+.doc-toc a:hover{border-color:var(--brand-deep);color:var(--ink)}
+.doc-card{
+  display:flex;flex-direction:column;align-items:flex-start;gap:var(--s4);padding:var(--s6);
+  border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface);
+  box-shadow:var(--card-shadow);scroll-margin-top:calc(var(--head-h) + var(--s5));
+}
+.doc-card>*{align-self:stretch}
+.doc-card>.shop-btn{align-self:flex-start}
+.doc-card h2{font-size:var(--fs-3xl)}
+.doc-card>p{color:var(--ink-soft);line-height:var(--lh-normal)}
+.doc-notes{margin:0;padding-left:var(--s5);display:flex;flex-direction:column;gap:var(--s2);font-size:var(--fs-md);line-height:var(--lh-normal);color:var(--ink-soft)}
+.doc-text{font-size:var(--fs-md);color:var(--ink-soft)}
+.doc-more{font-size:var(--fs-md);color:var(--ink-soft)}
+.doc-more a{color:var(--brand-deep);font-weight:700;text-decoration:underline;text-underline-offset:3px}
+
+/* --- Tingkat pengembalian dana ------------------------------------------- */
+.tiers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s2)}
+.tiers li{display:flex;align-items:center;gap:var(--s4);padding:var(--s3) var(--s4);border:1px solid var(--edge-soft);border-radius:var(--r-md);background:var(--paper)}
+.tiers strong{flex:none;display:grid;place-items:center;width:60px;height:44px;border-radius:var(--r-sm);font-family:var(--font-display);font-size:var(--fs-lg)}
+.tiers .full strong{background:var(--brand-wash);color:var(--brand-deep)}
+.tiers .part strong{background:var(--care-wash);color:var(--care)}
+.tiers .none strong{background:var(--busy-wash);color:var(--busy)}
+.tiers b{display:block;font-size:var(--fs-md)}
+.tiers span{display:block;margin-top:1px;font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--ink-faint)}
+
+/* --- Kebijakan ringkas di beranda ---------------------------------------- */
+.shop-trust{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:var(--s5);align-items:start}
+.shop-trust.single{grid-template-columns:minmax(0,1fr);max-width:760px}
+.shop-trust>article{display:flex;flex-direction:column;gap:var(--s4);padding:var(--s6);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface);box-shadow:var(--card-shadow)}
+.shop-trust>article>header{display:flex;align-items:center;gap:var(--s2);color:var(--brand-deep)}
+.shop-trust h3{font-size:var(--fs-xl);color:var(--ink)}
+.shop-trust>article>p{font-size:var(--fs-md);line-height:var(--lh-normal);color:var(--ink-soft)}
+.shop-faq-side{display:flex;flex-direction:column;gap:var(--s4)}
+
+/* --- Daftar pertanyaan --------------------------------------------------- */
+.faq{display:flex;flex-direction:column;gap:var(--s3)}
+.faq details{border:1px solid var(--edge);border-radius:var(--r-md);background:var(--surface);padding-inline:var(--s5)}
+.faq details[open]{box-shadow:var(--card-shadow)}
+.faq summary{
+  display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  min-height:56px;padding-block:var(--s4);list-style:none;cursor:pointer;
+  font-size:var(--fs-lg);font-weight:700;line-height:var(--lh-snug);
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary svg{flex:none;color:var(--ink-faint);transition:transform var(--normal) var(--ease)}
+.faq details[open] summary svg{transform:rotate(45deg);color:var(--ink)}
+.faq .rich-text{padding-bottom:var(--s5);font-size:var(--fs-md);color:var(--ink-soft)}
+
+/* --- Kartu bantuan ------------------------------------------------------- */
+.help-card{display:flex;align-items:center;justify-content:space-between;gap:var(--s5);flex-wrap:wrap;padding:var(--s6);border-radius:var(--card-radius);background:var(--night);color:var(--night-text)}
+.help-card h2{font-size:var(--fs-2xl)}
+.help-card p{margin-top:var(--s1);font-size:var(--fs-md);color:var(--night-soft)}
+.help-card .actions{display:flex;flex-wrap:wrap;gap:var(--s3)}
+.help-card .shop-btn.outline{background:transparent;border-color:#ffffff33;color:var(--night-text)}
+.help-card .shop-btn.outline:hover{background:#ffffff14;border-color:#ffffff66}
+
+/* --- Galeri foto layar penuh --------------------------------------------- */
+.lightbox{position:fixed;inset:0;z-index:100;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#080b07f7;color:#fff;outline:0}
+.lightbox-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s3) var(--s4);font-size:var(--fs-md);color:#d6dccf}
+.lightbox-bar b{color:#fff}
+.lightbox-bar button,.lightbox-nav{display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:#ffffff1f;color:#fff}
+.lightbox-bar button:hover,.lightbox-nav:hover{background:#ffffff38}
+.lightbox-stage{margin:0;min-height:0;display:grid;place-items:center;padding-inline:76px}
+.lightbox-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--r-sm);user-select:none}
+.lightbox-nav{position:absolute;top:50%;transform:translateY(-50%)}
+.lightbox-nav.prev{left:var(--s4)}
+.lightbox-nav.next{right:var(--s4)}
+.lightbox-thumbs{display:flex;justify-content:center;gap:var(--s2);padding:var(--s4) var(--s4) var(--s5);overflow-x:auto}
+.lightbox-thumbs button{flex:none;width:70px;height:52px;padding:0;border:2px solid transparent;border-radius:var(--r-sm);overflow:hidden;background:none;opacity:.5}
+.lightbox-thumbs button[aria-current=true]{border-color:var(--brand);opacity:1}
+.lightbox-thumbs img{display:block;width:100%;height:100%;object-fit:cover}
+
+/* --- Halaman tidak ditemukan --------------------------------------------- */
+.shop-404{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--s4);max-width:620px;margin-inline:auto;padding-block:var(--s10);text-align:center}
+.shop-404 h1{font-size:clamp(32px,6vw,52px);line-height:1.06}
+.shop-404 p{font-size:var(--fs-lg);line-height:var(--lh-normal);color:var(--ink-soft)}
+.shop-404 .actions{display:flex;flex-wrap:wrap;gap:var(--s3);justify-content:center;margin-top:var(--s3)}
+
+@media(max-width:900px){.shop-trust{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:760px){
+  .doc-card{padding:var(--s5)}
+  .help-card{padding:var(--s5)}
+  .help-card .actions,.help-card .actions>*{width:100%}
+  .lightbox-stage{padding-inline:var(--s2)}
+  .lightbox-nav{top:auto;bottom:92px;transform:none;width:40px;height:40px}
+}
