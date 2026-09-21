@@ -4,20 +4,43 @@ import { production } from "./config.js";
 import { db, getMenus, getRoles, getUsers } from "./store.js";
 export interface AuthRequest extends Request { auth?: { sub:string; email:string; role:string } }
 const cookieName = "padelix_session";
+/**
+ * Pelanggan memakai cookie sendiri: staf yang juga memesan sebagai pelanggan di browser
+ * yang sama tidak saling menimpa sesi. Sesi pelanggan lebih panjang karena hanya membuka
+ * data pesanannya sendiri, bukan panel operasional.
+ */
+const customerCookie = "padelix_customer";
+const staffTtl = 8*3600000, customerTtl = 30*24*3600000;
 const hash = (token:string) => createHash("sha256").update(token).digest("hex");
 const cookieOptions = { httpOnly:true, secure:production, sameSite:"lax" as const, path:"/" };
-function sessionId(req:Request) { return req.headers.cookie?.split(";").map(v=>v.trim()).find(v=>v.startsWith(`${cookieName}=`))?.slice(cookieName.length+1); }
-export function createSession(res:Response, subjectId:string, subjectType:"staff"|"customer"="staff") {
+function readCookie(req:Request, name:string) { return req.headers.cookie?.split(";").map(v=>v.trim()).find(v=>v.startsWith(`${name}=`))?.slice(name.length+1); }
+const sessionId = (req:Request) => readCookie(req, cookieName);
+function openSession(res:Response, name:string, subjectId:string, subjectType:"staff"|"customer", ttl:number) {
   const token = randomBytes(32).toString("hex");
   db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
-  db.prepare("INSERT INTO sessions VALUES (?,?,?,?)").run(hash(token),subjectId,subjectType,Date.now()+8*3600000);
-  res.cookie(cookieName,token,{...cookieOptions,maxAge:8*3600000});
+  db.prepare("INSERT INTO sessions VALUES (?,?,?,?)").run(hash(token),subjectId,subjectType,Date.now()+ttl);
+  res.cookie(name,token,{...cookieOptions,maxAge:ttl});
 }
+export function createSession(res:Response, subjectId:string) { openSession(res, cookieName, subjectId, "staff", staffTtl); }
 export function endSession(req:Request,res:Response) {
   const token = sessionId(req);
   if (token) db.prepare("DELETE FROM sessions WHERE id = ?").run(hash(token));
   res.clearCookie(cookieName,cookieOptions);
 }
+export function createCustomerSession(res:Response, accountId:string) { openSession(res, customerCookie, accountId, "customer", customerTtl); }
+/** Id akun pelanggan dari cookie, atau null bila belum masuk atau sesinya habis. */
+export function customerAccountId(req:Request) {
+  const token = readCookie(req, customerCookie);
+  if (!token) return null;
+  const row = db.prepare("SELECT subject_id FROM sessions WHERE id = ? AND subject_type = 'customer' AND expires_at > ?").get(hash(token),Date.now()) as {subject_id:string}|undefined;
+  return row?.subject_id ?? null;
+}
+export function endCustomerSession(req:Request,res:Response) {
+  const token = readCookie(req, customerCookie);
+  if (token) db.prepare("DELETE FROM sessions WHERE id = ? AND subject_type = 'customer'").run(hash(token));
+  res.clearCookie(customerCookie,cookieOptions);
+}
+export function revokeCustomerSessions(accountId:string) { db.prepare("DELETE FROM sessions WHERE subject_id = ? AND subject_type = 'customer'").run(accountId); }
 export function revokeSessions(userId:string) { db.prepare("DELETE FROM sessions WHERE subject_id = ? AND subject_type = 'staff'").run(userId); }
 export function requireAuth(req:AuthRequest,res:Response,next:NextFunction) {
   const token = sessionId(req);

@@ -16,6 +16,7 @@ import "./finance.css";
 import "./shop.css";
 import "./shop-booking.css";
 import "./shop-pages.css";
+import "./shop-account.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", display: "swap" });

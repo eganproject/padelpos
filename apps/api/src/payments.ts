@@ -147,7 +147,7 @@ export function quoteCart(input: unknown) {
 }
 
 /** 08xx dan +62xx disimpan seragam sebagai 62xx agar pelanggan lama dikenali. */
-function normalizePhone(value: string) {
+export function normalizePhone(value: string) {
   const digits = value.replace(/[^0-9]/g, "");
   return digits.startsWith("0") ? "62" + digits.slice(1) : digits.startsWith("62") ? digits : "62" + digits;
 }
@@ -211,7 +211,7 @@ function insertIntent(bookingId: string, orderRef: string | null, amount: number
 }
 
 /** Pelanggan memesan dan membayar sendiri. Seluruh sesi dikunci bersama atau tidak sama sekali. */
-export async function createCheckout(input: unknown) {
+export async function createCheckout(input: unknown, accountId: string | null = null) {
   const data = checkoutSchema.parse(input);
   const config = paymentConfig();
   check(config.enabled && config.serverKey, 409, "Pembayaran online belum aktif. Silakan hubungi venue lewat WhatsApp.");
@@ -233,9 +233,9 @@ export async function createCheckout(input: unknown) {
       const total = quote(court, priceRules(), item.date, item.start_time, item.end_time);
       const id = randomUUID();
       // Baris pesanan baru dibuat setelah seluruh tagihan diketahui, jadi order_id diisi menyusul.
-      db.prepare(`INSERT INTO bookings (id,court_id,customer_id,customer,phone,date,start_time,end_time,total,court_total,status,source,hold_expires_at,notes,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,'pending','online',unixepoch()+?,?,?)`)
-        .run(id, item.court_id, customerId, data.customer, data.phone, item.date, item.start_time, item.end_time, total, total, config.hold_minutes * 60, data.notes, stamp);
+      db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,status,source,hold_expires_at,notes,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending','online',unixepoch()+?,?,?)`)
+        .run(id, item.court_id, customerId, accountId, data.customer, data.phone, item.date, item.start_time, item.end_time, total, total, config.hold_minutes * 60, data.notes, stamp);
       if (item.addons.length) applyLines(getBooking(id), item.addons, customerId);
       created.push(getBooking(id));
     }

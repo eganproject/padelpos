@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, ChevronDown, Clock3, CreditCard, Loader2, MessageCircle, PackagePlus, ShieldCheck, ShoppingBag, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, Clock3, CreditCard, Loader2, MessageCircle, PackagePlus, ShieldCheck, ShoppingBag, Trash2, TriangleAlert } from "lucide-react";
 import { ApiError, money } from "@/lib/api";
 import { AddonThumb } from "@/components/addon-icon";
 import { QtyStepper } from "@/components/qty-stepper";
@@ -14,6 +14,7 @@ import {
   addonsTotal, cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
 } from "@/lib/cart";
 import { amountDue, quoteCart, startCheckout, type CartQuote } from "@/lib/payments";
+import { useAccount } from "@/lib/account";
 
 const durationLabel = (minutes: number) => `${(minutes / 60).toLocaleString("id-ID")} jam`;
 
@@ -27,6 +28,18 @@ export default function CartPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  const account = useAccount();
+
+  // Pelanggan yang sudah masuk tidak perlu mengetik ulang datanya; isian yang sudah diubah dibiarkan.
+  useEffect(() => {
+    if (!account || account.needs_profile) return;
+    setForm(current => ({
+      ...current,
+      customer: current.customer || account.name,
+      phone: current.phone || account.phone,
+      email: current.email || account.email,
+    }));
+  }, [account]);
 
   // Harga dan ketersediaan selalu datang dari server, bukan dari angka yang tersimpan di browser.
   useEffect(() => {
@@ -229,6 +242,14 @@ export default function CartPage() {
             {payment?.enabled ? (
               <form ref={formRef} onSubmit={submit} className="cart-form">
                 <h3>Data pemesan</h3>
+                {account ? (
+                  <p className="cart-account"><CircleUserRound size={16} aria-hidden="true" /> Tersimpan di akun <b>{account.email || account.name}</b></p>
+                ) : venue?.login.enabled && account === null ? (
+                  <Link className="cart-account invite" href="/masuk?lanjut=%2Fkeranjang">
+                    <CircleUserRound size={16} aria-hidden="true" />
+                    <span><b>Masuk dengan Google</b> supaya pesanan ini tersimpan di riwayat Anda dan data terisi otomatis.</span>
+                  </Link>
+                ) : null}
                 <label>Nama pemesan
                   <input required minLength={2} maxLength={80} value={form.customer} onChange={event => setForm({ ...form, customer: event.target.value })} />
                 </label>

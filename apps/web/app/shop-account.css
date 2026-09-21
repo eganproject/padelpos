@@ -1,0 +1,212 @@
+/* Akun pelanggan: tombol akun di kepala halaman, halaman masuk, ringkasan, riwayat, dan profil.
+   Memakai palet .shop dari shop.css. */
+
+/* --- Kepala halaman ------------------------------------------------------ */
+.shop-avatar{
+  display:inline-grid;place-items:center;flex:none;overflow:hidden;border-radius:50%;
+  background:var(--brand);color:var(--brand-ink);font-weight:700;line-height:1;
+}
+.shop-avatar img{width:100%;height:100%;object-fit:cover}
+.shop-account-btn{
+  display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--tap);padding:0 var(--s3) 0 var(--s1);
+  border:1px solid #12171126;border-radius:var(--r-full);font-size:var(--fs-md);font-weight:600;color:inherit;
+}
+.shop-account-btn:hover,.shop-account-btn[aria-current=page]{background:#12171112}
+.shop-head.over .shop-account-btn{border-color:#ffffff3d}
+.shop-head.over .shop-account-btn:hover{background:#ffffff1f}
+.shop-link.login{gap:var(--s2)}
+
+/* --- Halaman masuk ------------------------------------------------------- */
+.acct-login-page{display:grid;place-items:start center}
+.acct-login{
+  width:min(100%,480px);display:flex;flex-direction:column;gap:var(--s4);padding:var(--s7);
+  border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--surface);box-shadow:var(--card-shadow);
+}
+.acct-login h1{font-size:clamp(26px,3.4vw,32px);line-height:1.15}
+.acct-login>p{font-size:var(--fs-lg);line-height:var(--lh-normal);color:var(--ink-soft)}
+.acct-step{align-self:flex-start;font-size:var(--fs-xs);font-weight:700;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--brand-deep)}
+.acct-login .shop-eyebrow{align-self:flex-start}
+.acct-perks{list-style:none;margin:var(--s2) 0;padding:0;display:flex;flex-direction:column;gap:var(--s4)}
+.acct-perks li{display:flex;align-items:flex-start;gap:var(--s3)}
+.acct-perks svg{flex:none;width:38px;height:38px;padding:9px;border-radius:var(--r-sm);background:var(--brand-wash);color:var(--brand-deep)}
+.acct-perks span{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-md);line-height:var(--lh-snug);color:var(--ink-soft)}
+.acct-perks b{font-size:var(--fs-md);color:var(--ink)}
+/* Tombol Google mengikuti pedoman merek: putih, logo empat warna, teks gelap. */
+.acct-google{
+  display:flex;align-items:center;justify-content:center;gap:var(--s3);min-height:52px;padding:0 var(--s5);
+  border:1px solid #747775;border-radius:var(--r-full);background:#fff;color:#1f1f1f;
+  font-size:var(--fs-lg);font-weight:600;transition:background var(--fast) var(--ease),box-shadow var(--fast) var(--ease);
+}
+.acct-google:hover:not(:disabled){background:#f7f8f8;box-shadow:0 1px 3px #3c40434d}
+.acct-google:disabled{opacity:.7}
+.acct-login>.acct-fine{display:flex;gap:var(--s2);align-items:flex-start;font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--ink-faint)}
+.acct-login>.acct-fine svg{flex:none;margin-top:2px}
+.acct-guest{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);min-height:var(--tap);font-size:var(--fs-md);font-weight:600;color:var(--ink-soft)}
+.acct-guest:hover{color:var(--ink);text-decoration:underline}
+.acct-login>.acct-signed{font-size:var(--fs-md);padding:var(--s3) var(--s4);border-radius:var(--r-md);background:var(--sunken)}
+
+/* --- Formulir profil ----------------------------------------------------- */
+.acct-form{display:flex;flex-direction:column;gap:var(--s4)}
+.acct-form label,.acct-claim label{display:flex;flex-direction:column;gap:var(--s2);font-size:var(--fs-sm);font-weight:600;color:var(--ink-soft)}
+.acct-form input,.acct-claim input{
+  min-height:var(--control-lg);padding:0 var(--s3);border:1px solid var(--edge);border-radius:var(--r-sm);
+  background:var(--surface);color:var(--ink);font-size:var(--fs-lg);font-weight:400;
+}
+.acct-form input:focus,.acct-claim input:focus{outline:2px solid var(--brand-deep);outline-offset:1px;border-color:var(--brand-deep)}
+.acct-form small{font-size:var(--fs-xs);font-weight:400;color:var(--ink-faint)}
+
+/* --- Kerangka area akun -------------------------------------------------- */
+.acct{display:flex;flex-direction:column;gap:var(--s5)}
+.acct-head{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap}
+.acct-head>div{flex:1;min-width:0}
+.acct-head h1{font-size:clamp(26px,3.6vw,34px);line-height:1.1}
+.acct-head p{display:flex;flex-wrap:wrap;column-gap:var(--s2);margin-top:var(--s1);font-size:var(--fs-md);color:var(--ink-faint)}
+.acct-head p .email{overflow-wrap:anywhere;min-width:0}
+/* Nomor HP tidak boleh terpotong di tengah; pindah baris utuh bila tidak muat. */
+.acct-head p .phone{white-space:nowrap}
+.acct-head p .email+.phone:before{content:"·";margin-right:var(--s2)}
+.acct-tabs{display:flex;gap:var(--s1);border-bottom:1px solid var(--edge);overflow-x:auto}
+.acct-tabs a{
+  display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--control-lg);padding:0 var(--s4);
+  border-bottom:2px solid transparent;margin-bottom:-1px;
+  font-size:var(--fs-md);font-weight:600;color:var(--ink-soft);white-space:nowrap;
+}
+.acct-tabs a:hover{color:var(--ink)}
+.acct-tabs a[aria-current=page]{color:var(--ink);border-bottom-color:var(--brand-deep)}
+
+/* --- Ringkasan ----------------------------------------------------------- */
+.acct-home{display:flex;flex-direction:column;gap:var(--s5)}
+.acct-alert{
+  display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);
+  border:1px solid var(--care-edge);border-radius:var(--card-radius);background:var(--care-wash);color:var(--ink);
+}
+.acct-alert>svg{flex:none;color:var(--care)}
+.acct-alert span{flex:1;display:flex;flex-direction:column;gap:2px;font-size:var(--fs-md);color:var(--ink-soft)}
+.acct-alert b{color:var(--ink)}
+.acct-alert em{display:inline-flex;align-items:center;gap:var(--s1);font-style:normal;font-weight:700;color:var(--care);white-space:nowrap}
+
+/* Jadwal berikutnya: kartu malam, sama suasananya dengan hero beranda. */
+.acct-next{
+  position:relative;overflow:hidden;display:flex;flex-direction:column;gap:var(--s2);padding:var(--s7);
+  border-radius:var(--r-xl);background:var(--night);color:var(--night-text);
+}
+.acct-next:after{content:"";position:absolute;right:-60px;top:-60px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,#c8ff3d2e,transparent 65%);pointer-events:none}
+.acct-next-top{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap}
+.acct-next-label{display:inline-flex;align-items:center;gap:var(--s2);font-size:var(--fs-xs);font-weight:700;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--brand)}
+.acct-next h2{margin-top:var(--s2);font-size:clamp(28px,4.4vw,44px);line-height:1.05;color:var(--night-text)}
+.acct-next-meta{font-size:var(--fs-md);color:var(--night-soft)}
+.acct-next-court{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-lg);font-weight:600}
+.acct-next-court svg{color:var(--brand)}
+.acct-next-actions{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s4)}
+.acct-next .shop-btn.outline{background:transparent;border-color:#ffffff33;color:var(--night-text)}
+.acct-next .shop-btn.outline:hover{background:#ffffff14;border-color:#ffffff66}
+.acct-next-due{font-size:var(--fs-sm);color:var(--night-faint)}
+.acct-next .shop-pill.on{background:#c8ff3d24;color:var(--brand)}
+.acct-next .shop-pill.wait{background:#ffb4591f;color:#ffc47d}
+
+.acct-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3);margin:0}
+.acct-stats>div{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s5);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
+.acct-stats dt{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-sm);color:var(--ink-faint)}
+.acct-stats dt svg{color:var(--brand-deep)}
+.acct-stats dd{margin:0;font-family:var(--font-display);font-size:var(--fs-3xl);font-weight:700;letter-spacing:-.02em}
+.acct-stats dd.text{font-size:var(--fs-xl);line-height:var(--lh-tight)}
+.acct-stats .shop-tlink{align-self:flex-start;margin-top:auto}
+
+.acct-section{display:flex;flex-direction:column;gap:var(--s4)}
+.acct-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s3);flex-wrap:wrap}
+.acct-section-head h2{font-size:var(--fs-2xl)}
+.acct-recent{list-style:none;margin:0;padding:0;border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
+.acct-recent li{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s4) var(--s5)}
+.acct-recent li+li{border-top:1px solid var(--edge-soft)}
+.acct-recent div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.acct-recent span{font-size:var(--fs-sm);color:var(--ink-faint)}
+
+/* --- Kartu booking ------------------------------------------------------- */
+.acct-list{display:flex;flex-direction:column;gap:var(--s3)}
+.acct-booking{display:flex;gap:var(--s4);padding:var(--s5);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
+.acct-booking.cancelled{background:var(--paper)}
+.acct-date{
+  flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;width:60px;height:64px;
+  border-radius:var(--r-md);background:var(--brand-wash);color:var(--brand-deep);
+}
+.acct-booking.past .acct-date,.acct-booking.cancelled .acct-date{background:var(--sunken);color:var(--ink-soft)}
+.acct-date b{font-family:var(--font-display);font-size:var(--fs-3xl);line-height:1}
+.acct-date small{font-weight:700;text-transform:uppercase}
+.acct-booking-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s3)}
+.acct-booking-body>header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3)}
+.acct-booking h3{font-size:var(--fs-xl)}
+.acct-booking header p{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s1);font-size:var(--fs-md);color:var(--ink-soft)}
+.acct-booking .shop-pill{flex:none}
+.acct-lines{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--s2)}
+.acct-lines li{padding:2px var(--s3);border-radius:var(--r-full);background:var(--sunken);font-size:var(--fs-sm);color:var(--ink-soft)}
+.acct-warn{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-sm);color:var(--busy)}
+.acct-booking footer{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;padding-top:var(--s3);border-top:1px solid var(--edge-soft)}
+.acct-money{display:flex;flex-direction:column}
+.acct-money b{font-family:var(--font-display);font-size:var(--fs-xl)}
+.acct-money small{color:var(--ink-faint)}
+.acct-actions{display:flex;flex-wrap:wrap;gap:var(--s2)}
+
+/* --- Riwayat ------------------------------------------------------------- */
+.acct-history{display:flex;flex-direction:column;gap:var(--s4)}
+.acct-filter{align-self:flex-start}
+.acct-filter .count{display:inline-grid;place-items:center;min-width:22px;height:20px;margin-left:var(--s2);padding:0 6px;border-radius:var(--r-full);background:var(--edge);font-size:var(--fs-xs);font-weight:700;color:var(--ink-soft)}
+.acct-filter button[aria-pressed=true] .count{background:var(--brand);color:var(--brand-ink)}
+.acct-empty{display:flex;flex-direction:column;align-items:center;gap:var(--s3);padding:var(--s9) var(--s5);border:1px dashed var(--edge);border-radius:var(--card-radius);text-align:center;color:var(--ink-faint)}
+.acct-empty p{font-size:var(--fs-lg)}
+.acct-claim{display:flex;flex-direction:column;gap:var(--s4);margin-top:var(--s4);padding:var(--s6);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface);scroll-margin-top:calc(var(--head-h) + var(--s4))}
+.acct-claim h2{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-xl)}
+.acct-claim h2 svg{color:var(--brand-deep)}
+.acct-claim>div p{margin-top:var(--s2);font-size:var(--fs-md);line-height:var(--lh-normal);color:var(--ink-soft)}
+.acct-claim form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:var(--s3)}
+
+/* --- Profil -------------------------------------------------------------- */
+.acct-profile{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--s5);align-items:start}
+.acct-card{display:flex;flex-direction:column;gap:var(--s4);padding:var(--s6);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
+.acct-card:first-child{grid-row:span 2}
+.acct-card h2{font-size:var(--fs-xl)}
+.acct-card>p{font-size:var(--fs-md);line-height:var(--lh-normal);color:var(--ink-soft)}
+.acct-card>.shop-btn{align-self:flex-start}
+.acct-card.danger{border-color:var(--busy-edge)}
+.acct-google-row{display:flex;align-items:center;gap:var(--s3)}
+.acct-google-row div{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
+.acct-google-row span{font-size:var(--fs-sm);color:var(--ink-faint)}
+.acct-confirm{display:flex;flex-direction:column;gap:var(--s3);padding:var(--s4);border-radius:var(--r-md);background:var(--busy-wash)}
+.acct-confirm>div{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.shop-btn.danger{background:var(--busy);color:#fff}
+.shop-btn.danger:hover:not(:disabled){filter:brightness(1.08)}
+.shop-btn.danger-text{color:var(--busy)}
+
+/* --- Keranjang ----------------------------------------------------------- */
+.cart-account{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s3);border-radius:var(--r-sm);background:var(--sunken);font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--ink-soft);overflow-wrap:anywhere}
+.cart-account svg{flex:none;margin-top:1px;color:var(--brand-deep)}
+.cart-account b{color:var(--ink)}
+.cart-account.invite{border:1px dashed var(--brand-edge);background:var(--brand-wash)}
+.cart-account.invite:hover{border-style:solid}
+
+@media(max-width:900px){
+  .acct-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .acct-profile{grid-template-columns:minmax(0,1fr)}
+  .acct-card:first-child{grid-row:auto}
+}
+@media(max-width:760px){
+  .shop-account-btn span{display:none}
+  .shop-account-btn{padding:0 var(--s1)}
+  .acct-login{padding:var(--s5)}
+  .acct-next{padding:var(--s5)}
+  .acct-head .shop-btn{width:100%}
+  .acct-claim{padding:var(--s5)}
+  .acct-claim form{grid-template-columns:minmax(0,1fr)}
+  .acct-filter{align-self:stretch}
+  .acct-filter button{padding:0 var(--s2);white-space:nowrap}
+  .acct-booking{padding:var(--s4);gap:var(--s3)}
+  .acct-date{width:52px;height:58px}
+  .acct-booking-body>header{flex-direction:column;gap:var(--s2)}
+  .acct-alert{flex-wrap:wrap}
+  .acct-recent li{flex-wrap:wrap}
+}
+/* Layar sangat sempit: akun tetap terjangkau dari menu, kepala halaman tidak meluber. */
+@media(max-width:560px){.shop-account-btn{display:none}}
+@media(max-width:420px){
+  .acct-stats{grid-template-columns:minmax(0,1fr)}
+  .acct-actions,.acct-actions .shop-btn{width:100%}
+}

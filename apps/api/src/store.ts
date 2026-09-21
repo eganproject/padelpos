@@ -573,6 +573,44 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 11").get()) transactio
   }
   db.prepare("INSERT INTO migrations VALUES (11, ?)").run(stamp);
 });
+/**
+ * Akun pelanggan: masuk dengan Google lewat Firebase, lalu melengkapi nomor HP.
+ * Nomor HP tidak dibuat unik karena tidak diverifikasi SMS; membuatnya unik justru
+ * membocorkan nomor mana yang sudah terdaftar. Booking terhubung ke akun lewat
+ * `bookings.account_id`: diisi saat checkout sambil login, saat pelanggan mengklaim
+ * pesanan dengan kode + nomor HP, atau saat staf menghubungkannya dari panel.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 13").get()) transaction(() => {
+  const stamp = new Date().toISOString();
+  db.exec(`
+    CREATE TABLE customer_accounts (
+      id TEXT PRIMARY KEY,
+      firebase_uid TEXT NOT NULL UNIQUE,
+      email TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL,
+      phone TEXT,
+      photo_url TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      last_login_at TEXT NOT NULL
+    );
+    CREATE INDEX customer_accounts_phone ON customer_accounts (phone);
+    ALTER TABLE bookings ADD COLUMN account_id TEXT REFERENCES customer_accounts(id);
+    CREATE INDEX bookings_account ON bookings (account_id, date);
+  `);
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "customers" || menu.path === "/admin/customers")) {
+    const anchor = menus.find(menu => menu.id === "bookings");
+    const order = (anchor?.order ?? 0) + 1;
+    for (const menu of menus) if (menu.order >= order) menu.order += 1;
+    menus.push({ id: "customers", name: "Pelanggan", path: "/admin/customers", icon: "Contact", group: anchor?.group ?? "Operasional", order, active: true, createdAt: stamp });
+    saveCollection("menus", menus);
+    // Berisi data pribadi pelanggan dan pengaturan login, jadi bawaannya hanya admin.
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("customers")) role.menuIds.push("customers");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (13, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

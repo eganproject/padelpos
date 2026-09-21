@@ -82,7 +82,9 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
     </div><div className="modal-actions"><button type="button" onClick={close}>Batal</button><Submit busy={busy||refreshing||!validTime||conflict}>Simpan booking</Submit></div></form></Modal>;
 }
 
-type Detail={booking:Booking;payments:Payment[];addons:BookingAddon[];intents:PaymentIntent[]};
+type BriefAccount={id:string;name:string;email:string;phone:string};
+type AccountLink={linked:BriefAccount|null;suggestions:BriefAccount[]};
+type Detail={booking:Booking;payments:Payment[];addons:BookingAddon[];intents:PaymentIntent[];account?:AccountLink};
 function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>void}){
   const [data,setData]=useState<Detail|null>(null);
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[reason,setReason]=useState("");
@@ -124,6 +126,12 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
       toast.success("Link pembayaran dibuat");
     }catch(e){setError((e as Error).message)}finally{setBusy(false)}
   }
+  /** Staf yang memastikan pelanggannya benar, mis. pesan WhatsApp datang dari nomor itu, lalu menghubungkan. */
+  async function linkAccount(accountId:string|null){
+    setBusy(true);setError("");
+    try{const result=await api<{account:AccountLink}>(`/operations/bookings/${id}/account`,{method:"POST",body:JSON.stringify({account_id:accountId})});setData(d=>d&&{...d,account:result.account});toast.success(accountId?"Booking masuk ke riwayat akun pelanggan":"Kaitan ke akun dilepas")}
+    catch(e){setError((e as Error).message)}finally{setBusy(false)}
+  }
   async function copyLink(url:string){
     if(!url)return;
     try{await navigator.clipboard.writeText(url);toast.success("Link disalin, siap dikirim ke pelanggan")}
@@ -158,6 +166,12 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
         <span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span>
         {intent.status==="pending"&&intent.redirect_url&&<button type="button" className="ops-link-button" onClick={()=>void copyLink(intent.redirect_url!)}><Copy size={13}/> Salin link</button>}
       </li>)}</ul>:<p className="ops-muted">Belum ada tagihan online. Link berlaku 24 jam dan dapat dikirim ke pelanggan lewat WhatsApp.</p>}
+    </section>}
+    {data!.account&&(data!.account.linked||data!.account.suggestions.length>0)&&<section className="booking-account" aria-label="Akun pelanggan">
+      <h3>Akun pelanggan</h3>
+      {data!.account.linked?<div className="booking-account-row"><div><b>{data!.account.linked.name}</b><small>{data!.account.linked.email}{data!.account.linked.phone?` · ${data!.account.linked.phone}`:""}</small></div><button type="button" className="ops-link-button" disabled={busy} onClick={()=>void linkAccount(null)}>Lepas kaitan</button></div>
+      :<><p>Ada akun dengan nomor yang sama. Hubungkan hanya bila Anda yakin itu orang yang sama — nomor di akun diisi pelanggan sendiri.</p>
+        {data!.account.suggestions.map(account=><div className="booking-account-row" key={account.id}><div><b>{account.name}</b><small>{account.email}{account.phone?` · ${account.phone}`:""}</small></div><button type="button" className="ops-secondary" disabled={busy} onClick={()=>void linkAccount(account.id)}>Hubungkan</button></div>)}</>}
     </section>}
     <h3>Riwayat pembayaran</h3>{data!.payments.length?data!.payments.map(p=><div className="ops-history" key={p.id}><div><b>{p.kind==="refund"?"Pengembalian":"Pembayaran"} · {p.method.toUpperCase()}</b><small>{new Date(p.created_at).toLocaleString("id-ID")} {p.note&&"· "+p.note}</small></div><strong>{p.kind==="refund"?"−":""}{money(p.amount)}</strong></div>):<p className="ops-muted">Belum ada pembayaran.</p>}
     {booking.status==="confirmed"&&<div className="ops-status-actions"><h3>Status reservasi</h3><button className="ops-secondary" disabled={busy||booking.paid<booking.total} onClick={()=>void status("completed")}>Tandai selesai</button><p className="ops-muted">Sesi dapat diselesaikan setelah jam berakhir dan tagihan lunas.{unreturned.length>0?` Masih ada ${unreturned.reduce((sum,l)=>sum+l.quantity,0)} barang sewa yang belum kembali.`:""}</p><label>Alasan pembatalan<input minLength={3} maxLength={200} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Wajib diisi untuk membatalkan"/></label><button className="ops-danger" disabled={busy||reason.trim().length<3} onClick={()=>void status("cancelled")}>Batalkan booking</button>{lines.some(l=>l.type==="jual")&&<p className="ops-muted">Stok barang jual pada booking ini kembali otomatis saat dibatalkan.</p>}</div>}

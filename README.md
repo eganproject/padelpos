@@ -128,6 +128,56 @@ Webhook dikirim dari server Midtrans, jadi `localhost` tidak dapat dihubungi. Ja
 (mis. `ngrok http 3000`), isi `PUBLIC_URL` dengan alamat terowongan itu, lalu pakai alamat webhook yang
 tampil di menu Pembayaran. Coba dulu dengan kunci sandbox sebelum berpindah ke produksi.
 
+## Akun pelanggan (login Google)
+
+Pelanggan dapat masuk dengan akun Google, melengkapi nomor WhatsApp, lalu melihat jadwal mendatang,
+riwayat main, dan profilnya di `/akun`. Login memakai Firebase Authentication dan seluruh
+pengaturannya ada di panel admin: **Pelanggan → Login Google**. Tidak ada isian `.env` yang perlu
+diubah dan tidak perlu file service account.
+
+### Menyiapkan sekali (±10 menit)
+
+1. Buat proyek di [Firebase Console](https://console.firebase.google.com/). Paket gratis sudah cukup.
+2. **Authentication → Sign-in method → Google** → aktifkan → Save.
+3. **Authentication → Settings → Authorized domains** → tambahkan domain situs (tampil di panel,
+   dan bisa disalin). `localhost` sudah terdaftar sejak awal.
+4. **Project settings → General → Your apps** → tambah aplikasi Web (`</>`) → salin kotak
+   `firebaseConfig`.
+5. Tempel di panel admin. Keempat isian terisi sendiri. Centang **Aktifkan login pelanggan**,
+   simpan, lalu tekan **Uji koneksi**. Uji koneksi menanyakan langsung ke Google apakah API key
+   diterima, proyeknya cocok, domain situs sudah diizinkan, dan login Google sudah menyala — dan
+   memberi tahu langkah mana yang belum.
+
+Domain yang diperiksa diambil dari `PUBLIC_URL` (atau `CLIENT_URL`), jadi pastikan nilainya sama
+dengan alamat yang dibuka pelanggan.
+
+### Cara kerjanya
+
+Browser masuk ke Google lewat Firebase, lalu mengirim ID token ke API. API memeriksa tanda
+tangan token dengan kunci publik Google, memastikan token itu untuk proyek yang tersimpan di panel
+dan berasal dari login Google, lalu memberi pelanggan sesi sendiri (cookie `padelix_customer`,
+berlaku 30 hari). Setelah itu sesi Firebase di browser langsung ditutup. SDK Firebase hanya diunduh
+saat tombol **Lanjutkan dengan Google** ditekan, jadi halaman lain tidak ikut membayar ukurannya.
+
+Sesi pelanggan terpisah dari sesi staf: staf yang memesan sebagai pelanggan di browser yang sama
+tidak saling menimpa, dan cookie pelanggan tidak membuka panel staf.
+
+### Riwayat pesanan
+
+Nomor WhatsApp diisi pelanggan sendiri dan **tidak diverifikasi SMS**. Karena itu booking tidak
+pernah masuk ke akun hanya karena nomornya sama — kalau begitu, siapa pun bisa mengetik nomor orang
+lain dan melihat jadwal mainnya. Booking masuk ke riwayat akun lewat tiga jalan:
+
+- **Checkout sambil masuk.** Pesanan online yang dibuat saat login otomatis tercatat di akun.
+- **Klaim oleh pelanggan.** Di halaman Pesanan, pelanggan memasukkan kode pesanan (PDX-XXXXXX, atau
+  kode booking 8 karakter dari kasir) beserta nomor HP yang dipakai saat memesan. Keduanya harus
+  cocok, dan pesanan yang sudah milik akun lain tidak bisa diambil.
+- **Dihubungkan staf.** Rincian booking di panel menampilkan akun dengan nomor yang sama sebagai
+  saran; staf menekan **Hubungkan** setelah yakin itu orang yang sama.
+
+Menghapus akun tidak menghapus booking. Jadwal dan pembayarannya tetap milik venue; yang hilang
+hanya kaitannya ke akun dan data login Google.
+
 ## Pembukuan & laporan keuangan
 
 Menu **Keuangan** mencatat pengeluaran operasional dan pemasukan di luar booking, lalu menyusunnya

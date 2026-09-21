@@ -98,7 +98,7 @@ html:has(.shop-hero),html:has(.shop-hero) body{background:#0b1410}
 .shop-btn.primary:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 12px 26px #9ecb2a5c}
 .shop-btn.outline{background:var(--surface);border-color:var(--edge);color:var(--ink)}
 .shop-btn.outline:hover:not(:disabled){border-color:var(--ink-faint);background:var(--sunken)}
-.shop-btn:disabled{background:var(--sunken);color:var(--ink-faint);border-color:transparent;box-shadow:none;transform:none}
+.shop-btn:disabled{background:var(--sunken);color:#5f665c;border-color:transparent;box-shadow:none;transform:none}
 .shop-btn.sm{min-height:var(--control);padding-inline:var(--s4);font-size:var(--fs-md)}
 .shop-btn.wide{width:100%}
 .shop-band.night .shop-btn.outline{background:transparent;border-color:#ffffff33;color:var(--night-text)}

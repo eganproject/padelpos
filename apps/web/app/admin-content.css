@@ -193,3 +193,38 @@ html[data-theme="light"] .cms-preview{background:#fbfcf9;border-color:#cfd6cc}
 html[data-theme="light"] .court-admin-tags span.rule{color:#9a5410;border-color:#efc79b}
 html[data-theme="light"] .chip-presets button[aria-pressed=true]{color:#4d6b0a;background:#eaf6d3}
 html[data-theme="light"] .photo-badge{background:#c8ff3d}
+
+/* --- Pelanggan: akun dan login Google ------------------------------------ */
+.user-cell>.cust-photo{flex:none;width:38px;height:38px;border-radius:50%;object-fit:cover}
+.cust-note{display:flex;align-items:flex-start;gap:var(--s2);margin-top:var(--s4);font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--muted)}
+.cust-note svg{flex:none;margin-top:3px}
+.cust-checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel)}
+.cust-checks li{display:flex;align-items:flex-start;gap:var(--s3);padding:var(--s3) var(--s4)}
+.cust-checks li+li{border-top:1px solid var(--line)}
+.cust-checks li>svg{flex:none;width:24px;height:24px;padding:4px;border-radius:50%}
+.cust-checks li.ok>svg{background:var(--lime-wash);color:var(--lime-text)}
+.cust-checks li.bad>svg{background:var(--danger-wash);color:var(--danger)}
+.cust-checks li.unknown>svg{background:color-mix(in srgb,var(--orange) 14%,transparent);color:var(--orange)}
+.cust-checks div{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.cust-checks span{color:var(--text-soft)}
+.cust-steps{margin:0;padding:0;list-style:none;counter-reset:langkah;display:flex;flex-direction:column;gap:var(--s4)}
+.cust-steps li{position:relative;display:flex;flex-direction:column;gap:var(--s1);padding-left:40px;font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--text-soft)}
+.cust-steps li:before{
+  counter-increment:langkah;content:counter(langkah);position:absolute;left:0;top:0;
+  display:grid;place-items:center;width:28px;height:28px;border-radius:50%;
+  background:var(--lime-wash);color:var(--lime-text);font-weight:700;font-size:var(--fs-sm);
+}
+.cust-steps b{color:var(--text);font-size:var(--fs-md)}
+.cust-steps i{font-style:normal;font-weight:600;color:var(--text)}
+.cust-steps code{padding:1px 6px;border-radius:var(--r-xs);background:var(--panel2);color:var(--text);font-size:var(--fs-xs)}
+.cust-steps .pay-copy{margin-top:var(--s1)}
+.cust-steps .pay-copy input{min-width:0}
+.cust-paste{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:var(--fs-sm)!important;line-height:1.5}
+
+/* Akun pelanggan di rincian booking */
+.booking-account{display:flex;flex-direction:column;gap:var(--s3);border-top:1px solid var(--line);padding-top:var(--s5);margin-top:var(--s2)}
+.booking-account h3{margin:0;font-size:var(--fs-lg)}
+.booking-account p{font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--muted)}
+.booking-account-row{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;padding:var(--s3) var(--s4);border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel2)}
+.booking-account-row div{display:flex;flex-direction:column;gap:2px;min-width:0;font-size:var(--fs-sm)}
+.booking-account-row small{color:var(--muted)}

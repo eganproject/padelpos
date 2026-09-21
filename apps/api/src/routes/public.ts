@@ -8,6 +8,8 @@ import { publicAddons } from "../addons.js";
 import { publicPayment } from "../midtrans.js";
 import { createCheckout, expireHolds, handleNotification, orderView, quoteCart, refreshOrder } from "../payments.js";
 import { check } from "../errors.js";
+import { customerAccountId } from "../auth.js";
+import { publicLogin } from "../customers.js";
 
 const router = Router();
 
@@ -60,7 +62,7 @@ router.get("/availability", (req, res) => {
 /** Profil, kontak, fasilitas, kebijakan, FAQ, dan katalog sewa & tambahan. */
 router.get("/info", (_req, res) => {
   const { info, policies, faqs } = content();
-  res.json({ info, policies, faqs: faqs.items, courts: ops.publicCourts(), addons: publicAddons(), payment: publicPayment() });
+  res.json({ info, policies, faqs: faqs.items, courts: ops.publicCourts(), addons: publicAddons(), payment: publicPayment(), login: publicLogin() });
 });
 
 /** Sewa & tambahan. Dengan tanggal dan jam, `available` menghitung barang yang dipakai booking lain. */
@@ -77,7 +79,8 @@ router.post("/cart/quote", (req, res) => res.json(quoteCart(req.body)));
 
 /** Pesan dan bayar online. Dibatasi lebih ketat karena setiap panggilan mengunci satu slot. */
 router.post("/checkout", rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false, message: { message: "Terlalu banyak percobaan pemesanan. Coba lagi sebentar lagi." } }), async (req, res) => {
-  res.status(201).json(await createCheckout(req.body));
+  // Pelanggan yang sedang masuk otomatis mendapatkan pesanan ini di riwayat akunnya.
+  res.status(201).json(await createCheckout(req.body, customerAccountId(req)));
 });
 
 /** Halaman status pesanan. Id booking berupa UUID acak, jadi tautannya tidak dapat ditebak. */

@@ -17,7 +17,7 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   return (
     <div className="shop">
       <a className="shop-skip" href="#konten">Lewati ke konten</a>
-      <ShopHeader name={info?.name || "Padelix"} hasLocation={!!info?.address} hasFaq={faqs > 0} hasPolicies={policies} />
+      <ShopHeader name={info?.name || "Padelix"} hasLocation={!!info?.address} hasFaq={faqs > 0} hasPolicies={policies} loginEnabled={!!data?.login?.enabled} />
       <main id="konten" className="shop-body">{children}</main>
       <ShopFooter info={info} hasFaq={faqs > 0} hasPolicies={policies} />
     </div>

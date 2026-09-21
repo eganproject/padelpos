@@ -5,6 +5,7 @@ import * as content from "../content.js";
 import { addPhoto,maxPhotoSize,orderPhotos,photoIndex,photoTypes,removePhoto } from "../photos.js";
 import * as addons from "../addons.js";
 import * as finance from "../finance.js";
+import { adminAccounts, adminLogin, bookingAccount, linkBooking, saveLoginSettings, testLogin } from "../customers.js";
 import { adminPayment,savePaymentSettings,testCredentials } from "../midtrans.js";
 import { bookingIntents,createPaymentLink,expireHolds,recentIntents,refreshIntent } from "../payments.js";
 import { z } from "zod";
@@ -69,7 +70,13 @@ router.get("/bookings",requireMenu("bookings"),(req,res)=>{
   res.json({bookings:ops.bookings(date),...ops.localClock()});
 });
 router.post("/bookings",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json({booking:ops.createBooking(req.body,req.auth!.sub)}));
-router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id),addons:addons.bookingAddons(booking.id),intents:bookingIntents(booking.id)})});
+router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id),addons:addons.bookingAddons(booking.id),intents:bookingIntents(booking.id),account:bookingAccount(booking)})});
+router.post("/bookings/:id/account",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({account:linkBooking(String(req.params.id),req.body,req.auth!.sub)}));
+
+// Akun pelanggan dan pengaturan login Google (Firebase).
+router.get("/customers",requireMenu("customers"),(_req,res)=>res.json({settings:adminLogin(),accounts:adminAccounts()}));
+router.put("/customers/login",requireMenu("customers"),(req:AuthRequest,res)=>res.json({settings:saveLoginSettings(req.body,req.auth!.sub)}));
+router.post("/customers/login/test",requireMenu("customers"),async(_req,res)=>res.json(await testLogin()));
 router.post("/bookings/:id/payment-link",requireMenu("bookings"),async(req:AuthRequest,res)=>res.status(201).json({intent:await createPaymentLink(String(req.params.id),req.body,req.auth!.sub)}));
 router.patch("/bookings/:id/status",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.changeBookingStatus(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/payments",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json(ops.recordPayment(String(req.params.id),req.body,req.auth!.sub)));
