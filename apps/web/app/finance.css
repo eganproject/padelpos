@@ -36,6 +36,9 @@ html[data-theme="dark"] .fin-subtabs>button[aria-selected="true"]{background:var
 .fin-dates{display:flex;gap:var(--s2);flex-wrap:wrap}
 .fin-dates label{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm);color:var(--label)}
 .fin-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s3)}
+.fin-head-actions{display:flex;align-items:center;gap:var(--s2);margin-left:auto}
+.fin-card>.fin-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3)}
+.fin-card-head .ops-link{flex:none;margin-top:2px}
 
 /* Kartu angka utama (number card) */
 .fin-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:var(--s3)}

@@ -12,10 +12,10 @@ import { AmountField, Empty, PeriodPicker, ShareBar } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
 
 type Range = { from:string; to:string };
-export type ReportView = "laba-rugi" | "neraca" | "buku-besar" | "pembantu" | "jurnal";
-const views: [ReportView,string][] = [["laba-rugi","Laba rugi"],["neraca","Neraca"],["buku-besar","Buku besar"],["pembantu","Buku besar pembantu"],["jurnal","Jurnal umum"]];
+export type ReportView = "laba-rugi" | "neraca" | "buku-besar" | "pembantu";
+const views: [ReportView,string][] = [["laba-rugi","Laba rugi"],["neraca","Neraca"],["buku-besar","Buku besar"],["pembantu","Buku besar pembantu"]];
 
-export function ReportsTab({ setup, range, today, onRange, onChanged }: { setup:Setup; range:Range; today:string; onRange:(range:Range)=>void; onChanged:()=>void }) {
+export function ReportsTab({ setup, range, today, onRange }: { setup:Setup; range:Range; today:string; onRange:(range:Range)=>void }) {
   const [view,setView] = useState<ReportView>("laba-rugi");
   return (
     <div className="fin-reports">
@@ -29,7 +29,6 @@ export function ReportsTab({ setup, range, today, onRange, onChanged }: { setup:
       {view==="neraca" && <BalanceReport today={today}/>}
       {view==="buku-besar" && <LedgerReport setup={setup} range={range}/>}
       {view==="pembantu" && <SubsidiaryReport range={range}/>}
-      {view==="jurnal" && <JournalReport setup={setup} range={range} today={today} onChanged={onChanged}/>}
     </div>
   );
 }
@@ -286,7 +285,7 @@ function SubsidiaryReport({ range }: { range:Range }) {
 
 // --- Jurnal umum -----------------------------------------------------------
 
-function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:Range; today:string; onChanged:()=>void }) {
+export function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:Range; today:string; onChanged:()=>void }) {
   const [entries,setEntries] = useState<JournalEntry[]|null>(null);
   const [total,setTotal] = useState(0);
   const [term,setTerm] = useState("");
