@@ -330,7 +330,16 @@ function AvailabilityView() {
                                 aria-pressed={chosen}
                                 title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
                                 aria-label={`${court.name} pukul ${slot.start}, ${chosen ? "dipilih" : booked ? "sudah di keranjang" : label}${special ? `, tarif ${slot.rule} ${money(slot.rate)} per jam` : ""}`}
-                                onClick={() => { setNotice(""); setPicked({ courtId: court.id, start: slot.start }); }}
+                                onClick={() => {
+                                  setNotice("");
+                                  // Jam mulai yang tidak muat satu jam pun (mis. 30 menit sebelum tutup) dijelaskan
+                                  // di tempat, bukan dipilih lalu dilepas dengan pesan "baru saja tidak tersedia".
+                                  if (!durations.some(value => rangeIsFree(slots, slot.start, value))) {
+                                    toast.info(`Mulai pukul ${slot.start} tidak muat`, { description: `Minimal main ${durationLabel(durations[0])}, sedangkan jam setelahnya sudah terisi atau lapangan tutup. Pilih jam mulai lebih awal.` });
+                                    return;
+                                  }
+                                  setPicked({ courtId: court.id, start: slot.start });
+                                }}
                               >
                                 {slot.start}
                               </button>
@@ -358,7 +367,7 @@ function AvailabilityView() {
             <b>{pickedCourt.name}</b>
             <span>{pickedFloor ? `${pickedFloor} · ` : ""}{formatShortDay(date)} · {picked.start}{end ? ` – ${end}` : ""}</span>
             {appliedRules.length > 0 && <em>Termasuk tarif {appliedRules.join(" & ")}</em>}
-            {effective !== duration && <em>{durationLabel(duration)} tidak muat di jam ini</em>}
+            {!!effective && effective !== duration && <em>{durationLabel(duration)} tidak muat di jam ini</em>}
             {pickedCount > 0 && <span className="extras">Lapangan {money(total)} + {pickedCount} tambahan {money(extras)}</span>}
           </div>
           <div className="book-duration">
@@ -378,7 +387,7 @@ function AvailabilityView() {
                 <ShoppingBag size={18} aria-hidden="true" /> Sudah di keranjang
               </Link>
             ) : (
-              <button className="shop-btn primary" type="button" onClick={addPickedToCart} aria-describedby="catatan-bayar">
+              <button className="shop-btn primary" type="button" onClick={addPickedToCart} disabled={!effective} aria-describedby="catatan-bayar">
                 <ShoppingBag size={18} aria-hidden="true" /> Tambah ke keranjang
               </button>
             )}

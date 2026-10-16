@@ -43,7 +43,7 @@ test("pembukuan: jurnal berpasangan, laba rugi, neraca, buku besar, dan buku bes
 
       const setup = await request("/operations/finance/setup", "GET", undefined, admin);
       assert.equal(setup.status, 200);
-      assert.equal(setup.data.accounts.length, 26, "26 akun bawaan");
+      assert.equal(setup.data.accounts.length, 29, "26 akun bawaan ditambah Utang Pajak, Potongan Harga, dan Pendapatan Pembatalan");
       assert.equal(setup.data.accounts.filter((row: { is_cash: number }) => row.is_cash).length, 2, "Kas dan Bank");
       assert.equal(setup.data.settings.cash_accounts.cash, account("1-100"), "pembayaran tunai masuk ke Kas");
       assert.equal(setup.data.settings.cash_accounts.qris, account("1-200"), "pembayaran online masuk ke Bank");
@@ -297,6 +297,124 @@ test("pembukuan: jurnal berpasangan, laba rugi, neraca, buku besar, dan buku bes
       assert.equal(overview.series[5].month, today.slice(0, 7));
       assert.ok(overview.entries.length > 0, "jurnal terbaru ikut ditampilkan");
       assert.equal(overview.payable, 0, "utang pemasok sudah lunas");
+    });
+
+    await t.test("piutang dan uang muka dipisah per booking, tidak saling menutupi", async () => {
+      const unpaid = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Budi", phone: "081200000002", date: tomorrow, start_time: "13:00", end_time: "14:00", notes: "" }, admin);
+      const ahead = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Budi", phone: "081200000002", date: shift(2), start_time: "13:00", end_time: "14:00", notes: "" }, admin);
+      assert.equal(unpaid.status, 201); assert.equal(ahead.status, 201);
+      assert.equal((await request(`/operations/bookings/${ahead.data.booking.id}/payments`, "POST", payment(300000, "payment", "transfer"), admin)).status, 201);
+      const before = await balance(tomorrow);
+      assert.equal(before.difference, 0);
+      assert.equal(before.receivable, 300000, "sesi besok belum dibayar tetap piutang");
+      assert.equal(before.advances, 100000 + 300000, "uang muka sesi lusa ditambah dana Rina yang belum dikembalikan");
+      assert.equal(before.assets.find((row: { code: string }) => row.code === "1-300").amount, 300000);
+
+      const ledger = (await request(`/operations/finance/reports/pembantu?kind=piutang&from=${tomorrow}&to=${tomorrow}`, "GET", undefined, admin)).data;
+      const budi = ledger.rows.find((row: { name: string }) => row.name === "Budi");
+      assert.equal(budi.balance, 0, "per pelanggan saldonya memang nol");
+      assert.equal(budi.detail.length, 2, "tetapi rinciannya menunjukkan kedua booking");
+      assert.equal(budi.detail.reduce((sum: number, row: { amount: number }) => sum + row.amount, 0), budi.balance, "rincian selalu sama dengan saldo");
+      for (const row of ledger.rows) assert.equal(row.detail.reduce((sum: number, item: { amount: number }) => sum + item.amount, 0), row.balance, row.name);
+      bookingId = unpaid.data.booking.id;
+    });
+
+    await t.test("mengganti rekening tujuan pembayaran tidak memindahkan uang yang sudah diterima", async () => {
+      const mapping = (cash: string) => ({ cash_accounts: { cash, transfer: account("1-200"), qris: account("1-200"), va: account("1-200"), ewallet: account("1-200"), card: account("1-200") }, default_cash_account: account("1-100"), locked_until: "" });
+      const at = (sheet: { assets: { code: string; amount: number }[] }, code: string) => sheet.assets.find(row => row.code === code)?.amount ?? 0;
+      const start = await balance(shift(2));
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`, "POST", payment(100000, "payment", "cash"), admin)).status, 201);
+      assert.equal((await request("/operations/finance/settings", "PUT", mapping(account("1-200")), admin)).status, 200);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`, "POST", payment(50000, "payment", "cash"), admin)).status, 201);
+      const end = await balance(shift(2));
+      assert.equal(end.difference, 0);
+      assert.equal(at(end, "1-100") - at(start, "1-100"), 100000, "tunai pertama tetap di Kas");
+      assert.equal(at(end, "1-200") - at(start, "1-200"), 50000, "tunai berikutnya mengikuti pemetaan baru");
+      assert.equal((await request("/operations/finance/settings", "PUT", mapping(account("1-100")), admin)).status, 200);
+    });
+
+    await t.test("daftar jurnal dan catatan menyebut jumlah lengkapnya walau dibatasi", async () => {
+      const journal = (await request("/operations/finance/journal?limit=1", "GET", undefined, admin)).data;
+      assert.equal(journal.entries.length, 1);
+      assert.equal(journal.total, (db.prepare("SELECT count(*) n FROM journal_entries").get() as { n: number }).n);
+      const records = (await request("/operations/finance/records", "GET", undefined, admin)).data;
+      assert.equal(records.count, records.records.length);
+      assert.equal(records.expense, (db.prepare("SELECT SUM(amount) n FROM finance_records WHERE kind='pengeluaran'").get() as { n: number }).n);
+    });
+
+    await t.test("pajak dan potongan harga masuk ke tagihan, jurnal, dan laba rugi dengan angka yang sama", async () => {
+      const day = shift(3);
+      const settings = (tax: unknown) => request("/operations/finance/settings", "PUT", {
+        cash_accounts: { cash: account("1-100"), transfer: account("1-200"), qris: account("1-200"), va: account("1-200"), ewallet: account("1-200"), card: account("1-200") },
+        default_cash_account: account("1-100"), locked_until: "", tax,
+      }, admin);
+      const code = (key: string) => (db.prepare("SELECT code FROM accounts WHERE system_key=?").get(key) as { code: string }).code;
+      const entryOf = async (id: string) => (await request(`/operations/finance/journal?source=booking&from=${day}&to=${day}`, "GET", undefined, admin)).data.entries
+        .find((entry: { ref_id: string }) => entry.ref_id === id) as { lines: { account_code: string; debit: number; credit: number }[] };
+      const side = (entry: { lines: { account_code: string; debit: number; credit: number }[] }, account: string, key: "debit" | "credit") =>
+        entry.lines.filter(line => line.account_code === account).reduce((sum, line) => sum + line[key], 0);
+
+      assert.equal((await settings({ enabled: true, label: "PB1", rate: 10, inclusive: false })).status, 200);
+      const created = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Sari", phone: "081200000003", date: day, start_time: "08:00", end_time: "09:00", notes: "" }, admin);
+      assert.equal(created.status, 201);
+      const id = created.data.booking.id;
+      assert.equal(created.data.booking.court_total, 300000);
+      assert.equal(created.data.booking.tax, 30000, "PB1 10% di luar harga");
+      assert.equal(created.data.booking.total, 330000);
+      let entry = await entryOf(id);
+      assert.equal(side(entry, "1-300", "debit"), 330000, "piutang = yang ditagih");
+      assert.equal(side(entry, "4-100", "credit"), 300000, "pendapatan tanpa pajak");
+      assert.equal(side(entry, code("utang_pajak"), "credit"), 30000, "pajak menjadi utang, bukan pendapatan");
+
+      assert.equal((await request(`/operations/bookings/${id}/discount`, "PUT", { amount: 50000, note: "" }, admin)).status, 400, "potongan wajib beralasan");
+      const discounted = await request(`/operations/bookings/${id}/discount`, "PUT", { amount: 50000, note: "Member" }, admin);
+      assert.equal(discounted.status, 200);
+      assert.equal(discounted.data.booking.tax, 25000, "pajak dihitung dari harga setelah potongan");
+      assert.equal(discounted.data.booking.total, 275000);
+      entry = await entryOf(id);
+      assert.equal(side(entry, "1-300", "debit"), 275000);
+      assert.equal(side(entry, code("potongan_harga"), "debit"), 50000);
+      assert.equal(side(entry, code("utang_pajak"), "credit"), 25000);
+      const report = (await request(`/operations/finance/reports/laba-rugi?from=${day}&to=${day}`, "GET", undefined, admin)).data;
+      assert.equal(report.income, 250000, "pendapatan bersih setelah potongan, tanpa pajak");
+
+      assert.equal((await settings({ enabled: true, label: "PPN", rate: 11, inclusive: true })).status, 200);
+      assert.equal((await request(`/operations/bookings/${id}`, "GET", undefined, admin)).data.booking.total, 275000, "mengubah pengaturan pajak tidak mengubah tagihan lama");
+      const inclusive = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Tono", phone: "081200000004", date: day, start_time: "10:00", end_time: "11:00", notes: "" }, admin);
+      assert.equal(inclusive.data.booking.total, 300000, "harga sudah termasuk PPN");
+      assert.equal(inclusive.data.booking.tax, 29730, "11/111 dari 300.000");
+      entry = await entryOf(inclusive.data.booking.id);
+      assert.equal(side(entry, "4-100", "credit"), 270270);
+      assert.equal(side(entry, code("utang_pajak"), "credit"), 29730);
+
+      const sheet = await balance(day);
+      assert.equal(sheet.difference, 0);
+      assert.equal(sheet.liabilities.find((row: { code: string }) => row.code === code("utang_pajak")).amount, 25000 + 29730);
+      const overview = (await request(`/operations/finance/overview?from=${day}&to=${day}`, "GET", undefined, admin)).data;
+      assert.equal(overview.tax_payable, 25000 + 29730, "utang pajak tidak bercampur dengan utang pemasok");
+      assert.equal(overview.payable, 0);
+      assert.equal((await settings({ enabled: false, label: "PPN", rate: 11, inclusive: true })).status, 200);
+    });
+
+    await t.test("pembayaran booking batal dapat ditahan sebagian sebagai denda", async () => {
+      const day = shift(3);
+      const created = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Dewi", phone: "081200000005", date: day, start_time: "14:00", end_time: "15:00", notes: "" }, admin);
+      const id = created.data.booking.id;
+      assert.equal((await request(`/operations/bookings/${id}/payments`, "POST", payment(100000, "payment", "cash"), admin)).status, 201);
+      assert.equal((await request(`/operations/bookings/${id}/forfeit`, "PUT", { amount: 60000 }, admin)).status, 409, "booking aktif tidak bisa didenda");
+      assert.equal((await request(`/operations/bookings/${id}/status`, "PATCH", { status: "cancelled", reason: "Batal mendadak" }, admin)).status, 200);
+      assert.equal((await request(`/operations/bookings/${id}/forfeit`, "PUT", { amount: 100001 }, admin)).status, 400);
+      const kept = await request(`/operations/bookings/${id}/forfeit`, "PUT", { amount: 60000 }, admin);
+      assert.equal(kept.status, 200);
+      assert.equal(kept.data.booking.forfeited, 60000);
+
+      const report = (await request(`/operations/finance/reports/laba-rugi?from=${today}&to=${today}`, "GET", undefined, admin)).data;
+      assert.equal(report.income_lines.find((line: { name: string }) => line.name === "Pendapatan Pembatalan").amount, 60000, "denda diakui pada tanggal ditahan");
+      assert.equal((await request(`/operations/bookings/${id}/payments`, "POST", payment(40001, "refund", "cash"), admin)).status, 400, "yang ditahan tidak bisa ikut dikembalikan");
+      assert.equal((await request(`/operations/bookings/${id}/payments`, "POST", payment(40000, "refund", "cash"), admin)).status, 201);
+      const ledger = (await request(`/operations/finance/reports/pembantu?kind=piutang&from=${today}&to=${shift(3)}`, "GET", undefined, admin)).data;
+      assert.ok(!ledger.rows.some((row: { name: string; balance: number }) => row.name === "Dewi" && row.balance !== 0), "tidak ada sisa uang Dewi yang menggantung");
+      assert.equal((await balance(shift(3))).difference, 0);
     });
 
     await t.test("seluruh jurnal seimbang: total debit sama dengan total kredit", async () => {

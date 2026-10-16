@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
   type Account, type AccountSubtype, type AccountType, type Partner, type Setup,
-  formatDate, methodLabels, partnerKindLabel, subtypeLabel, typeLabel,
+  type GatewayFee, formatDate, methodLabels, money, partnerKindLabel, subtypeLabel, typeLabel,
 } from "@/lib/finance";
 import { Modal } from "./operation-ui";
 import { Empty } from "./finance-ui";
@@ -192,15 +192,31 @@ function PartnerForm({ partner, close, saved }: { partner?:Partner|null; close:(
   );
 }
 
+const onlineMethods = methodLabels.filter(method => method.key!=="cash");
 function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
   const cash = setup.accounts.filter(account => account.is_cash && account.active);
-  const [form,setForm] = useState({
-    cash_accounts: { ...setup.settings.cash_accounts },
-    default_cash_account: setup.settings.default_cash_account || cash[0]?.id || "",
-    locked_until: setup.settings.locked_until,
+  // Rekening yang sudah dinonaktifkan tidak ada di pilihan. Nilai awal disamakan dengan yang tampil di
+  // layar supaya yang tersimpan sama dengan yang dilihat admin.
+  const [form,setForm] = useState(() => {
+    const valid = (id?:string) => cash.some(account => account.id===id);
+    const fallback = valid(setup.settings.default_cash_account) ? setup.settings.default_cash_account : cash[0]?.id ?? "";
+    return {
+      cash_accounts: Object.fromEntries(methodLabels.map(method => [method.key, valid(setup.settings.cash_accounts[method.key]) ? setup.settings.cash_accounts[method.key] : fallback])) as Record<string,string>,
+      default_cash_account: fallback,
+      locked_until: setup.settings.locked_until,
+      tax: { ...setup.settings.tax },
+      gateway_fees: Object.fromEntries(onlineMethods.map(method => [method.key, setup.settings.gateway_fees[method.key] ?? { percent:0, flat:0 }])) as Record<string,GatewayFee>,
+    };
   });
   const [saving,setSaving] = useState(false);
-  const dirty = JSON.stringify(form) !== JSON.stringify({ cash_accounts:setup.settings.cash_accounts, default_cash_account:setup.settings.default_cash_account, locked_until:setup.settings.locked_until });
+  const stored = setup.settings;
+  const fee = (fees:Record<string,GatewayFee>, key:string) => fees[key] ?? { percent:0, flat:0 };
+  const dirty = !(methodLabels.every(method => stored.cash_accounts[method.key]===form.cash_accounts[method.key])
+    && stored.default_cash_account===form.default_cash_account && stored.locked_until===form.locked_until
+    && JSON.stringify(stored.tax)===JSON.stringify(form.tax)
+    && onlineMethods.every(method => JSON.stringify(fee(stored.gateway_fees,method.key))===JSON.stringify(fee(form.gateway_fees,method.key))));
+  const setFee = (key:string, patch:Partial<GatewayFee>) => setForm(current => ({ ...current, gateway_fees:{ ...current.gateway_fees, [key]:{ ...fee(current.gateway_fees,key), ...patch } } }));
+  const sample = 300000, sampleTax = form.tax.enabled ? (form.tax.inclusive ? Math.round(sample*form.tax.rate/(100+form.tax.rate)) : Math.round(sample*form.tax.rate/100)) : 0;
   async function submit(event:React.FormEvent) {
     event.preventDefault(); setSaving(true);
     try { await api("/operations/finance/settings",{method:"PUT",body:JSON.stringify(form)}); toast.success("Pengaturan disimpan"); reload() }
@@ -215,7 +231,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
         <div className="fin-method-grid">
           {methodLabels.map(method => (
             <label className="fin-field" key={method.key}><span className="fin-label">{method.label}</span>
-              <select value={form.cash_accounts[method.key] ?? form.default_cash_account}
+              <select value={form.cash_accounts[method.key]}
                 onChange={e=>setForm({...form,cash_accounts:{...form.cash_accounts,[method.key]:e.target.value}})}>
                 {cash.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
               </select>
@@ -228,6 +244,50 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
           </select>
           <small className="fin-hint">Dipakai sebagai pilihan awal saat mencatat pengeluaran atau pemasukan.</small>
         </label>
+      </section>
+      <section className="fin-sheet">
+        <header><h4>Pajak pada tagihan booking</h4></header>
+        <label className="fin-check"><input type="checkbox" checked={form.tax.enabled} onChange={e=>setForm({...form,tax:{...form.tax,enabled:e.target.checked}})}/> Tagih pajak pada booking baru</label>
+        {form.tax.enabled && (
+          <>
+            <div className="fin-form-grid">
+              <label className="fin-field"><span className="fin-label">Nama pajak</span>
+                <input value={form.tax.label} required minLength={2} maxLength={20} placeholder="PB1 atau PPN" onChange={e=>setForm({...form,tax:{...form.tax,label:e.target.value}})}/>
+              </label>
+              <label className="fin-field"><span className="fin-label">Tarif (%)</span>
+                <input type="number" required min={0.01} max={100} step={0.01} value={form.tax.rate||""} onChange={e=>setForm({...form,tax:{...form.tax,rate:Number(e.target.value)}})}/>
+              </label>
+            </div>
+            <div className="fin-chips wide" role="group" aria-label="Cara menghitung pajak">
+              <button type="button" aria-pressed={!form.tax.inclusive} onClick={()=>setForm({...form,tax:{...form.tax,inclusive:false}})}>Ditambahkan ke harga</button>
+              <button type="button" aria-pressed={form.tax.inclusive} onClick={()=>setForm({...form,tax:{...form.tax,inclusive:true}})}>Sudah termasuk harga</button>
+            </div>
+            <small className="fin-hint">
+              Contoh booking {money(sample)}: {form.tax.inclusive
+                ? `pelanggan membayar ${money(sample)}, di dalamnya ${form.tax.label||"pajak"} ${money(sampleTax)}.`
+                : `pelanggan membayar ${money(sample+sampleTax)}, termasuk ${form.tax.label||"pajak"} ${money(sampleTax)}.`}
+              {" "}Pajak dicatat ke Utang Pajak, bukan pendapatan. Booking yang sudah ada tidak berubah.
+            </small>
+          </>
+        )}
+      </section>
+      <section className="fin-sheet">
+        <header><h4>Potongan payment gateway</h4></header>
+        <p className="fin-note">Isi sesuai tarif Midtrans di kontrak Anda. Potongannya dicatat sebagai biaya, sehingga saldo Bank sama dengan uang yang benar-benar masuk rekening. Perubahan hanya berlaku untuk pembayaran berikutnya.</p>
+        <div className="fin-method-grid">
+          {onlineMethods.map(method => (
+            <div className="fin-field" key={method.key}><span className="fin-label">{method.label}</span>
+              <div className="fin-form-grid">
+                <label className="fin-field"><span className="fin-hint">Persen</span>
+                  <input type="number" min={0} max={20} step={0.01} value={fee(form.gateway_fees,method.key).percent||""} placeholder="0" onChange={e=>setFee(method.key,{percent:Number(e.target.value)||0})}/>
+                </label>
+                <label className="fin-field"><span className="fin-hint">Tetap (Rp)</span>
+                  <input type="number" min={0} max={100000} step={1} value={fee(form.gateway_fees,method.key).flat||""} placeholder="0" onChange={e=>setFee(method.key,{flat:Math.round(Number(e.target.value))||0})}/>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
       <section className="fin-sheet">
         <header><h4><Lock size={15}/> Kunci pembukuan</h4></header>

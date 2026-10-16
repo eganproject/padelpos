@@ -118,7 +118,7 @@ export function ShopHeader({ name, hasLocation, hasFaq, hasPolicies, loginEnable
             {links.map(link => <Link key={link.href} href={link.href}>{link.label} <ChevronRight size={20} aria-hidden="true" /></Link>)}
             <Link href="/keranjang">Keranjang{cart.length > 0 ? ` (${cart.length})` : ""} <ChevronRight size={20} aria-hidden="true" /></Link>
             {account ? <Link href="/akun">Akun saya <ChevronRight size={20} aria-hidden="true" /></Link>
-              : loginEnabled ? <Link href="/masuk">Masuk / daftar <ChevronRight size={20} aria-hidden="true" /></Link> : null}
+              : loginEnabled && account === null ? <Link href={`/masuk?lanjut=${encodeURIComponent(pathname === "/masuk" ? "/akun" : pathname)}`}>Masuk / daftar <ChevronRight size={20} aria-hidden="true" /></Link> : null}
             {hasPolicies && <Link href="/kebijakan">Kebijakan & ketentuan <ChevronRight size={20} aria-hidden="true" /></Link>}
             <Link className="shop-btn primary wide" href="/ketersediaan"><CalendarDays size={18} aria-hidden="true" /> Pesan jam main</Link>
           </nav>

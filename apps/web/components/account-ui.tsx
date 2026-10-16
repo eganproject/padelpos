@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CalendarCheck, History, Loader2, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { finishRedirect, safeNext, saveProfile, signInWithGoogle, SignInCancelled, useAccount, type Account, type PublicLogin } from "@/lib/account";
+import { finishRedirect, safeNext, validPhone, saveProfile, signInWithGoogle, SignInCancelled, useAccount, type Account, type PublicLogin } from "@/lib/account";
 
 /** Logo "G" Google empat warna, sesuai pedoman tombol masuk Google. */
 const GoogleMark = () => (
@@ -22,8 +22,7 @@ export function ProfileForm({ account, submitLabel, onSaved }: { account: Accoun
   const [phone, setPhone] = useState(account.phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const digits = phone.replace(/[^0-9]/g, "");
-  const ready = name.trim().length >= 2 && digits.length >= 9;
+  const ready = name.trim().length >= 2 && validPhone(phone);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -40,8 +39,10 @@ export function ProfileForm({ account, submitLabel, onSaved }: { account: Accoun
         <input required minLength={2} maxLength={80} autoComplete="name" value={name} onChange={event => setName(event.target.value)} />
       </label>
       <label>Nomor WhatsApp
-        <input required inputMode="tel" autoComplete="tel" maxLength={20} placeholder="0812 3456 7890" value={phone} onChange={event => setPhone(event.target.value)} />
-        <small>Dipakai venue untuk konfirmasi jadwal dan kabar bila ada perubahan.</small>
+        <input required inputMode="tel" autoComplete="tel" maxLength={20} placeholder="0812 3456 7890" value={phone} aria-invalid={phone !== "" && !validPhone(phone)} onChange={event => setPhone(event.target.value)} />
+        {phone !== "" && !validPhone(phone)
+          ? <small className="field-error">Masukkan nomor WhatsApp Indonesia yang aktif, mis. 0812 3456 7890.</small>
+          : <small>Dipakai venue untuk konfirmasi jadwal dan kabar bila ada perubahan.</small>}
       </label>
       {error && <p className="shop-note error" role="alert">{error}</p>}
       <button className="shop-btn primary wide" type="submit" disabled={!ready || busy}>

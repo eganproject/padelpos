@@ -1,11 +1,12 @@
 import { api } from "./api";
+import type { TaxSnapshot } from "./bill";
 
 /** Sama dengan API (apps/api/src/midtrans.ts dan payments.ts). */
 export type PaymentMode = "full" | "dp";
 export type IntentStatus = "pending" | "paid" | "expired" | "cancelled" | "failed" | "refunded";
 
 /** Yang diketahui pelanggan. */
-export type PaymentPublic = { enabled: boolean; mode: PaymentMode; dp_percent: number; hold_minutes: number; note: string };
+export type PaymentPublic = { enabled: boolean; mode: PaymentMode; dp_percent: number; hold_minutes: number; note: string; tax?: TaxSnapshot };
 /** Pengaturan untuk admin; server key tidak pernah ikut, hanya penandanya. */
 export type PaymentSettings = {
   enabled: boolean; environment: "sandbox" | "production"; client_key: string; mode: PaymentMode;
@@ -21,6 +22,7 @@ export type AdminIntent = PaymentIntent & { customer: string; date: string; star
 export type OrderSession = {
   id: string; code: string; court_name: string; date: string; start_time: string; end_time: string;
   status: string; court_total: number; total: number; paid: number; cancel_reason: string;
+  discount: number; discount_note: string; tax: number; tax_rate: number; tax_inclusive: number; tax_label: string;
   addons: { name: string; quantity: number; subtotal: number }[];
 };
 export type OrderView = {
@@ -64,10 +66,10 @@ export type CheckoutResult = { order_id: string; code: string; transaction_id: s
 /** Hasil pemeriksaan keranjang oleh server: harga terbaru dan alasan bila satu sesi tidak bisa dipesan. */
 export type CartQuoteItem = {
   index: number; court_id: string; court_name: string; date: string; start_time: string; end_time: string;
-  ok: boolean; reason?: string; court_total: number; total: number;
+  ok: boolean; reason?: string; court_total: number; tax: number; total: number;
   addons: { addon_id: string; name: string; quantity: number; unit_price: number; pricing: "per_booking" | "per_hour"; subtotal: number; ok: boolean }[];
 };
-export type CartQuote = { items: CartQuoteItem[]; total: number; amount: number };
+export type CartQuote = { items: CartQuoteItem[]; total: number; tax: number; tax_label: string; tax_inclusive: boolean; amount: number };
 export const quoteCart = (items: CartLine[]) => api<CartQuote>("/public/cart/quote", { method: "POST", body: JSON.stringify({ items }) });
 export const startCheckout = (body: CheckoutBody) => api<CheckoutResult>("/public/checkout", { method: "POST", body: JSON.stringify(body) });
 export const fetchOrder = (id: string) => api<OrderView>(`/public/orders/${encodeURIComponent(id)}`);

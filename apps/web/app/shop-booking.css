@@ -297,6 +297,8 @@
   background:var(--surface);color:var(--ink);font-size:var(--fs-lg);font-weight:400;
 }
 .cart-form input:focus{outline:2px solid var(--brand-deep);outline-offset:1px;border-color:var(--brand-deep)}
+.cart-form input[aria-invalid=true]{border-color:var(--danger)}
+.cart-form .field-error{font-size:var(--fs-xs);font-weight:500;color:var(--danger)}
 .cart-note{display:flex;gap:var(--s2);align-items:flex-start;font-size:var(--fs-xs);line-height:var(--lh-normal);color:var(--ink-faint)}
 .cart-note svg{flex:none;margin-top:2px}
 

@@ -222,7 +222,7 @@ transaction(() => {
     db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(id, court.id, item.customer, item.phone, day(item.day), item.start, item.end, total, total, "confirmed", "", actor, new Date().toISOString());
     if (addonIds.length && item.addons)
-      applyLines({ id, date: day(item.day), start_time: item.start, end_time: item.end, paid: 0, court_total: total }, item.addons.map(([index, quantity]) => ({ addon_id: addonIds[index], quantity })), actor);
+      applyLines({ id, date: day(item.day), start_time: item.start, end_time: item.end, paid: 0, court_total: total, discount: 0, tax_rate: 0, tax_inclusive: 0 }, item.addons.map(([index, quantity]) => ({ addon_id: addonIds[index], quantity })), actor);
     // Booking di sini ditulis langsung ke tabel, jadi jurnal pendapatannya dibuat menyusul.
     syncBooking(id);
   }

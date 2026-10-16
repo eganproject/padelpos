@@ -65,7 +65,7 @@ export function BookingCard({ item, venue }: { item: HistoryItem; venue: { name:
           <span className={`shop-pill ${status.tone}`}>{status.label}</span>
         </header>
         {item.addons.length > 0 && (
-          <ul className="acct-lines">{item.addons.map(line => <li key={line.name}>{line.quantity}× {line.name}</li>)}</ul>
+          <ul className="acct-lines">{item.addons.map((line, index) => <li key={index}>{line.quantity}× {line.name}</li>)}</ul>
         )}
         {item.cancel_reason && <p className="acct-warn"><TriangleAlert size={14} aria-hidden="true" /> {item.cancel_reason}</p>}
         <footer>
@@ -73,6 +73,7 @@ export function BookingCard({ item, venue }: { item: HistoryItem; venue: { name:
             <b>{money(item.total)}</b>
             <small>
               {item.status === "cancelled" || item.status === "expired" ? `Kode ${item.order_code ?? item.code}`
+                : item.status === "pending" ? "Menunggu pembayaran online"
                 : due > 0 ? `${item.paid > 0 ? `Dibayar ${money(item.paid)} · ` : ""}sisa ${money(due)} di venue` : "Lunas"}
             </small>
           </div>
