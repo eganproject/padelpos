@@ -49,7 +49,7 @@
 }
 .shop .slot b{font-size:15px;font-variant-numeric:tabular-nums}
 .shop .slot small{font-size:11.5px;font-weight:600;color:var(--lime-deep);white-space:nowrap}
-.shop .slot:hover:not(:disabled){background:var(--lime-wash);border-color:#9fca45}
+.shop .slot:hover:not(:disabled):not(.picked){background:var(--lime-wash);border-color:#9fca45}
 .shop .slot:active:not(:disabled){transform:scale(.96)}
 .shop .slot:disabled{cursor:not-allowed;opacity:1}
 .shop .slot.special small{color:var(--amber)}
@@ -182,3 +182,19 @@
   .shop .book.has-sheet{padding-bottom:24px}
   .shop .book.has-sheet .book-controls,.shop .book.has-sheet>.court-block,.shop .book.has-sheet>.page-head,.shop .book.has-sheet>.book-legend,.shop .book.has-sheet>.floor-head{margin-right:440px}
 }
+
+/* Durasi di atas 2 jam: tombol "Lebih lama" yang membuka daftar pilihan bawaan perangkat. */
+.shop .seg-more{position:relative;flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:40px;padding:0 12px;border-radius:10px;color:var(--ink-2);font-size:14px;font-weight:700;white-space:nowrap;cursor:pointer}
+.shop .seg-more.on{background:var(--card);color:var(--green);box-shadow:0 1px 3px #1118111f}
+.shop .seg-more select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.shop .seg-more select:disabled{cursor:not-allowed}
+.shop .seg-more:has(select:disabled){opacity:.4}
+.shop .seg-more:has(select:focus-visible){outline:2px solid var(--green);outline-offset:2px}
+.shop .seg-more svg{flex:none}
+/* Ponsel: empat pilihan durasi harus muat satu baris, jadi label cukup ikon jam. */
+@media (max-width:719px){
+  .shop .book-filters .seg-label{padding:0 2px 0 6px}
+  .shop .book-filters .seg-label-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .shop .seg button,.shop .seg-more{padding:0 8px}
+}
+@media (min-width:720px){.shop .book-filters .seg-more{flex:none}}

@@ -180,7 +180,7 @@ function useSave<T>(path: string, done: (result: T) => void, message: string) {
   return { busy, error, save };
 }
 
-const profileKeys = ["name", "tagline", "about", "address", "maps_url", "show_map", "whatsapp", "phone", "email", "instagram", "hours_note"] as const;
+const profileKeys = ["name", "tagline", "about", "address", "maps_url", "show_map", "whatsapp", "phone", "email", "instagram", "hours_note", "max_booking_hours"] as const;
 type ProfileFields = Pick<VenueInfo, typeof profileKeys[number]>;
 const pickProfile = (info: VenueInfo) => Object.fromEntries(profileKeys.map(key => [key, info[key]])) as ProfileFields;
 const editableProfile = (info: VenueInfo): ProfileFields => ({ ...pickProfile(info), whatsapp: info.whatsapp ? formatWhatsapp(info.whatsapp) : "" });
@@ -222,6 +222,12 @@ function ProfileForm({ info, saved, onDirty }: { info: VenueInfo; saved: (info: 
             <Field label="Instagram"><input maxLength={120} value={form.instagram} onChange={event => set("instagram")(event.target.value)} placeholder="@namavenue" /></Field>
             <Field label="Keterangan jam buka"><input maxLength={120} value={form.hours_note} onChange={event => set("hours_note")(event.target.value)} placeholder="Setiap hari, 06.00–23.00" /></Field>
           </div>
+          <Field label="Lama booking online" hint="Batas lama main untuk satu booking dari situs pelanggan. Booking lewat kasir tidak dibatasi.">
+            <Select value={form.max_booking_hours ?? 0} onChange={event => set("max_booking_hours")(Number(event.target.value))}>
+              <option value={0}>Bebas, sampai jam tutup lapangan</option>
+              {[2, 3, 4, 5, 6, 8, 10, 12].map(hours => <option key={hours} value={hours}>Maksimal {hours} jam</option>)}
+            </Select>
+          </Field>
         </section>
         <section className="cms-card wide">
           <header><h2>Lokasi</h2><p>Alamat, petunjuk arah, dan peta di bagian “Lokasi” pada beranda.</p></header>

@@ -21,7 +21,10 @@ import {
 } from "@/lib/shop";
 import { DateInput } from "@/components/form-controls";
 
-const durations = [60, 90, 120];
+/** Pilihan cepat di tombol; durasi yang lebih lama ada di daftar "Lebih lama". */
+const quickMax = 120;
+/** Batas tampilan bila admin tidak membatasi dan data lapangan belum termuat. */
+const fallbackMax = 180;
 /** Sama dengan batas jendela jadwal di API publik. */
 const horizonDays = 90;
 const stripDays = 14;
@@ -29,8 +32,10 @@ const refreshMs = 60_000;
 const durationKey = "padelix_duration";
 type Selection = { courtId: string; start: string };
 const durationLabel = (value: number) => `${(value / 60).toLocaleString("id-ID")} jam`;
-/** Harga ringkas di tombol slot: Rp350.000 menjadi "350rb". */
-const shortMoney = (value: number) => value >= 1000 ? `${(value / 1000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}rb` : money(value);
+/** Harga ringkas di tombol slot: Rp350.000 menjadi "350rb", Rp1.400.000 menjadi "1,4jt". */
+const shortMoney = (value: number) =>
+  value >= 1_000_000 ? `${(value / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 2 })}jt`
+    : value >= 1000 ? `${(value / 1000).toLocaleString("id-ID", { maximumFractionDigits: 1 })}rb` : money(value);
 
 const periods = [
   { key: "all", label: "Semua jam", from: 0, to: 24 * 60 },
@@ -40,6 +45,34 @@ const periods = [
   { key: "malam", label: "Malam", from: 18 * 60, to: 24 * 60 },
 ] as const;
 type Period = typeof periods[number]["key"];
+
+/** Durasi 1, 1,5, dan 2 jam sebagai tombol, sisanya (2,5 jam ke atas) di satu daftar pilihan. */
+function DurationPicker({ label, value, options, allowed, onChange, full }: {
+  label: string; value: number; options: number[]; allowed?: (value: number) => boolean; onChange: (value: number) => void; full?: boolean;
+}) {
+  const quick = options.filter(option => option <= quickMax);
+  const more = options.filter(option => option > quickMax);
+  const ok = (option: number) => !allowed || allowed(option);
+  const long = value > quickMax;
+  return (
+    <div className={`seg${full ? " full" : ""}`} role="group" aria-label={label}>
+      {!full && <span className="seg-label"><Clock3 size={16} aria-hidden="true" /><span className="seg-label-text">Durasi</span></span>}
+      {quick.map(option => (
+        <button key={option} type="button" aria-pressed={value === option} disabled={!ok(option)} onClick={() => onChange(option)}>{durationLabel(option)}</button>
+      ))}
+      {more.length > 0 && (
+        <label className={`seg-more${long ? " on" : ""}`}>
+          <span>{long ? durationLabel(value) : "Lebih lama"}</span>
+          <ChevronDown size={15} aria-hidden="true" />
+          <select aria-label="Pilih durasi lebih lama" value={long ? value : ""} disabled={!more.some(ok)} onChange={event => event.target.value && onChange(Number(event.target.value))}>
+            <option value="" disabled>Lebih lama</option>
+            {more.map(option => <option key={option} value={option} disabled={!ok(option)}>{durationLabel(option)}</option>)}
+          </select>
+        </label>
+      )}
+    </div>
+  );
+}
 
 function AvailabilityView() {
   const router = useRouter();
@@ -67,12 +100,19 @@ function AvailabilityView() {
 
   // Pemain yang selalu main 2 jam tidak perlu memilih ulang setiap kali datang.
   useEffect(() => {
-    try { const saved = Number(window.localStorage.getItem(durationKey)); if (durations.includes(saved)) setDuration(saved); } catch { /* mode privat */ }
+    try { const saved = Number(window.localStorage.getItem(durationKey)); if (saved >= 60 && saved % 30 === 0) setDuration(saved); } catch { /* mode privat */ }
   }, []);
   const chooseDuration = (value: number) => {
     setDuration(value);
     try { window.localStorage.setItem(durationKey, String(value)); } catch { /* mode privat */ }
   };
+
+  // Lama main paling panjang: batas dari admin, atau rentang jam buka lapangan terpanjang.
+  const cap = venue?.info.max_booking_hours ?? 0;
+  const longestOpen = data?.courts.length ? Math.max(...data.courts.map(entry => minute(entry.court.closes_at) - minute(entry.court.opens_at))) : 0;
+  const maxMinutes = cap > 0 ? cap * 60 : longestOpen || fallbackMax;
+  const durations = useMemo(() => Array.from({ length: Math.max(1, Math.floor((maxMinutes - 60) / 30) + 1) }, (_, index) => 60 + index * 30), [maxMinutes]);
+  useEffect(() => { if (venue && data && duration > maxMinutes) setDuration(Math.max(60, maxMinutes - maxMinutes % 30)); }, [venue, data, duration, maxMinutes]);
 
   const focusCourt = useCallback((courtId: string) => {
     blocks.current.get(courtId)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -261,12 +301,7 @@ function AvailabilityView() {
           </label>
         </div>
         <div className="book-filters">
-          <div className="seg" role="group" aria-label="Lama bermain">
-            <span className="seg-label"><Clock3 size={16} aria-hidden="true" /> Durasi</span>
-            {durations.map(value => (
-              <button key={value} type="button" aria-pressed={duration === value} onClick={() => chooseDuration(value)}>{durationLabel(value)}</button>
-            ))}
-          </div>
+<DurationPicker label="Lama bermain" value={duration} options={durations} onChange={chooseDuration} />
           <div className="chips" role="group" aria-label="Rentang jam">
             {periods.map(item => (
               <button key={item.key} type="button" className="chip" aria-pressed={period === item.key} onClick={() => setPeriod(item.key)}>{item.label}</button>
@@ -412,13 +447,7 @@ function AvailabilityView() {
               <button type="button" className="shop-icon-btn soft" onClick={() => setPicked(null)} aria-label="Batalkan pilihan"><X size={18} aria-hidden="true" /></button>
             </div>
 
-            <div className="seg full" role="group" aria-label="Durasi untuk jam ini">
-              {durations.map(value => (
-                <button key={value} type="button" aria-pressed={effective === value} disabled={!available.includes(value)} onClick={() => chooseDuration(value)}>
-                  {durationLabel(value)}
-                </button>
-              ))}
-            </div>
+            <DurationPicker full label="Durasi untuk jam ini" value={effective ?? duration} options={durations} allowed={value => available.includes(value)} onChange={chooseDuration} />
             {!!effective && effective !== duration && <p className="sheet-note">{durationLabel(duration)} tidak muat mulai {picked.start}, jadi dipakai {durationLabel(effective)}.</p>}
             {appliedRules.length > 0 && <p className="sheet-note">Termasuk tarif {appliedRules.join(" & ")}.</p>}
 
