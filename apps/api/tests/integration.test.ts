@@ -71,7 +71,7 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.match(badPhone.data.message,/Nomor telepon tidak valid/);
       const tooShort=await request("/operations/bookings","POST",booking({customer:"A"}),staff);
       assert.equal(tooShort.status,400);
-      assert.match(tooShort.data.message,/Terlalu kecil/,"pesan validasi bawaan ikut berbahasa Indonesia");
+      assert.match(tooShort.data.message,/Nama pelanggan minimal 2 karakter/,"pesan validasi berbahasa Indonesia dan menyebut isiannya");
     });
     await t.test("simultaneous overlapping requests: only one booking is accepted",async()=>{
       const results=await Promise.all([request("/operations/bookings","POST",booking({total:1}),staff),request("/operations/bookings","POST",booking(),staff)]);
@@ -142,6 +142,8 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/operations/context","GET",undefined,staff)).status,200);
       assert.equal((await request("/access/roles/admin","PUT",{name:"Admin",slug:"admin",description:"test",menuIds:[]},admin)).status,400);
       assert.equal((await request("/access/menus/users","DELETE",undefined,admin)).status,400);
+      const invalid=await request("/access/roles","POST",{name:"Kasir Malam",slug:"Kasir Malam",description:"",menuIds:[]},admin);
+      assert.equal(invalid.status,400);assert.match(invalid.data.message,/huruf kecil/);
       // Halaman admin memetakan path modul secara langsung, jadi Keuangan dan Pelanggan pun terkunci.
       for(const id of ["finance","customers"]){
         const menu=(await request("/access/overview","GET",undefined,admin)).data.menus.find((m:{id:string})=>m.id===id);

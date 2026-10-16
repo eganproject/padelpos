@@ -4,18 +4,18 @@ import { z } from "zod";
 import { createSession,requireAuth,revokeSessions,type AuthRequest } from "../auth.js";
 import { getUsers,saveUsers,transaction,audit } from "../store.js";
 import { check } from "../errors.js";
-import { passwordSchema,publicUser } from "./auth.js";
+import { passwordSchema,publicUser,staffName } from "./auth.js";
 import { contactPhoneSchema } from "../operations.js";
 const router=Router();router.use(requireAuth);
 router.put("/",(req:AuthRequest,res)=>{
-  const data=z.object({name:z.string().trim().min(3).max(60),phone:contactPhoneSchema}).parse(req.body);
+  const data=z.object({name:staffName,phone:contactPhoneSchema}).parse(req.body);
   const user=transaction(()=>{
     const users=getUsers(),index=users.findIndex(u=>u.id===req.auth!.sub);check(index>=0,404,"Pengguna tidak ditemukan.");
     users[index]={...users[index],...data};saveUsers(users);return users[index];
   });res.json({user:publicUser(user)});
 });
 router.put("/password",async(req:AuthRequest,res)=>{
-  const data=z.object({currentPassword:z.string().min(1).max(72),newPassword:passwordSchema}).parse(req.body);
+  const data=z.object({currentPassword:z.string().min(1,"Isi password saat ini.").max(72),newPassword:passwordSchema}).parse(req.body);
   const user=getUsers().find(u=>u.id===req.auth!.sub);check(user,404,"Pengguna tidak ditemukan.");
   check(await bcrypt.compare(data.currentPassword,user.passwordHash),400,"Password saat ini tidak sesuai.");
   const passwordHash=await bcrypt.hash(data.newPassword,12);

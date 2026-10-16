@@ -20,17 +20,17 @@ export interface Booking {id:string;court_id:string;court_name:string;customer_i
   forfeited:number;forfeited_at:string|null}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
 export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
-export const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
+export const dateSchema=z.string("Pilih tanggal.").regex(/^\d{4}-\d{2}-\d{2}$/,"Tanggal tidak valid.").refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
 export const timeSchema=z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/,"Jam harus menggunakan interval 30 menit.");
 /** Nomor telepon kontak: angka dengan spasi, tanda hubung, kurung, atau awalan +, berisi 9–15 digit. */
 export const contactPhoneSchema=z.string().trim().max(20,"Nomor telepon maksimal 20 karakter.")
   .refine(v=>/^\+?[0-9][0-9 ().-]*$/.test(v)&&/^\d{9,15}$/.test(v.replace(/\D/g,"")),"Nomor telepon tidak valid. Contoh: 0812 3456 7890.");
 export const closeSchema=z.union([timeSchema,z.literal("24:00")]);
 // Detail untuk pelanggan bersifat opsional: bila tidak dikirim, nilai tersimpan dipertahankan.
-export const courtSchema=z.object({name:z.string().trim().min(2).max(60),hourly_rate:z.number().int().min(1000).max(10000000),opens_at:timeSchema,closes_at:closeSchema,active:z.boolean(),description:z.string().trim().max(600,"Deskripsi maksimal 600 karakter.").optional(),environment:z.enum(["","indoor","outdoor"]).optional(),surface:z.string().trim().max(40,"Jenis permukaan maksimal 40 karakter.").optional()}).refine(v=>v.opens_at<v.closes_at,"Jam tutup harus setelah jam buka.");
-export const bookingSchema=z.object({court_id:z.string().min(1),customer:z.string().trim().min(2).max(80),phone:contactPhoneSchema,date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500).default(""),addons:linesSchema.default([])});
-export const maintenanceSchema=z.object({court_id:z.string().min(1),date:dateSchema,start_time:timeSchema,end_time:closeSchema,reason:z.string().trim().min(3).max(200)});
-export const paymentSchema=z.object({id:z.uuid(),amount:z.number().int().positive().max(240000000),kind:z.enum(["payment","refund"]),method:z.enum(["cash","transfer","qris"]),note:z.string().trim().max(200).default("")});
+export const courtSchema=z.object({name:z.string().trim().min(2,"Nama lapangan minimal 2 karakter.").max(60,"Nama lapangan maksimal 60 karakter."),hourly_rate:z.number("Isi tarif per jam.").int("Tarif harus bilangan bulat.").min(1000,"Tarif minimal Rp1.000 per jam.").max(10000000,"Tarif maksimal Rp10.000.000 per jam."),opens_at:timeSchema,closes_at:closeSchema,active:z.boolean(),description:z.string().trim().max(600,"Deskripsi maksimal 600 karakter.").optional(),environment:z.enum(["","indoor","outdoor"]).optional(),surface:z.string().trim().max(40,"Jenis permukaan maksimal 40 karakter.").optional()}).refine(v=>v.opens_at<v.closes_at,"Jam tutup harus setelah jam buka.");
+export const bookingSchema=z.object({court_id:z.string().min(1,"Pilih lapangan."),customer:z.string().trim().min(2,"Nama pelanggan minimal 2 karakter.").max(80,"Nama pelanggan maksimal 80 karakter."),phone:contactPhoneSchema,date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500,"Catatan maksimal 500 karakter.").default(""),addons:linesSchema.default([])});
+export const maintenanceSchema=z.object({court_id:z.string().min(1,"Pilih lapangan."),date:dateSchema,start_time:timeSchema,end_time:closeSchema,reason:z.string().trim().min(3,"Alasan perawatan minimal 3 karakter.").max(200,"Alasan perawatan maksimal 200 karakter.")});
+export const paymentSchema=z.object({id:z.uuid(),amount:z.number("Isi nominal.").int("Nominal harus bilangan bulat.").positive("Nominal harus lebih dari 0.").max(240000000),kind:z.enum(["payment","refund"]),method:z.enum(["cash","transfer","qris"],"Pilih metode pembayaran."),note:z.string().trim().max(200,"Catatan maksimal 200 karakter.").default("")});
 export function courts(){return db.prepare("SELECT * FROM courts ORDER BY name").all() as unknown as Court[]}
 export function maintenances(date?:string){return db.prepare("SELECT m.*,c.name court_name FROM maintenance m JOIN courts c ON c.id=m.court_id WHERE (? IS NULL OR m.date=?) ORDER BY m.date,m.start_time").all(date||null,date||null) as unknown as Maintenance[]}
 const bookingSelect="SELECT b.*,c.name court_name,COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid,(SELECT count(*) FROM booking_addons WHERE booking_id=b.id) addon_count FROM bookings b JOIN courts c ON c.id=b.court_id";
@@ -94,7 +94,7 @@ export function removeMaintenance(id:string,actor:string){transaction(()=>{
   audit(actor,"maintenance.delete",id);
 })}
 export function changeBookingStatus(id:string,input:unknown,actor:string){
-  const data=z.object({status:z.enum(["completed","cancelled"]),reason:z.string().trim().max(200).default("")}).parse(input);
+  const data=z.object({status:z.enum(["completed","cancelled"]),reason:z.string().trim().max(200,"Alasan maksimal 200 karakter.").default("")}).parse(input);
   return transaction(()=>{
     const booking=getBooking(id);check(booking.status==="confirmed",409,"Status booking ini tidak dapat diubah lagi.");
     if(data.status==="cancelled")check(data.reason.length>=3,400,"Isi alasan pembatalan.");
@@ -316,7 +316,7 @@ export const priceRuleSchema=z.object({
   court_ids:z.array(z.string().min(1)).min(1,"Pilih minimal satu lapangan.").max(60),
   days:z.array(z.number().int().min(0).max(6)).min(1,"Pilih minimal satu hari.").max(7),
   start_time:timeSchema,end_time:closeSchema,
-  hourly_rate:z.number().int().min(1000).max(10000000),
+  hourly_rate:z.number("Isi tarif per jam.").int("Tarif harus bilangan bulat.").min(1000,"Tarif minimal Rp1.000 per jam.").max(10000000,"Tarif maksimal Rp10.000.000 per jam."),
 }).refine(v=>v.start_time<v.end_time,"Jam selesai harus setelah jam mulai.");
 const dayNames=["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 /** 0 = Minggu … 6 = Sabtu, sama dengan Date#getDay. */

@@ -11,6 +11,8 @@ export type NavigationMenu = { id:string; name:string; path:string; icon:string;
 type NavigationResponse = { menus:NavigationMenu[]; role:{ name:string; slug:string } };
 
 const icons = { Activity, CalendarDays, Contact, CreditCard, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards };
+/** Ikon yang benar-benar dapat tampil di sidebar; formulir menu hanya menawarkan nama-nama ini. */
+export const menuIconNames = Object.keys(icons);
 
 export function useAdminNavigation() {
   const [navigation, setNavigation] = useState<NavigationResponse>({ menus: [], role: { name: "", slug: "" } });
