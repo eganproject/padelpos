@@ -54,6 +54,8 @@
 }
 .acct-form input:focus,.acct-claim input:focus{outline:2px solid var(--brand-deep);outline-offset:1px;border-color:var(--brand-deep)}
 .acct-form small{font-size:var(--fs-xs);font-weight:400;color:var(--ink-faint)}
+.acct-form input[aria-invalid=true]{border-color:var(--danger)}
+.acct-form small.field-error{font-weight:500;color:var(--danger)}
 
 /* --- Kerangka area akun -------------------------------------------------- */
 .acct{display:flex;flex-direction:column;gap:var(--s5)}

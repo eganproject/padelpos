@@ -6,15 +6,15 @@ import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, Clock3, CreditC
 import { ApiError, money } from "@/lib/api";
 import { AddonThumb } from "@/components/addon-icon";
 import { QtyStepper } from "@/components/qty-stepper";
-import { lineTotal, unitLabel } from "@/lib/addons";
+import { lineTotal, maxFor, unitLabel } from "@/lib/addons";
 import { formatDay, formatShortDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { policySummary, whatsappLink } from "@/lib/venue-info";
 import {
-  addonsTotal, cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
+  cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
 } from "@/lib/cart";
 import { amountDue, quoteCart, startCheckout, type CartQuote } from "@/lib/payments";
-import { useAccount } from "@/lib/account";
+import { useAccount, validPhone } from "@/lib/account";
 
 const durationLabel = (minutes: number) => `${(minutes / 60).toLocaleString("id-ID")} jam`;
 
@@ -28,6 +28,7 @@ export default function CartPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
   const account = useAccount();
 
   // Pelanggan yang sudah masuk tidak perlu mengetik ulang datanya; isian yang sudah diubah dibiarkan.
@@ -65,21 +66,28 @@ export default function CartPage() {
       item,
       courtTotal: matches ? checked.court_total : item.court_total,
       total: matches ? checked.total : itemTotal(item),
+      /** Subtotal tambahan menurut server; harga di browser bisa sudah usang. */
+      lineTotals: new Map(matches ? checked.addons.map(line => [line.addon_id, line.subtotal]) : []),
       problem: matches && !checked.ok ? checked.reason || "Sesi ini tidak dapat dipesan." : "",
+      matches: !!matches,
     };
   }), [items, quote]);
-  const total = priced.reduce((sum, entry) => sum + (entry.problem ? 0 : entry.total), 0);
+  const valid = priced.filter(entry => !entry.problem);
+  const total = valid.reduce((sum, entry) => sum + entry.total, 0);
   const blocked = priced.some(entry => entry.problem);
-  const payNow = payment ? amountDue(payment, total) : total;
+  // DP dibulatkan per sesi oleh server, jadi nominalnya dijumlah per sesi, bukan dari total keranjang.
+  const payNow = quote && priced.every(entry => entry.matches)
+    ? quote.amount
+    : payment ? valid.reduce((sum, entry) => sum + amountDue(payment, entry.total), 0) : total;
   const later = total - payNow;
   const policyLine = venue ? policySummary(venue.policies) : null;
-  const phoneDigits = form.phone.replace(/[^0-9]/g, "");
-  const ready = items.length > 0 && !blocked && !checking && form.customer.trim().length >= 2 && phoneDigits.length >= 9;
+  const phoneValid = validPhone(form.phone);
+  const ready = items.length > 0 && !blocked && !checking && form.customer.trim().length >= 2 && phoneValid;
 
   const message = items.length ? [
     `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin memesan:`,
     "",
-    ...priced.flatMap(({ item, total: itemPrice }) => [
+    ...valid.flatMap(({ item, total: itemPrice }) => [
       `• ${item.court_name}${item.floor ? ` (${item.floor})` : ""} — ${formatDay(item.date)}, ${item.start_time}–${item.end_time}: ${money(itemPrice)}`,
       ...item.addons.map(line => `   – ${line.quantity}× ${line.name}`),
     ]),
@@ -134,7 +142,7 @@ export default function CartPage() {
 
       <div className="cart-grid">
         <div className="cart-list">
-          {priced.map(({ item, courtTotal, total: itemPrice, problem }) => {
+          {priced.map(({ item, courtTotal, total: itemPrice, lineTotals, problem }) => {
             const open = openPicker === item.key;
             return (
               <article className={`cart-item${problem ? " problem" : ""}`} key={item.key}>
@@ -164,7 +172,7 @@ export default function CartPage() {
                     {item.addons.map(line => (
                       <li key={line.addon_id}>
                         <span>{line.quantity}× {line.name}</span>
-                        <b>{money(lineTotal(line.unit_price, line.quantity, line.pricing, item.duration))}</b>
+                        <b>{money(lineTotals.get(line.addon_id) ?? lineTotal(line.unit_price, line.quantity, line.pricing, item.duration))}</b>
                       </li>
                     ))}
                   </ul>
@@ -190,7 +198,7 @@ export default function CartPage() {
                               </div>
                               <QtyStepper
                                 value={chosen?.quantity ?? 0}
-                                max={option.max_per_booking}
+                                max={maxFor(option, chosen?.quantity ?? 0)}
                                 onChange={value => setCartAddon(item.key, option, value)}
                                 label={`${option.name} untuk ${item.court_name}`}
                               />
@@ -207,7 +215,7 @@ export default function CartPage() {
                     <Trash2 size={15} aria-hidden="true" /> Hapus sesi
                   </button>
                   <div>
-                    {addonsTotal(item) > 0 && <small>termasuk tambahan {money(addonsTotal(item))}</small>}
+                    {item.addons.length > 0 && <small>termasuk tambahan {money(Math.max(0, itemPrice - courtTotal))}</small>}
                     <strong>{money(itemPrice)}</strong>
                   </div>
                 </footer>
@@ -218,7 +226,7 @@ export default function CartPage() {
         </div>
 
         <aside className="cart-summary">
-          <div className="cart-card">
+          <div className="cart-card" ref={summaryRef}>
             <h2>Ringkasan pesanan</h2>
             <dl className="cart-bill">
               {priced.map(({ item, total: itemPrice, problem }) => (
@@ -254,7 +262,9 @@ export default function CartPage() {
                   <input required minLength={2} maxLength={80} value={form.customer} onChange={event => setForm({ ...form, customer: event.target.value })} />
                 </label>
                 <label>Nomor WhatsApp
-                  <input required inputMode="tel" minLength={9} maxLength={18} placeholder="08xxxxxxxxxx" value={form.phone} onChange={event => setForm({ ...form, phone: event.target.value })} />
+                  <input required inputMode="tel" autoComplete="tel" maxLength={20} placeholder="0812 3456 7890" value={form.phone} aria-invalid={form.phone !== "" && !phoneValid}
+                    onChange={event => setForm({ ...form, phone: event.target.value })} />
+                  {form.phone !== "" && !phoneValid && <small className="field-error">Masukkan nomor WhatsApp Indonesia yang aktif, mis. 0812 3456 7890.</small>}
                 </label>
                 <label>Email (opsional)
                   <input type="email" maxLength={60} placeholder="untuk bukti pembayaran" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} />
@@ -296,8 +306,8 @@ export default function CartPage() {
           <small>{items.length} sesi</small>
           <b>{money(payment?.enabled ? payNow : total)}</b>
         </div>
-        <button type="button" className="shop-btn primary sm" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}>
-          Isi data pemesan <ArrowRight size={17} aria-hidden="true" />
+        <button type="button" className="shop-btn primary sm" onClick={() => (formRef.current ?? summaryRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" })}>
+          {payment?.enabled ? "Isi data pemesan" : "Lihat ringkasan"} <ArrowRight size={17} aria-hidden="true" />
         </button>
       </div>
     </section>

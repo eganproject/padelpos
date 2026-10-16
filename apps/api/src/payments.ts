@@ -77,7 +77,8 @@ export const maxCartItems = 6;
 export const checkoutSchema = z.object({
   items: z.array(cartItemSchema).min(1, "Keranjang masih kosong.").max(maxCartItems, `Maksimal ${maxCartItems} sesi dalam satu pesanan.`),
   customer: z.string().trim().min(2, "Isi nama pemesan.").max(80),
-  phone: z.string().trim().min(9, "Nomor telepon tidak valid.").max(18),
+  // Aturannya sama dengan nomor di profil akun, agar nomor yang lolos di sini juga dikenali saat klaim pesanan.
+  phone: z.string().trim().max(20).refine(value => /^628\d{7,12}$/.test(normalizePhone(value)), "Masukkan nomor WhatsApp Indonesia yang aktif, mis. 0812 3456 7890."),
   email: z.union([z.email("Email tidak valid."), z.literal("")]).default(""),
   notes: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
 });
@@ -106,7 +107,6 @@ export function quoteCart(input: unknown) {
   const { items } = cartSchema.parse(input);
   expireHolds();
   const rules = priceRules();
-  const catalog = publicAddons();
   const now = localClock();
   const results = items.map((item, index) => {
     const duration = minutes(item.end_time) - minutes(item.start_time);
@@ -114,8 +114,9 @@ export function quoteCart(input: unknown) {
       { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; active: number } | undefined;
     const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time };
     if (!court || !court.active) return { ...base, ok: false, reason: "Lapangan ini sedang tidak tersedia.", court_total: 0, total: 0, addons: [] };
-    // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat.
-    if (item.date < now.date || (item.date === now.date && item.start_time <= now.time))
+    // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat. Batasnya sama dengan
+    // jadwal publik: slot yang dimulai tepat pada menit ini masih boleh dipesan.
+    if (item.date < now.date || (item.date === now.date && item.start_time < now.time))
       return { ...base, ok: false, reason: "Jam main ini sudah lewat.", court_total: 0, total: 0, addons: [] };
     if (duration < 60 || duration > 180) return { ...base, ok: false, reason: "Durasi main antara 1 sampai 3 jam.", court_total: 0, total: 0, addons: [] };
     if (item.start_time < court.opens_at || item.end_time > court.closes_at)
@@ -124,9 +125,12 @@ export function quoteCart(input: unknown) {
     if (clash >= 0 && clash < index) return { ...base, ok: false, reason: "Sesi ini bertabrakan dengan sesi lain di keranjang.", court_total: 0, total: 0, addons: [] };
     const taken = slotTaken(item);
     const courtTotal = quote(court, rules, item.date, item.start_time, item.end_time);
+    // Stok dihitung untuk jam sesi ini, sama seperti pemeriksaan saat checkout.
+    const catalog = publicAddons({ date: item.date, start: item.start_time, end: item.end_time });
     const addons = item.addons.map(pick => {
       const option = catalog.find(entry => entry.id === pick.addon_id);
-      const quantity = option ? Math.min(pick.quantity, option.max_per_booking) : 0;
+      const limit = option ? Math.min(option.max_per_booking, option.available ?? option.max_per_booking) : 0;
+      const quantity = Math.min(pick.quantity, limit);
       const subtotal = option ? (option.pricing === "per_hour" ? Math.round(option.price * quantity * duration / 60) : option.price * quantity) : 0;
       return {
         addon_id: pick.addon_id, name: option?.name ?? "Item tidak tersedia", quantity,
@@ -137,13 +141,23 @@ export function quoteCart(input: unknown) {
     const total = courtTotal + addons.reduce((sum, line) => sum + line.subtotal, 0);
     return {
       ...base, ok: !taken && addons.every(line => line.ok),
-      reason: taken ? `Jam ini ${taken}.` : addons.some(line => !line.ok) ? "Ada tambahan yang stoknya tidak mencukupi." : "",
+      reason: taken ? `Jam ini ${taken}.`
+        : addons.some(line => !line.ok) ? addonProblem(addons.filter(line => !line.ok), catalog) : "",
       court_total: courtTotal, total, addons,
     };
   });
   const total = results.filter(item => item.ok).reduce((sum, item) => sum + item.total, 0);
   const config = paymentConfig();
   return { items: results, total, amount: results.filter(item => item.ok).reduce((sum, item) => sum + payableAmount(item.total, config), 0) };
+}
+
+/** Penjelasan untuk tambahan yang tidak bisa dipenuhi: sudah tidak dijual online, atau stoknya kurang. */
+function addonProblem(lines: { addon_id: string; name: string; quantity: number }[], catalog: ReturnType<typeof publicAddons>) {
+  const missing = lines.filter(line => !catalog.some(entry => entry.id === line.addon_id));
+  if (missing.length) return "Ada tambahan yang sudah tidak tersedia. Hapus tambahan itu dari sesi ini.";
+  return lines.map(line => line.quantity > 0
+    ? `${line.name} hanya bisa dipesan ${line.quantity} untuk sesi ini.`
+    : `${line.name} sudah habis di jam ini.`).join(" ");
 }
 
 /** 08xx dan +62xx disimpan seragam sebagai 62xx agar pelanggan lama dikenali. */
@@ -222,6 +236,9 @@ export async function createCheckout(input: unknown, accountId: string | null = 
     check(clash < 0, 400, "Ada dua sesi yang bertabrakan di keranjang. Hapus salah satunya.");
   }
   expireHolds();
+  // Item yang tidak ditandai tampil online hanya untuk kasir, walau masih aktif di katalog.
+  const online = new Set(publicAddons().map(addon => addon.id));
+  check(data.items.every(item => item.addons.every(pick => online.has(pick.addon_id))), 409, "Ada tambahan yang sudah tidak tersedia online. Periksa lagi keranjang Anda.");
 
   const { order, bookings } = transaction(() => {
     const customerId = upsertCustomer(data.customer, data.phone, data.email);
