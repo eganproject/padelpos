@@ -1,0 +1,113 @@
+/* Keranjang, data pemesan, dan halaman pesanan. Dasar palet dan komponen ada di shop.css. */
+
+.shop .cart{padding-bottom:24px}
+.shop .cart.has-bar{padding-bottom:96px}
+.shop .cart-grid{display:grid;gap:16px}
+.shop .cart-list{display:flex;flex-direction:column;gap:12px}
+
+.shop .cart-item{background:var(--card);border:1px solid var(--rule);border-radius:20px;padding:14px;box-shadow:var(--shadow)}
+.shop .cart-item.problem{border-color:var(--red-edge);background:#fffaf8}
+.shop .cart-item-main{display:flex;gap:12px;align-items:flex-start}
+.shop .date-tile{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;width:54px;height:58px;border-radius:14px;background:var(--green);color:#fff;line-height:1}
+.shop .date-tile b{font-family:var(--font-display);font-size:22px}
+.shop .date-tile small{margin-top:3px;font-size:11.5px;font-weight:700;color:var(--lime);text-transform:uppercase}
+.shop .cart-item .what{flex:1;min-width:0}
+.shop .cart-item h2{font-size:17px}
+.shop .cart-item h2 small{font-family:var(--font-ui);font-size:13px;font-weight:500;color:var(--ink-3)}
+.shop .cart-item .what p{font-size:13.5px;color:var(--ink-3);text-transform:capitalize}
+.shop .cart-item .what .time{margin-top:2px;font-size:15px;font-weight:700;color:var(--ink);text-transform:none}
+.shop .cart-item .what .time span{font-weight:500;color:var(--ink-3)}
+.shop .cart-item .cost{flex:none;font-family:var(--font-display);font-size:16px}
+.shop .cart-problem{display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--red-wash);color:var(--red);font-size:14px;font-weight:600}
+.shop .cart-problem svg{flex:none;margin-top:1px}
+.shop .cart-lines{list-style:none;margin:12px 0 0;padding:10px 0 0;border-top:1px dashed var(--rule-2);display:flex;flex-direction:column;gap:4px}
+.shop .cart-lines li{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;color:var(--ink-2)}
+.shop .cart-item .addon-pick{margin-top:10px;padding:4px 12px;border-radius:14px;background:#fafbf8;border:1px solid var(--rule)}
+.shop .cart-item footer{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:10px -6px -6px}
+
+.shop .cart-side{display:flex;flex-direction:column;gap:12px}
+.shop .bill{margin:0;display:flex;flex-direction:column;gap:8px}
+.shop .bill>div{display:flex;justify-content:space-between;gap:12px;font-size:14.5px}
+.shop .bill dt{color:var(--ink-2)}
+.shop .bill dd{margin:0;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.shop .bill .total{margin-top:4px;padding-top:12px;border-top:1px solid var(--rule)}
+.shop .bill .total dt,.shop .bill .total dd{font-family:var(--font-display);font-size:19px;font-weight:700;color:var(--ink)}
+.shop .bill .now{padding:10px 12px;margin-inline:-4px;border-radius:12px;background:var(--lime-wash)}
+.shop .bill .now dt,.shop .bill .now dd{color:var(--lime-deep);font-weight:800}
+.shop .bill .due{padding:10px 12px;margin-inline:-4px;border-radius:12px;background:var(--amber-wash)}
+.shop .bill .due dt,.shop .bill .due dd{color:var(--amber);font-weight:800}
+.shop .policy-chip{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border-radius:12px;background:var(--sunk);font-size:13.5px;font-weight:600;color:var(--green)}
+.shop .policy-chip svg{flex:none}
+
+.shop .checkout .account-note{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;border-radius:12px;background:var(--sunk);font-size:13.5px;color:var(--ink-2)}
+.shop .checkout .account-note svg{flex:none;color:var(--green)}
+.shop .checkout .account-note.invite{background:var(--lime-wash);color:var(--ink)}
+.shop .checkout .account-note.invite span{flex:1}
+.shop .checkout .muted{font-size:14px;line-height:1.55;margin-bottom:14px}
+.shop .checkout .fine{display:flex;gap:8px;margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--ink-3)}
+.shop .checkout .fine svg{flex:none;margin-top:2px;color:var(--lime-deep)}
+
+/* Bilah bayar di ponsel: total dan tombol selalu terlihat. */
+.shop .pay-bar{
+  position:fixed;left:0;right:0;bottom:calc(var(--tab-h) + var(--safe-b));z-index:44;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;
+  background:#fffffff5;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-top:1px solid var(--rule);box-shadow:var(--shadow-up);
+}
+.shop .pay-bar small{display:block;font-size:12px;color:var(--ink-3)}
+.shop .pay-bar b{font-family:var(--font-display);font-size:20px}
+.shop .pay-bar .shop-btn{min-width:140px}
+
+/* --- Halaman pesanan ----------------------------------------------------- */
+.shop .order{max-width:640px;padding-bottom:24px}
+.shop .order-hero{display:flex;flex-direction:column;align-items:center;text-align:center;margin:20px 0 14px;padding:26px 18px 20px;border-radius:24px;background:var(--card);border:1px solid var(--rule);box-shadow:var(--shadow)}
+.shop .order-hero-icon{display:grid;place-items:center;width:64px;height:64px;margin-bottom:12px;border-radius:50%}
+.shop .order-hero.on .order-hero-icon{background:var(--lime);color:var(--lime-ink)}
+.shop .order-hero.wait .order-hero-icon{background:var(--amber-wash);color:var(--amber)}
+.shop .order-hero.done .order-hero-icon{background:var(--blue-wash);color:var(--blue)}
+.shop .order-hero.off .order-hero-icon{background:var(--red-wash);color:var(--red)}
+.shop .order-hero h1{font-size:24px}
+.shop .order-hero p{margin-top:6px;max-width:400px;font-size:14.5px;line-height:1.55;color:var(--ink-2)}
+.shop .order-code{display:inline-flex;align-items:center;gap:10px;margin-top:16px;min-height:48px;padding:0 16px;border:1px dashed var(--rule-2);border-radius:14px;background:var(--paper);color:var(--ink)}
+.shop .order-code small{font-size:12px;color:var(--ink-3)}
+.shop .order-code b{font-family:var(--font-display);font-size:18px;letter-spacing:.04em}
+.shop .order-code svg{color:var(--green)}
+.shop .order-pay{margin-bottom:14px}
+.shop .order-pay-top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.shop .order-pay-top small{display:block;font-size:13px;color:var(--ink-3)}
+.shop .order-pay-top b{font-family:var(--font-display);font-size:26px}
+.shop .timer{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:999px;background:var(--amber-wash);color:var(--amber);font-weight:800;font-variant-numeric:tabular-nums}
+.shop .timer.late{background:var(--red-wash);color:var(--red)}
+/* Jendela Midtrans yang ditanam di halaman pesanan. */
+.shop .snap-box{display:none}
+.shop .snap-box.on{display:block;min-height:520px;margin:0 -4px 12px;border-radius:16px;overflow:hidden;border:1px solid var(--rule);background:#fff}
+.shop .snap-box.on iframe{display:block;width:100%;min-height:520px;border:0}
+.shop .snap-wait{display:flex;align-items:center;justify-content:center;gap:8px;min-height:120px;margin-bottom:12px;border-radius:16px;background:var(--sunk);font-size:14px;font-weight:600;color:var(--ink-2)}
+.shop .snap-fine{display:flex;align-items:flex-start;gap:6px;margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--ink-3)}
+.shop .snap-fine svg{flex:none;margin-top:2px;color:var(--lime-deep)}
+.shop .receipt{margin-bottom:14px}
+.shop .receipt-sessions{list-style:none;margin:0 0 14px;padding:0;display:flex;flex-direction:column}
+.shop .receipt-sessions>li{padding:12px 0;border-bottom:1px solid var(--rule)}
+.shop .receipt-sessions>li:first-child{padding-top:0}
+.shop .receipt-sessions .row{display:flex;justify-content:space-between;gap:12px}
+.shop .receipt-sessions .row>div:first-child{display:flex;flex-direction:column;gap:2px}
+.shop .receipt-sessions .row b{font-size:15.5px}
+.shop .receipt-sessions .row span{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;color:var(--ink-2)}
+.shop .receipt-sessions .row svg{color:var(--ink-3)}
+.shop .receipt-sessions .cost{display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}
+.shop .receipt-lines{list-style:none;margin:10px 0 0;padding:10px 12px;border-radius:12px;background:var(--paper);display:flex;flex-direction:column;gap:4px}
+.shop .receipt-lines li{display:flex;justify-content:space-between;gap:12px;font-size:13px;color:var(--ink-2)}
+.shop .receipt .warn{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:13px;color:var(--red)}
+.shop .receipt>.muted{margin-top:12px}
+
+@media (min-width:720px){
+  .shop .cart-item{padding:18px}
+  .shop .order-hero{padding:34px 24px 26px}
+  .shop .order-hero h1{font-size:28px}
+}
+@media (min-width:960px){
+  .shop .cart.has-bar{padding-bottom:24px}
+  .shop .cart-grid{grid-template-columns:minmax(0,1fr) 380px;align-items:start;gap:24px}
+  .shop .cart-side{position:sticky;top:calc(var(--head-h) + 16px)}
+  .shop .pay-bar{display:none}
+  .shop .order{margin-inline:auto}
+}

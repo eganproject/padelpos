@@ -6,7 +6,11 @@ export type PaymentMode = "full" | "dp";
 export type IntentStatus = "pending" | "paid" | "expired" | "cancelled" | "failed" | "refunded";
 
 /** Yang diketahui pelanggan. */
-export type PaymentPublic = { enabled: boolean; mode: PaymentMode; dp_percent: number; hold_minutes: number; note: string; tax?: TaxSnapshot };
+export type PaymentPublic = {
+  enabled: boolean; mode: PaymentMode; dp_percent: number; hold_minutes: number; note: string; tax?: TaxSnapshot;
+  /** Untuk Snap.js; kosong bila admin belum mengisi client key. */
+  client_key?: string; environment?: "sandbox" | "production";
+};
 /** Pengaturan untuk admin; server key tidak pernah ikut, hanya penandanya. */
 export type PaymentSettings = {
   enabled: boolean; environment: "sandbox" | "production"; client_key: string; mode: PaymentMode;
@@ -31,7 +35,7 @@ export type OrderView = {
     total: number; paid: number; notes: string; created_at: string;
     sessions: OrderSession[];
   };
-  payment: { order_id: string; status: IntentStatus; amount: number; kind: "booking" | "tagihan"; redirect_url: string | null; expires_at: number; payment_type: string | null; updated_at: string } | null;
+  payment: { order_id: string; status: IntentStatus; amount: number; kind: "booking" | "tagihan"; redirect_url: string | null; snap_token?: string | null; expires_at: number; payment_type: string | null; updated_at: string } | null;
 };
 
 export const intentLabel: Record<IntentStatus, string> = {

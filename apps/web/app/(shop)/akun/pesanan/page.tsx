@@ -29,7 +29,7 @@ function History() {
   const active = tabs.find(item => item.key === tab)!;
   return (
     <div className="acct-history">
-      <div className="book-segment acct-filter" role="tablist" aria-label="Saring pesanan">
+      <div className="seg acct-filter" role="tablist" aria-label="Saring pesanan">
         {tabs.map(item => (
           <button key={item.key} type="button" role="tab" aria-selected={tab === item.key} aria-pressed={tab === item.key}
             onClick={() => router.replace(item.key === "upcoming" ? "/akun/pesanan" : `/akun/pesanan?tab=${item.key}`, { scroll: false })}>

@@ -14,8 +14,9 @@ import "./addons.css";
 import "./payments.css";
 import "./finance.css";
 import "./shop.css";
+import "./shop-home.css";
 import "./shop-booking.css";
-import "./shop-pages.css";
+import "./shop-checkout.css";
 import "./shop-account.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });

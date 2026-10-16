@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, Clock3, CreditCard, Loader2, MessageCircle, PackagePlus, ShieldCheck, ShoppingBag, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, CreditCard, Loader2, Lock, MessageCircle, PackagePlus, Plus, ShieldCheck, ShoppingBag, Trash2, TriangleAlert } from "lucide-react";
 import { ApiError, money } from "@/lib/api";
-import { AddonThumb } from "@/components/addon-icon";
-import { QtyStepper } from "@/components/qty-stepper";
-import { lineTotal, maxFor, unitLabel } from "@/lib/addons";
-import { formatDay, formatShortDay } from "@/lib/shop";
+import { ShopAddonPicker } from "@/components/shop-addons";
+import { ShopSteps } from "@/components/shop-steps";
+import { lineTotal } from "@/lib/addons";
+import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { policySummary, whatsappLink } from "@/lib/venue-info";
 import {
@@ -18,6 +18,8 @@ import { billOf, taxName } from "@/lib/bill";
 import { useAccount, validPhone } from "@/lib/account";
 
 const durationLabel = (minutes: number) => `${(minutes / 60).toLocaleString("id-ID")} jam`;
+const dayNumber = (date: string) => Number(date.slice(8, 10));
+const monthShort = new Intl.DateTimeFormat("id-ID", { month: "short", timeZone: "UTC" });
 
 export default function CartPage() {
   const items = useCart();
@@ -26,6 +28,7 @@ export default function CartPage() {
   const [checking, setChecking] = useState(false);
   const [openPicker, setOpenPicker] = useState<string | null>(null);
   const [form, setForm] = useState({ customer: "", phone: "", email: "", notes: "" });
+  const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
@@ -77,6 +80,8 @@ export default function CartPage() {
   const valid = priced.filter(entry => !entry.problem);
   const total = valid.reduce((sum, entry) => sum + entry.total, 0);
   const tax = valid.reduce((sum, entry) => sum + entry.tax, 0);
+  const inclusive = quote ? quote.tax_inclusive : !!payment?.tax?.tax_inclusive;
+  const subtotal = valid.reduce((sum, entry) => sum + entry.total - (inclusive ? 0 : entry.tax), 0);
   const blocked = priced.some(entry => entry.problem);
   // DP dibulatkan per sesi oleh server, jadi nominalnya dijumlah per sesi, bukan dari total keranjang.
   const payNow = quote && priced.every(entry => entry.matches)
@@ -85,7 +90,8 @@ export default function CartPage() {
   const later = total - payNow;
   const policyLine = venue ? policySummary(venue.policies) : null;
   const phoneValid = validPhone(form.phone);
-  const ready = items.length > 0 && !blocked && !checking && form.customer.trim().length >= 2 && phoneValid;
+  const nameValid = form.customer.trim().length >= 2;
+  const ready = items.length > 0 && !blocked && !checking && nameValid && phoneValid;
 
   const message = items.length ? [
     `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin memesan:`,
@@ -102,6 +108,7 @@ export default function CartPage() {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    setTouched(true);
     if (!ready) return;
     setBusy(true); setError("");
     try {
@@ -111,7 +118,8 @@ export default function CartPage() {
       });
       // Sesi sudah menjadi pesanan di server; keranjang tidak perlu disimpan lagi.
       clearCart();
-      window.location.assign(result.redirect_url);
+      // Pembayaran dibuka di halaman pesanan sendiri (Snap tertanam), bukan di situs Midtrans.
+      window.location.assign(`/pesanan/${encodeURIComponent(result.order_id)}`);
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : "Pemesanan gagal. Coba lagi sebentar lagi.");
       setBusy(false);
@@ -120,200 +128,189 @@ export default function CartPage() {
     }
   }
 
+  /** Tombol di bilah bawah: kirim bila lengkap, bila belum bawa ke isian yang kurang. */
+  function payFromBar() {
+    if (payment?.enabled && ready) { formRef.current?.requestSubmit(); return; }
+    setTouched(true);
+    const target = formRef.current?.querySelector<HTMLElement>("[aria-invalid=true], input:invalid") ?? formRef.current ?? summaryRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (target instanceof HTMLInputElement) window.setTimeout(() => target.focus({ preventScroll: true }), 350);
+  }
+
   if (!items.length) {
     return (
-      <section className="shop-band shop-wrap">
-        <div className="cart-empty">
-          <span><ShoppingBag size={30} aria-hidden="true" /></span>
+      <div className="cart shop-wrap">
+        <ShopSteps current={1} />
+        <div className="empty-state">
+          <span className="empty-icon"><ShoppingBag size={30} aria-hidden="true" /></span>
           <h1>Keranjang masih kosong</h1>
-          <p>Pilih jam main di halaman jadwal, lalu tambahkan ke keranjang. Anda bisa memesan beberapa sesi sekaligus dan membayarnya satu kali.</p>
-          <Link className="shop-btn primary" href="/ketersediaan"><CalendarDays size={18} aria-hidden="true" /> Lihat jadwal</Link>
+          <p>Pilih jam main di halaman booking, lalu masukkan ke keranjang. Beberapa sesi bisa dibayar sekaligus.</p>
+          <Link className="shop-btn primary lg" href="/ketersediaan"><CalendarDays size={18} aria-hidden="true" /> Pilih jadwal</Link>
         </div>
-      </section>
+      </div>
     );
   }
 
   return (
-    <section className="shop-band shop-wrap">
-      <div className="book-head">
+    <div className="cart shop-wrap has-bar">
+      <ShopSteps current={1} />
+      <header className="page-head">
         <div>
           <h1>Keranjang</h1>
-          <p>{items.length} sesi dipilih{checking ? " · memeriksa ketersediaan…" : ""}</p>
+          <p>{items.length} sesi{checking ? " · memeriksa ketersediaan…" : " · ketersediaan sudah dicek"}</p>
         </div>
-        <Link className="shop-btn outline sm" href="/ketersediaan"><CalendarDays size={16} aria-hidden="true" /> Tambah sesi</Link>
-      </div>
+        {items.length < maxCartItems && <Link className="shop-btn outline sm" href="/ketersediaan"><Plus size={16} aria-hidden="true" /> Tambah sesi</Link>}
+      </header>
 
       <div className="cart-grid">
         <div className="cart-list">
           {priced.map(({ item, courtTotal, total: itemPrice, lineTotals, problem }) => {
             const open = openPicker === item.key;
+            const picks = Object.fromEntries(item.addons.map(line => [line.addon_id, line.quantity]));
             return (
               <article className={`cart-item${problem ? " problem" : ""}`} key={item.key}>
-                <header>
+                <div className="cart-item-main">
+                  <div className="date-tile" aria-hidden="true"><b>{dayNumber(item.date)}</b><small>{monthShort.format(new Date(item.date + "T12:00:00Z"))}</small></div>
                   <div className="what">
-                    <h2>{item.court_name}</h2>
-                    <p><CalendarDays size={15} aria-hidden="true" /> {formatDay(item.date)}</p>
-                    <p><Clock3 size={15} aria-hidden="true" /> {item.start_time} – {item.end_time} · {durationLabel(item.duration)}</p>
-                    {item.floor && <span className="floor">{item.floor}</span>}
+                    <h2>{item.court_name}{item.floor && <small> · {item.floor}</small>}</h2>
+                    <p>{formatDay(item.date)}</p>
+                    <p className="time">{item.start_time} – {item.end_time} <span>· {durationLabel(item.duration)}</span></p>
                   </div>
-                  <div className="cost">
-                    <b>{money(courtTotal)}</b>
-                    <small>sewa lapangan</small>
-                  </div>
-                </header>
+                  <b className="cost">{problem ? "—" : money(itemPrice)}</b>
+                </div>
 
                 {problem && (
                   <p className="cart-problem" role="alert">
-                    <TriangleAlert size={16} aria-hidden="true" />
+                    <TriangleAlert size={17} aria-hidden="true" />
                     <span>{problem}</span>
-                    <button type="button" onClick={() => removeFromCart(item.key)}>Hapus sesi</button>
                   </p>
                 )}
 
-                {item.addons.length > 0 && (
-                  <ul className="cart-lines">
-                    {item.addons.map(line => (
-                      <li key={line.addon_id}>
-                        <span>{line.quantity}× {line.name}</span>
-                        <b>{money(lineTotals.get(line.addon_id) ?? lineTotal(line.unit_price, line.quantity, line.pricing, item.duration))}</b>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <ul className="cart-lines">
+                  <li><span>Sewa lapangan</span><span>{money(courtTotal)}</span></li>
+                  {item.addons.map(line => (
+                    <li key={line.addon_id}>
+                      <span>{line.quantity}× {line.name}</span>
+                      <span>{money(lineTotals.get(line.addon_id) ?? lineTotal(line.unit_price, line.quantity, line.pricing, item.duration))}</span>
+                    </li>
+                  ))}
+                </ul>
 
-                {catalog.length > 0 && (
-                  <>
-                    <button type="button" className="cart-more" aria-expanded={open} onClick={() => setOpenPicker(open ? null : item.key)}>
-                      <PackagePlus size={16} aria-hidden="true" />
-                      {item.addons.length ? "Ubah sewa & tambahan" : "Tambah sewa raket, bola & lainnya"}
-                      <ChevronDown size={15} aria-hidden="true" className="chevron" />
-                    </button>
-                    {open && (
-                      <ul className="cart-picker">
-                        {catalog.map(option => {
-                          const chosen = item.addons.find(line => line.addon_id === option.id);
-                          return (
-                            <li key={option.id} className={chosen ? "chosen" : ""}>
-                              <AddonThumb category={option.category} photoId={option.photo_id} />
-                              <div className="info">
-                                <b>{option.name}</b>
-                                <small>{money(option.price)} {unitLabel(option.type, option.pricing)}</small>
-                              </div>
-                              <QtyStepper
-                                value={chosen?.quantity ?? 0}
-                                max={maxFor(option, chosen?.quantity ?? 0)}
-                                onChange={value => setCartAddon(item.key, option, value)}
-                                label={`${option.name} untuk ${item.court_name}`}
-                              />
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </>
+                {open && catalog.length > 0 && (
+                  <ShopAddonPicker options={catalog} picks={picks} loading={false}
+                    onChange={(id, quantity) => { const option = catalog.find(entry => entry.id === id); if (option) setCartAddon(item.key, option, quantity); }} />
                 )}
 
                 <footer>
-                  <button type="button" className="cart-remove" onClick={() => removeFromCart(item.key)}>
-                    <Trash2 size={15} aria-hidden="true" /> Hapus sesi
+                  {catalog.length > 0 && !problem && (
+                    <button type="button" className="link-btn" aria-expanded={open} onClick={() => setOpenPicker(open ? null : item.key)}>
+                      <PackagePlus size={16} aria-hidden="true" /> {open ? "Selesai" : item.addons.length ? "Ubah tambahan" : "Tambah sewa raket"}
+                      <ChevronDown size={15} aria-hidden="true" className="chevron" />
+                    </button>
+                  )}
+                  <button type="button" className="link-btn danger" onClick={() => removeFromCart(item.key)}>
+                    <Trash2 size={16} aria-hidden="true" /> Hapus
                   </button>
-                  <div>
-                    {item.addons.length > 0 && <small>termasuk tambahan {money(Math.max(0, itemPrice - courtTotal))}</small>}
-                    <strong>{money(itemPrice)}</strong>
-                  </div>
                 </footer>
               </article>
             );
           })}
-          {items.length >= maxCartItems && <p className="cart-note">Keranjang penuh: maksimal {maxCartItems} sesi dalam satu pesanan.</p>}
+          {items.length >= maxCartItems && <p className="muted small">Keranjang penuh: maksimal {maxCartItems} sesi dalam satu pesanan.</p>}
         </div>
 
-        <aside className="cart-summary">
-          <div className="cart-card" ref={summaryRef}>
-            <h2>Ringkasan pesanan</h2>
-            <dl className="cart-bill">
-              {priced.map(({ item, total: itemPrice, problem }) => (
-                <div key={item.key} className={problem ? "muted" : ""}>
-                  <dt>{item.court_name} · {formatShortDay(item.date)} {item.start_time}</dt>
-                  <dd>{problem ? "—" : money(itemPrice)}</dd>
-                </div>
-              ))}
+        <aside className="cart-side" ref={summaryRef}>
+          <section className="card">
+            <h2 className="card-title">Rincian pembayaran</h2>
+            <dl className="bill">
+              <div><dt>Subtotal ({valid.length} sesi)</dt><dd>{money(subtotal)}</dd></div>
               {tax > 0 && payment?.tax && <div><dt>{taxName(payment.tax)}</dt><dd>{money(tax)}</dd></div>}
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
                 <>
-                  <div className="now"><dt>Dibayar sekarang (DP {payment.dp_percent}%)</dt><dd>{money(payNow)}</dd></div>
-                  <div><dt>Sisa dibayar di venue</dt><dd>{money(later)}</dd></div>
+                  <div className="now"><dt>Bayar sekarang (DP {payment.dp_percent}%)</dt><dd>{money(payNow)}</dd></div>
+                  <div><dt>Sisa, dibayar di venue</dt><dd>{money(later)}</dd></div>
                 </>
               )}
             </dl>
-
             {blocked && <p className="shop-note error" role="alert">Ada sesi yang tidak bisa dipesan. Hapus sesi itu untuk melanjutkan.</p>}
-            {error && <p className="shop-note error" role="alert">{error}</p>}
+            {policyLine && <Link className="policy-chip" href="/kebijakan#pembatalan"><ShieldCheck size={16} aria-hidden="true" /> {policyLine}</Link>}
+          </section>
 
-            {payment?.enabled ? (
-              <form ref={formRef} onSubmit={submit} className="cart-form">
-                <h3>Data pemesan</h3>
-                {account ? (
-                  <p className="cart-account"><CircleUserRound size={16} aria-hidden="true" /> Tersimpan di akun <b>{account.email || account.name}</b></p>
-                ) : venue?.login.enabled && account === null ? (
-                  <Link className="cart-account invite" href="/masuk?lanjut=%2Fkeranjang">
-                    <CircleUserRound size={16} aria-hidden="true" />
-                    <span><b>Masuk dengan Google</b> supaya pesanan ini tersimpan di riwayat Anda dan data terisi otomatis.</span>
-                  </Link>
-                ) : null}
-                <label>Nama pemesan
-                  <input required minLength={2} maxLength={80} value={form.customer} onChange={event => setForm({ ...form, customer: event.target.value })} />
-                </label>
-                <label>Nomor WhatsApp
-                  <input required inputMode="tel" autoComplete="tel" maxLength={20} placeholder="0812 3456 7890" value={form.phone} aria-invalid={form.phone !== "" && !phoneValid}
-                    onChange={event => setForm({ ...form, phone: event.target.value })} />
-                  {form.phone !== "" && !phoneValid && <small className="field-error">Masukkan nomor WhatsApp Indonesia yang aktif, mis. 0812 3456 7890.</small>}
-                </label>
-                <label>Email (opsional)
-                  <input type="email" maxLength={60} placeholder="untuk bukti pembayaran" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} />
-                </label>
-                <label>Catatan (opsional)
-                  <input maxLength={300} value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} />
-                </label>
-                <button className="shop-btn primary wide" type="submit" disabled={!ready || busy}>
-                  {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan…</> : <><CreditCard size={18} aria-hidden="true" /> Bayar {money(payNow)}</>}
-                </button>
-                <p className="cart-note">
-                  <ShieldCheck size={15} aria-hidden="true" />
-                  Slot dikunci {payment.hold_minutes} menit setelah pembayaran dimulai. Pembayaran diproses Midtrans: QRIS, virtual account, e-wallet, atau kartu.
-                </p>
-                {payment.note && <p className="cart-note">{payment.note}</p>}
-              </form>
-            ) : (
-              <div className="cart-form">
-                {info?.whatsapp ? (
-                  <>
-                    <a className="shop-btn primary wide" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
-                      <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
-                    </a>
-                    <p className="cart-note">Pembayaran online belum aktif. Kirim daftar ini ke staf venue; slot baru terkunci setelah staf mengonfirmasi.</p>
-                  </>
-                ) : (
-                  <p className="cart-note">Pemesanan online belum aktif. Tunjukkan daftar ini ke staf venue.</p>
-                )}
-              </div>
-            )}
-
-            {policyLine && <Link className="shop-tlink" href="/kebijakan#pembatalan">{policyLine} <ArrowRight size={15} aria-hidden="true" /></Link>}
-          </div>
+          {payment?.enabled ? (
+            <form ref={formRef} onSubmit={submit} className="card checkout" noValidate>
+              <h2 className="card-title">Data pemesan</h2>
+              {account ? (
+                <p className="account-note"><CircleUserRound size={17} aria-hidden="true" /> Pesanan tersimpan di akun <b>{account.email || account.name}</b></p>
+              ) : venue?.login.enabled && account === null ? (
+                <Link className="account-note invite" href="/masuk?lanjut=%2Fkeranjang">
+                  <CircleUserRound size={17} aria-hidden="true" />
+                  <span><b>Masuk dengan Google</b> agar data terisi otomatis dan pesanan tersimpan.</span>
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+              ) : null}
+              <label className="field">
+                <span>Nama pemesan</span>
+                <input required minLength={2} maxLength={80} autoComplete="name" placeholder="Nama lengkap" value={form.customer}
+                  aria-invalid={touched && !nameValid} onChange={event => setForm({ ...form, customer: event.target.value })} />
+                {touched && !nameValid && <small className="field-error">Isi nama pemesan, minimal 2 huruf.</small>}
+              </label>
+              <label className="field">
+                <span>Nomor WhatsApp</span>
+                <input required inputMode="tel" autoComplete="tel" maxLength={20} placeholder="0812 3456 7890" value={form.phone}
+                  aria-invalid={(touched || form.phone !== "") && !phoneValid} onChange={event => setForm({ ...form, phone: event.target.value })} />
+                {(touched || form.phone !== "") && !phoneValid
+                  ? <small className="field-error">Masukkan nomor WhatsApp Indonesia yang aktif, mis. 0812 3456 7890.</small>
+                  : <small>Untuk konfirmasi jadwal dari venue.</small>}
+              </label>
+              <label className="field">
+                <span>Email <em>opsional</em></span>
+                <input type="email" maxLength={60} autoComplete="email" placeholder="Untuk bukti pembayaran" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>Catatan <em>opsional</em></span>
+                <input maxLength={300} placeholder="Mis. datang ber-4" value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} />
+              </label>
+              {error && <p className="shop-note error" role="alert">{error}</p>}
+              <button className="shop-btn primary lg wide" type="submit" disabled={busy || checking || blocked}>
+                {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan pembayaran…</> : <><Lock size={17} aria-hidden="true" /> Bayar {money(payNow)}</>}
+              </button>
+              <p className="fine">
+                <ShieldCheck size={15} aria-hidden="true" />
+                <span>Slot dikunci {payment.hold_minutes} menit selama pembayaran. Diproses aman oleh Midtrans: QRIS, virtual account, e-wallet, atau kartu.</span>
+              </p>
+              {payment.note && <p className="fine">{payment.note}</p>}
+            </form>
+          ) : (
+            <section className="card checkout">
+              {info?.whatsapp ? (
+                <>
+                  <h2 className="card-title">Kirim pesanan</h2>
+                  <p className="muted">Pembayaran online belum aktif. Kirim daftar ini ke staf venue; slot terkunci setelah staf mengonfirmasi.</p>
+                  <a className="shop-btn primary lg wide" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
+                    <MessageCircle size={18} aria-hidden="true" /> Pesan via WhatsApp
+                  </a>
+                </>
+              ) : (
+                <p className="muted">Pemesanan online belum aktif. Tunjukkan daftar ini ke staf venue.</p>
+              )}
+            </section>
+          )}
         </aside>
       </div>
 
-      <div className="cart-bar">
+      <div className="pay-bar">
         <div>
-          <small>{items.length} sesi</small>
+          <small>{payment?.enabled && later > 0 ? "Bayar sekarang" : "Total"}</small>
           <b>{money(payment?.enabled ? payNow : total)}</b>
         </div>
-        <button type="button" className="shop-btn primary sm" onClick={() => (formRef.current ?? summaryRef.current)?.scrollIntoView({ behavior: "smooth", block: "center" })}>
-          {payment?.enabled ? "Isi data pemesan" : "Lihat ringkasan"} <ArrowRight size={17} aria-hidden="true" />
-        </button>
+        {payment?.enabled ? (
+          <button type="button" className="shop-btn primary" onClick={payFromBar} disabled={busy || checking || blocked}>
+            {busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} {ready ? "Bayar" : "Isi data"}
+          </button>
+        ) : info?.whatsapp ? (
+          <a className="shop-btn primary" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener"><MessageCircle size={18} aria-hidden="true" /> Kirim</a>
+        ) : null}
       </div>
-    </section>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import { ShopFooter } from "@/components/shop-footer";
-import { ShopHeader } from "@/components/shop-header";
+import { ShopHeader, ShopTabBar } from "@/components/shop-header";
 import { venueInfo } from "@/lib/server-data";
 import { hasPolicies } from "@/lib/venue-info";
 
@@ -11,15 +11,17 @@ import { hasPolicies } from "@/lib/venue-info";
 export default async function ShopLayout({ children }: { children: React.ReactNode }) {
   const data = await venueInfo();
   const info = data?.info ?? null;
-  const faqs = data?.faqs.length ?? 0;
+  const hasFaq = (data?.faqs.length ?? 0) > 0;
   const policies = !!data && hasPolicies(data.policies);
+  const loginEnabled = !!data?.login?.enabled;
 
   return (
     <div className="shop">
       <a className="shop-skip" href="#konten">Lewati ke konten</a>
-      <ShopHeader name={info?.name || "Padelix"} hasLocation={!!info?.address} hasFaq={faqs > 0} hasPolicies={policies} loginEnabled={!!data?.login?.enabled} />
+      <ShopHeader name={info?.name?.trim() || "Padelix"} hasLocation={!!info?.address} hasFaq={hasFaq} hasPolicies={policies} loginEnabled={loginEnabled} />
       <main id="konten" className="shop-body">{children}</main>
-      <ShopFooter info={info} hasFaq={faqs > 0} hasPolicies={policies} />
+      <ShopFooter info={info} hasFaq={hasFaq} hasPolicies={policies} />
+      <ShopTabBar hasFaq={hasFaq} loginEnabled={loginEnabled} />
     </div>
   );
 }

@@ -83,7 +83,11 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(saved.data.settings.server_key_set, true);
       assert.ok(!JSON.stringify(saved.data).includes(serverKey), "server key tidak boleh ikut terkirim ke browser");
       assert.equal(saved.data.settings.webhook_url, "https://padelix.contoh/api/public/payments/midtrans/notification");
-      assert.equal((await request("/public/info", "GET")).data.payment.enabled, true);
+      const info = (await request("/public/info", "GET")).data.payment;
+      assert.equal(info.enabled, true);
+      assert.equal(info.client_key, "SB-Mid-client-ujicoba", "client key dikirim agar Snap terbuka di halaman pesanan");
+      assert.equal(info.environment, "sandbox");
+      assert.ok(!JSON.stringify(info).includes(serverKey), "server key tidak pernah ikut");
     });
 
     await t.test("keranjang diperiksa sebelum bayar: harga terbaru, slot terisi, dan sesi bertabrakan", async () => {
@@ -131,6 +135,8 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal((await request("/public/checkout", "POST", checkout([item("12:30", "13:30")]))).status, 409, "slot yang sedang ditahan tidak bisa dipesan orang lain");
       assert.equal((await request("/public/checkout", "POST", checkout([item("12:00", "12:15")]))).status, 400, "durasi di luar 1–3 jam ditolak");
       assert.equal((db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, 4, "stok bola berkurang selama booking ditahan");
+      const pending = await request(`/public/orders/${created.data.order_id}`, "GET");
+      assert.equal(pending.data.payment.snap_token, "tok-uji", "token Snap tersedia selama menunggu pembayaran");
       (globalThis as Record<string, unknown>).orderPertama = created.data;
     });
 
@@ -207,6 +213,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.ok(!JSON.stringify(view.data).includes("081234500001"));
       assert.equal(view.data.payment.status, "paid");
       assert.equal(view.data.payment.redirect_url, null, "tautan bayar disembunyikan setelah lunas");
+      assert.equal(view.data.payment.snap_token, null, "token Snap disembunyikan setelah lunas");
       const legacy = await request(`/public/orders/${view.data.order.sessions[0].id}`, "GET");
       assert.equal(legacy.status, 200, "tautan lama berisi id booking tetap dilayani");
       assert.equal(legacy.data.order.code, view.data.order.code);

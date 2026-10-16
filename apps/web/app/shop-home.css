@@ -1,0 +1,130 @@
+/* Beranda pelanggan. Dasar palet dan komponen ada di shop.css. */
+
+/* --- Hero ---------------------------------------------------------------- */
+.shop .hero{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 85% 0%,#1f5a40 0%,var(--green) 55%,#0a241b 100%);color:#fff;padding:28px 0 24px}
+.shop .hero-photo{position:absolute;inset:0}
+.shop .hero-photo img{width:100%;height:100%;object-fit:cover;opacity:.32}
+.shop .hero-photo:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0f3326cc,#0f3326f2 70%)}
+.shop .hero-inner{position:relative;display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
+.shop .hero-copy,.shop .start-card{min-width:0}
+.shop .hero-venue{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;background:#c8ff3d1f;color:var(--lime);font-size:13px;font-weight:700}
+.shop .hero h1{margin:0 0 10px;font-size:32px;line-height:1.08;color:#fff;letter-spacing:-.03em}
+.shop .hero h1 em{display:block;font-style:normal;color:var(--lime)}
+.shop .hero-lead{font-size:15.5px;line-height:1.6;color:#d4e0d7;max-width:520px}
+.shop .hero-live{display:inline-flex;align-items:center;gap:8px;margin-top:16px;font-size:14px;color:#e5ede7}
+.shop .hero-live b{color:#fff}
+.shop .hero-live i{width:9px;height:9px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 4px #c8ff3d33;animation:hero-pulse 2s infinite}
+.shop .hero-live.idle i{background:#f5b453;box-shadow:0 0 0 4px #f5b45333;animation:none}
+@keyframes hero-pulse{50%{box-shadow:0 0 0 8px #c8ff3d00}}
+.shop .hero-facts{list-style:none;display:flex;flex-wrap:wrap;gap:6px 16px;margin:14px 0 0;padding:0;font-size:13.5px;color:#b9cabd}
+.shop .hero-facts b{color:#fff}
+
+.shop .start-card{background:var(--card);color:var(--ink);border-radius:20px;padding:16px;box-shadow:0 20px 50px #0000004d}
+.shop .start-title{font-family:var(--font-display);font-size:17px;font-weight:700;margin-bottom:12px}
+.shop .start-card .date-chips{margin-bottom:14px}
+.shop .start-card .date-chip{width:64px;height:62px}
+
+/* --- Bagian beranda ------------------------------------------------------ */
+.shop .home-sec{padding:36px 0}
+.shop .home-sec.tight{padding:24px 0}
+.shop .home-sec.soft{background:#eef2ea}
+.shop .home-sec[id]{scroll-margin-top:calc(var(--head-h) + 8px)}
+.shop .sec-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+.shop .sec-head h2{font-size:23px;line-height:1.15}
+.shop .sec-head p{margin-top:4px;font-size:14px;color:var(--ink-3)}
+.shop .sec-head .text-link{flex:none}
+
+/* Kartu lapangan: geser ke samping di ponsel, kisi di layar lebar. */
+.shop .court-rail{display:grid;grid-auto-flow:column;grid-auto-columns:min(84%,320px);gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;margin-inline:-16px;padding:4px 16px 12px;scrollbar-width:none}
+.shop .court-rail::-webkit-scrollbar{display:none}
+.shop .court-card{scroll-snap-align:start;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--rule);border-radius:20px;overflow:hidden;box-shadow:var(--shadow)}
+.shop .court-card-media{position:relative}
+.shop .avail-badge{position:absolute;left:12px;top:12px;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;background:#fff;font-size:12.5px;font-weight:800;box-shadow:0 2px 8px #0000001f}
+.shop .avail-badge:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.shop .avail-badge.open{color:var(--lime-deep)}
+.shop .avail-badge.few{color:var(--amber)}
+.shop .avail-badge.full{color:var(--red)}
+.shop .court-card-body{flex:1;display:flex;flex-direction:column;gap:4px;padding:14px 16px 16px}
+.shop .court-card-body h3{font-size:19px}
+.shop .court-card-tags{font-size:13.5px;color:var(--ink-3)}
+.shop .court-card-desc{margin-top:4px;font-size:14px;line-height:1.55;color:var(--ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.shop .court-card-foot{margin-top:auto;padding-top:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.shop .court-card-foot .price small{display:block;font-size:12px;color:var(--ink-3)}
+.shop .court-card-foot .price b{font-family:var(--font-display);font-size:19px}
+.shop .court-card-foot .price span{font-family:var(--font-ui);font-size:13px;font-weight:500;color:var(--ink-3)}
+
+/* Cara booking */
+.shop .how{list-style:none;margin:0;padding:0;display:grid;gap:12px;counter-reset:how}
+.shop .how li{display:flex;gap:14px;padding:16px;background:var(--card);border:1px solid var(--rule);border-radius:var(--radius)}
+.shop .how-icon{flex:none;display:grid;place-items:center;width:46px;height:46px;border-radius:14px;background:var(--green);color:var(--lime)}
+.shop .how h3{font-size:16.5px;margin-bottom:4px}
+.shop .how p{font-size:14px;line-height:1.55;color:var(--ink-2)}
+
+/* Sewa & tambahan */
+.shop .addon-rail{list-style:none;margin:0 -16px;padding:2px 16px 8px;display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,64%);gap:10px;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none}
+.shop .addon-rail::-webkit-scrollbar{display:none}
+.shop .addon-rail li{scroll-snap-align:start;display:flex;gap:12px;align-items:center;padding:12px;background:var(--card);border:1px solid var(--rule);border-radius:var(--radius)}
+.shop .addon-rail li>div{min-width:0;display:flex;flex-direction:column}
+.shop .addon-rail small{font-size:12px;color:var(--ink-3)}
+.shop .addon-rail b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shop .addon-rail .price{font-size:14px;font-weight:700;color:var(--green)}
+.shop .addon-rail .price small{font-weight:500}
+.shop .addon-rail .out{font-style:normal;font-size:12px;color:var(--red)}
+
+/* Fasilitas */
+.shop .facility-list{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px}
+.shop .facility-list li{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px;border-radius:999px;background:var(--card);border:1px solid var(--rule);font-size:14px;font-weight:600}
+.shop .facility-list svg{color:var(--lime-deep)}
+
+/* Lokasi */
+.shop .place{display:grid;gap:14px}
+.shop .place-card{background:var(--card);border:1px solid var(--rule);border-radius:var(--radius);padding:18px;display:flex;flex-direction:column;gap:16px}
+.shop .place-about{font-size:14.5px;color:var(--ink-2)}
+.shop .contact-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.shop .contact-list li{display:flex;gap:12px;align-items:flex-start}
+.shop .contact-list svg{flex:none;width:36px;height:36px;padding:8px;border-radius:10px;background:var(--sunk);color:var(--green)}
+.shop .contact-list div{display:flex;flex-direction:column;min-width:0}
+.shop .contact-list small{font-size:12px;color:var(--ink-3)}
+.shop .contact-list span,.shop .contact-list a{font-size:14.5px;font-weight:600;overflow-wrap:anywhere}
+.shop .contact-list a{color:var(--green)}
+.shop .place-map{min-height:260px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--rule);background:var(--sunk)}
+.shop .place-map iframe{display:block;width:100%;height:100%;min-height:260px;border:0}
+
+/* Sebelum memesan */
+.shop .before{display:grid;gap:14px}
+.shop .policy-card h3{display:flex;align-items:center;gap:8px;font-size:17px;margin-bottom:12px}
+.shop .policy-card h3 svg{color:var(--lime-deep)}
+.shop .policy-card .muted{margin-top:12px;font-size:14px;line-height:1.55}
+.shop .policy-card .text-link{margin-top:8px}
+.shop .faq-more{margin-top:8px}
+
+/* Ajakan penutup */
+.shop .closing{display:flex;flex-direction:column;gap:16px;padding:24px;border-radius:24px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff}
+.shop .closing h2{color:#fff;font-size:24px}
+.shop .closing p{margin-top:4px;color:#cbd9cf;font-size:14.5px}
+
+@media (min-width:720px){
+  .shop .hero{padding:56px 0 52px}
+  .shop .hero h1{font-size:46px}
+  .shop .court-rail{grid-auto-flow:row;grid-template-columns:repeat(2,1fr);overflow:visible;margin:0;padding:0}
+  .shop .how{grid-template-columns:repeat(3,1fr)}
+  .shop .how li{flex-direction:column}
+  .shop .addon-rail{grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));overflow:visible;margin:0;padding:0}
+  .shop .home-sec{padding:52px 0}
+  .shop .sec-head h2{font-size:28px}
+  .shop .closing{flex-direction:row;align-items:center;justify-content:space-between;padding:32px}
+}
+@media (min-width:960px){
+  .shop .hero{padding:72px 0}
+  .shop .hero-inner{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);align-items:center;gap:48px}
+  .shop .hero h1{font-size:50px}
+  .shop .hero-lead{font-size:17px}
+  .shop .start-card{padding:22px}
+  .shop .start-card .date-chips{flex-wrap:wrap;overflow:visible}
+  .shop .start-card .date-chip{width:calc((100% - 24px)/4)}
+  .shop .court-rail{grid-template-columns:repeat(3,1fr)}
+  .shop .place{grid-template-columns:1fr 1fr}
+  .shop .place.single{grid-template-columns:1fr;max-width:720px}
+  .shop .before{grid-template-columns:1fr 1.2fr;align-items:start}
+  .shop .before.single{grid-template-columns:1fr;max-width:760px}
+}

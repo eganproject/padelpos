@@ -453,6 +453,7 @@ export function orderView(id: string) {
     payment: intent ? {
       order_id: intent.order_id, status: intent.status, amount: intent.amount, kind: intent.kind,
       redirect_url: intent.status === "pending" ? intent.redirect_url : null,
+      snap_token: intent.status === "pending" ? intent.snap_token : null,
       expires_at: intent.expires_at, payment_type: intent.payment_type, updated_at: intent.updated_at,
     } : null,
   };

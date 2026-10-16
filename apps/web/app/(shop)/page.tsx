@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  ArrowRight, AtSign, CalendarRange, Check, Clock3, Mail, MapPin, MapPinned, MessageCircle,
-  Navigation, Phone, ShieldCheck, Sparkles, Wallet,
+  ArrowRight, AtSign, CalendarCheck, Check, Clock3, CreditCard, Mail, MapPin, MessageCircle,
+  Navigation, Phone, ShieldCheck, ShoppingBag,
 } from "lucide-react";
 import { money } from "@/lib/api";
 import { CourtCover } from "@/components/photo-gallery";
@@ -11,7 +11,6 @@ import { RichText } from "@/components/rich-text";
 import { ShopAddonCatalog } from "@/components/shop-addons";
 import { ShopStart } from "@/components/shop-start";
 import { FaqList, RefundTiers } from "@/components/shop-policy";
-import { VenueMapNav } from "@/components/venue-map";
 import { availability, venueInfo } from "@/lib/server-data";
 import { environmentLabel, facilityLabels, hasCancellationPolicy, mapsEmbed, mapsLink, rescheduleLine, whatsappLink } from "@/lib/venue-info";
 import { floorLabel, venueNow } from "@/lib/shop";
@@ -47,12 +46,8 @@ export default async function HomePage() {
   const freeToday = [...freeByCourt.values()].reduce((sum, value) => sum + value, 0);
 
   const lowest = courts.length ? Math.min(...courts.map(court => court.rate_min)) : 0;
-  const varies = courts.some(court => court.rate_min < court.rate_max);
-  const indoor = courts.filter(court => court.environment === "indoor").length;
-  const outdoor = courts.filter(court => court.environment === "outdoor").length;
   const opens = courts.length ? courts.map(court => court.opens_at).sort()[0] : "";
   const closes = courts.length ? courts.map(court => court.closes_at).sort().at(-1)! : "";
-  const gallery = courts.flatMap(court => court.photos.map(photo => ({ photo, court: court.name }))).slice(0, 8);
   const showcase = courts.find(court => court.photos.length > 0);
 
   const facilities = info ? info.facilities.length + info.extra_facilities.length : 0;
@@ -60,128 +55,88 @@ export default async function HomePage() {
   const showMap = !!info?.address && info.show_map;
   const cancellation = !!policies && hasCancellationPolicy(policies);
   const payOnline = !!venue?.payment.enabled;
+  const name = info?.name?.trim() || "";
+  const askText = `Halo${name ? ` ${name}` : ""}, saya ingin bertanya tentang booking lapangan.`;
   const scheduleHref = (courtId: string) => `/ketersediaan?date=${today}#lapangan-${encodeURIComponent(courtId)}`;
 
   return (
     <>
-      {/* ---- Hero: suasana lapangan, satu kalimat, dan langkah pertama ---- */}
-      <section className="shop-hero">
+      {/* ---- Hero: satu kalimat, kabar jadwal hari ini, dan langkah pertama ---- */}
+      <section className="hero">
         {showcase && (
-          <div className="shop-hero-photo" aria-hidden="true">
+          <div className="hero-photo" aria-hidden="true">
             {/* eslint-disable-next-line @next/next/no-img-element -- foto dari API sendiri, sudah diperkecil saat diunggah */}
             <img src={`/api/public/photos/${encodeURIComponent(showcase.photos[0])}`} alt="" fetchPriority="high" decoding="async" />
           </div>
         )}
-        <div className="shop-hero-veil" aria-hidden="true" />
-        {/* Dengan foto venue, hero memakai satu kolom penuh di atas fotonya. Tanpa foto,
-            kolom kanan diisi gambar lapangan sehingga hero tetap punya suasana. */}
-        <div className={`shop-wrap shop-hero-inner${showcase ? " solo" : ""}`}>
-          <div>
-            <span className="shop-eyebrow"><Sparkles size={14} aria-hidden="true" /> {info?.name?.trim() || "Booking lapangan padel"}</span>
-            <h1>Cari jam kosong, <em>langsung main.</em></h1>
-            <p className="shop-hero-lead">
-              {info?.tagline?.trim() || "Lihat jadwal semua lapangan secara langsung, pilih jam dan durasi yang cocok, dan ketahui total biayanya sebelum memesan."}
+        <div className="shop-wrap hero-inner">
+          <div className="hero-copy">
+            <h1>Booking lapangan padel, <em>beres dalam semenit.</em></h1>
+            <p className="hero-lead">
+              {info?.tagline?.trim() || "Lihat jam kosong secara langsung, pilih durasi, dan ketahui total biayanya sebelum memesan."}
             </p>
             {data ? (
-              <p className={`shop-hero-live${freeToday === 0 ? " idle" : ""}`}>
+              <p className={`hero-live${freeToday === 0 ? " idle" : ""}`}>
                 <i aria-hidden="true" />
-                {freeToday > 0
-                  ? <><b>{freeToday} slot kosong</b> hari ini di {courts.length} lapangan</>
-                  : <>Semua lapangan penuh hari ini — <b>coba besok</b></>}
+                {freeToday > 0 ? <><b>{freeToday} slot kosong</b> hari ini</> : <>Hari ini penuh, <b>coba besok</b></>}
               </p>
             ) : (
-              <p className="shop-hero-live idle"><i aria-hidden="true" />Jadwal langsung belum dapat dimuat</p>
+              <p className="hero-live idle"><i aria-hidden="true" />Jadwal langsung belum dapat dimuat</p>
             )}
-            <ShopStart today={data?.today ?? today} horizon={horizonDays} />
+            {courts.length > 0 && (
+              <ul className="hero-facts">
+                <li><b>{courts.length}</b> lapangan</li>
+                {lowest > 0 && <li>mulai <b>{money(lowest)}</b>/jam</li>}
+                {opens && <li>buka <b>{opens}–{closes}</b></li>}
+              </ul>
+            )}
           </div>
-
-          {!showcase && (
-            <div className="shop-court-art" aria-hidden="true">
-              <span className="glow" />
-              <span className="stage">
-                <span className="floor" />
-                <span className="lines" />
-                <span className="service a" />
-                <span className="service b" />
-                <span className="ball" />
-              </span>
-            </div>
-          )}
+          <ShopStart today={data?.today ?? today} horizon={horizonDays} />
         </div>
       </section>
 
-      {/* ---- Angka penting, menumpang di batas hero ---- */}
-      <div className="shop-wrap">
-        <div className="shop-facts">
-          <div>
-            <MapPinned size={22} aria-hidden="true" />
-            <b>{courts.length ? `${courts.length} lapangan` : "—"}</b>
-            <span>{[floors.length > 1 && `${floors.length} lantai`, indoor && `${indoor} indoor`, outdoor && `${outdoor} outdoor`].filter(Boolean).join(" · ") || "Semua jadwal dalam satu halaman"}</span>
-          </div>
-          <div>
-            <Wallet size={22} aria-hidden="true" />
-            <b>{lowest ? `Mulai ${money(lowest)}` : "—"}</b>
-            <span>{varies ? "Per jam; tarif berbeda di jam tertentu" : "Per jam, durasi 1 sampai 2 jam"}</span>
-          </div>
-          <div>
-            <Clock3 size={22} aria-hidden="true" />
-            <b>{opens ? `${opens} – ${closes}` : "—"}</b>
-            <span>{info?.hours_note?.trim() || "Jam buka lapangan hari ini"}</span>
-          </div>
-          <div>
-            <CalendarRange size={22} aria-hidden="true" />
-            <b>{horizonDays} hari ke depan</b>
-            <span>Rencanakan jadwal main lebih awal</span>
-          </div>
-        </div>
-      </div>
-
       {/* ---- Lapangan ---- */}
-      <section className="shop-band" id="lapangan">
+      <section className="home-sec" id="lapangan" aria-labelledby="judul-lapangan">
         <div className="shop-wrap">
-          <div className="shop-sec-head">
-            <span className="shop-eyebrow">Lapangan</span>
-            <h2>Pilih lapangan yang paling pas</h2>
-            <p>Tarif per jam dan sisa slot hari ini. Ketuk untuk melihat jam yang masih kosong.</p>
-          </div>
+          <header className="sec-head">
+            <div>
+              <h2 id="judul-lapangan">Pilih lapangan</h2>
+              <p>Tarif per jam dan sisa slot hari ini.</p>
+            </div>
+            <Link className="text-link" href="/ketersediaan">Semua jadwal <ArrowRight size={16} aria-hidden="true" /></Link>
+          </header>
 
           {!data ? (
             <p className="shop-note error" role="alert">Daftar lapangan belum dapat dimuat. Periksa koneksi Anda lalu muat ulang halaman.</p>
           ) : courts.length === 0 ? (
             <p className="shop-empty">Belum ada lapangan yang dibuka untuk pemesanan.</p>
           ) : (
-            <div className="shop-courts">
+            <div className="court-rail">
               {courts.map((court, index) => {
                 const free = freeByCourt.get(court.id) ?? 0;
-                const spread = court.rate_min < court.rate_max;
                 const floor = floorLabel(floors, court.floor_id);
+                const tags = [floor, court.environment && environmentLabel[court.environment], court.surface].filter(Boolean);
                 return (
-                  <article className="shop-court" key={court.id}>
-                    <CourtCover name={court.name} photos={court.photos} priority={index === 0} />
-                    <div className="shop-court-body">
-                      <div className="shop-court-top">
-                        <h3>{court.name}</h3>
-                        <span className={`shop-free ${free === 0 ? "full" : free <= 3 ? "few" : "open"}`}>
-                          {free === 0 ? "Penuh hari ini" : `${free} slot kosong`}
-                        </span>
-                      </div>
-                      {(floor || court.environment || court.surface) && (
-                        <div className="shop-tags">
-                          {floor && <span className="floor">{floor}</span>}
-                          {court.environment && <span className={court.environment}>{environmentLabel[court.environment]}</span>}
-                          {court.surface && <span>{court.surface}</span>}
+                  <article className="court-card" key={court.id}>
+                    <div className="court-card-media">
+                      <CourtCover name={court.name} photos={court.photos} priority={index === 0} />
+                      <span className={`avail-badge ${free === 0 ? "full" : free <= 3 ? "few" : "open"}`}>
+                        {free === 0 ? "Penuh hari ini" : `${free} slot kosong`}
+                      </span>
+                    </div>
+                    <div className="court-card-body">
+                      <h3>{court.name}</h3>
+                      {tags.length > 0 && <p className="court-card-tags">{tags.join(" · ")}</p>}
+                      {court.description && <p className="court-card-desc">{court.description}</p>}
+                      <div className="court-card-foot">
+                        <div className="price">
+                          <small>{court.rate_min < court.rate_max ? "Mulai" : "Tarif"}</small>
+                          <b>{money(court.rate_min)}<span>/jam</span></b>
                         </div>
-                      )}
-                      {court.description && <p className="shop-court-desc">{court.description}</p>}
-                      <span className="shop-court-open"><Clock3 size={15} aria-hidden="true" /> Buka {court.opens_at} – {court.closes_at}</span>
-                      <div className="shop-court-price">
-                        <div>
-                          {spread && <small className="from">Mulai</small>}
-                          <b>{money(court.rate_min)}</b> <small>/ jam</small>
-                        </div>
-                        {spread && <small>hingga {money(court.rate_max)}</small>}
+                        <Link className="shop-btn primary sm" href={scheduleHref(court.id)} aria-label={`Pilih jam di ${court.name}`}>
+                          Pilih jam <ArrowRight size={16} aria-hidden="true" />
+                        </Link>
                       </div>
-                      <Link className="shop-btn outline wide" href={scheduleHref(court.id)}>Lihat jadwal <ArrowRight size={16} aria-hidden="true" /></Link>
                     </div>
                   </article>
                 );
@@ -191,129 +146,77 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ---- Denah venue ---- */}
-      {data && courts.length > 0 && (
-        <section className="shop-band tight" aria-labelledby="judul-denah">
-          <div className="shop-wrap">
-            <div className="shop-sec-head">
-              <span className="shop-eyebrow">Denah</span>
-              <h2 id="judul-denah">Venue dilihat dari atas</h2>
-              <p>Ketuk lapangan pada denah untuk langsung membuka jadwalnya.</p>
+      {/* ---- Cara memesan ---- */}
+      <section className="home-sec soft" aria-labelledby="judul-cara">
+        <div className="shop-wrap">
+          <header className="sec-head">
+            <div>
+              <h2 id="judul-cara">Cara booking</h2>
+              <p>Tanpa telepon, tanpa menunggu balasan.</p>
             </div>
-            <div className="book-map">
-              <VenueMapNav date={today} venue={data.venue} floors={data.floors} courts={entries} features={data.features} />
-              <div className="venue-map-legend">
-                <span><i className="open" />Banyak slot kosong</span>
-                <span><i className="few" />Tinggal sedikit</span>
-                <span><i className="full" />Penuh</span>
+          </header>
+          <ol className="how">
+            <li>
+              <span className="how-icon"><CalendarCheck size={22} aria-hidden="true" /></span>
+              <div><h3>Pilih tanggal & jam</h3><p>Semua lapangan tampil sekaligus. Hanya jam yang muat untuk durasi Anda yang bisa dipilih.</p></div>
+            </li>
+            <li>
+              <span className="how-icon"><ShoppingBag size={22} aria-hidden="true" /></span>
+              <div><h3>Tambah sewa raket bila perlu</h3><p>Raket, bola, atau pelatih ikut dalam pesanan yang sama. Beberapa sesi bisa masuk satu keranjang.</p></div>
+            </li>
+            <li>
+              <span className="how-icon"><CreditCard size={22} aria-hidden="true" /></span>
+              <div>
+                {payOnline ? (
+                  <><h3>Bayar sekali</h3><p>QRIS, virtual account, e-wallet, atau kartu. Slot dikunci untuk Anda selama pembayaran berlangsung.</p></>
+                ) : info?.whatsapp ? (
+                  <><h3>Kirim ke venue</h3><p>Isi keranjang terkirim lewat WhatsApp dengan satu ketukan, lalu staf mengonfirmasi slotnya.</p></>
+                ) : (
+                  <><h3>Tunjukkan ke staf</h3><p>Bawa daftar di keranjang Anda ke resepsionis untuk mengamankan slotnya.</p></>
+                )}
               </div>
-            </div>
-          </div>
-        </section>
-      )}
+            </li>
+          </ol>
+        </div>
+      </section>
 
-      {/* ---- Suasana: hanya bila venue sudah punya foto ---- */}
-      {gallery.length >= 2 && (
-        <section className="shop-band night tight" aria-labelledby="judul-suasana">
+      {/* ---- Sewa & tambahan ---- */}
+      {venue && venue.addons.length > 0 && (
+        <section className="home-sec" id="tambahan" aria-labelledby="judul-tambahan">
           <div className="shop-wrap">
-            <div className="shop-sec-head">
-              <span className="shop-eyebrow">Suasana</span>
-              <h2 id="judul-suasana">Seperti ini rasanya main di sini</h2>
-              <p>Geser untuk melihat lapangan dan sudut lain di venue.</p>
-            </div>
-            <div className="shop-gallery">
-              {gallery.map(item => (
-                <figure key={item.photo}>
-                  <CourtCover name={item.court} photos={[item.photo]} />
-                  <figcaption>{item.court}</figcaption>
-                </figure>
-              ))}
-            </div>
+            <header className="sec-head">
+              <div>
+                <h2 id="judul-tambahan">Lupa bawa raket? Sewa di sini</h2>
+                <p>Dipilih saat booking, dibayar bersama sewa lapangan.</p>
+              </div>
+            </header>
+            <ShopAddonCatalog items={venue.addons} />
           </div>
         </section>
       )}
 
       {/* ---- Fasilitas ---- */}
       {info && facilities > 0 && (
-        <section className="shop-band tight" aria-labelledby="judul-fasilitas">
+        <section className="home-sec tight" aria-labelledby="judul-fasilitas">
           <div className="shop-wrap">
-            <div className="shop-sec-head">
-              <span className="shop-eyebrow">Fasilitas</span>
-              <h2 id="judul-fasilitas">Yang tersedia di venue</h2>
-            </div>
-            <ul className="shop-facilities">
-              {info.facilities.map(kind => <li key={kind}><FacilityIcon kind={kind} size={20} /> {facilityLabels[kind]}</li>)}
-              {info.extra_facilities.map(item => <li key={item}><Check size={20} aria-hidden="true" /> {item}</li>)}
+            <header className="sec-head"><div><h2 id="judul-fasilitas">Fasilitas</h2></div></header>
+            <ul className="facility-list">
+              {info.facilities.map(kind => <li key={kind}><FacilityIcon kind={kind} size={18} /> {facilityLabels[kind]}</li>)}
+              {info.extra_facilities.map(item => <li key={item}><Check size={18} aria-hidden="true" /> {item}</li>)}
             </ul>
           </div>
         </section>
       )}
 
-      {/* ---- Sewa & tambahan ---- */}
-      {venue && venue.addons.length > 0 && (
-        <section className="shop-band tight" id="tambahan" aria-labelledby="judul-tambahan">
-          <div className="shop-wrap">
-            <div className="shop-sec-head">
-              <span className="shop-eyebrow">Sewa & tambahan</span>
-              <h2 id="judul-tambahan">Tidak membawa raket? Tidak masalah</h2>
-              <p>Pilih perlengkapan atau pelatih saat memesan jadwal, dibayar bersama sewa lapangan.</p>
-            </div>
-            <ShopAddonCatalog items={venue.addons} />
-          </div>
-        </section>
-      )}
-
-      {/* ---- Cara memesan ---- */}
-      <section className="shop-band night" aria-labelledby="judul-cara">
-        <div className="shop-wrap">
-          <div className="shop-sec-head">
-            <span className="shop-eyebrow">Cara memesan</span>
-            <h2 id="judul-cara">Tiga langkah, tanpa menelepon</h2>
-          </div>
-          <ol className="shop-steps">
-            <li className="shop-step">
-              <h3>Pilih tanggal</h3>
-              <p>Lihat slot yang masih kosong di semua lapangan sekaligus, lengkap dengan denah venue.</p>
-            </li>
-            <li className="shop-step">
-              <h3>Masukkan ke keranjang</h3>
-              <p>Tentukan jam mulai, lama bermain, dan sewa raket atau bola bila perlu. Beberapa sesi boleh masuk satu keranjang.</p>
-            </li>
-            <li className="shop-step">
-              {payOnline ? (
-                <>
-                  <h3>Bayar sekali</h3>
-                  <p>Isi data pemesan, lalu bayar seluruh sesi sekaligus lewat QRIS, virtual account, e-wallet, atau kartu. Slot dikunci selama pembayaran berlangsung.</p>
-                </>
-              ) : info?.whatsapp ? (
-                <>
-                  <h3>Kirim ke venue</h3>
-                  <p>Kirim isi keranjang lewat WhatsApp dengan satu ketukan, lalu staf mengonfirmasi slotnya.</p>
-                </>
-              ) : (
-                <>
-                  <h3>Tunjukkan ke staf</h3>
-                  <p>Bawa daftar di keranjang Anda ke resepsionis venue untuk mengamankan slotnya.</p>
-                </>
-              )}
-            </li>
-          </ol>
-        </div>
-      </section>
-
       {/* ---- Lokasi & kontak ---- */}
       {info && reachable && (
-        <section className="shop-band" id="lokasi" aria-labelledby="judul-lokasi">
+        <section className="home-sec" id="lokasi" aria-labelledby="judul-lokasi">
           <div className="shop-wrap">
-            <div className="shop-sec-head">
-              <span className="shop-eyebrow">{info.address ? "Lokasi" : "Tentang"}</span>
-              <h2 id="judul-lokasi">{info.address ? "Datang dan main di sini" : "Tentang venue"}</h2>
-              {info.name && <p>{info.name}</p>}
-            </div>
-            <div className={`shop-place${showMap ? "" : " single"}`}>
-              <div className="shop-place-card">
-                {info.about && <RichText text={info.about} />}
-                <ul className="shop-contacts">
+            <header className="sec-head"><div><h2 id="judul-lokasi">{info.address ? "Lokasi & kontak" : "Tentang venue"}</h2></div></header>
+            <div className={`place${showMap ? "" : " single"}`}>
+              <div className="place-card">
+                {info.about && <RichText text={info.about} className="place-about" />}
+                <ul className="contact-list">
                   {info.address && <li><MapPin aria-hidden="true" /><div><small>Alamat</small><span>{info.address}</span></div></li>}
                   {info.hours_note && <li><Clock3 aria-hidden="true" /><div><small>Jam buka</small><span>{info.hours_note}</span></div></li>}
                   {info.phone && <li><Phone aria-hidden="true" /><div><small>Telepon</small><a href={`tel:${info.phone.replace(/[^0-9+]/g, "")}`}>{info.phone}</a></div></li>}
@@ -321,9 +224,9 @@ export default async function HomePage() {
                   {info.instagram && <li><AtSign aria-hidden="true" /><div><small>Instagram</small><a href={`https://instagram.com/${info.instagram}`} target="_blank" rel="noopener">@{info.instagram}</a></div></li>}
                 </ul>
                 {(info.whatsapp || info.address) && (
-                  <div className="shop-place-actions">
+                  <div className="btn-row">
                     {info.whatsapp && (
-                      <a className="shop-btn primary" href={whatsappLink(info.whatsapp, `Halo${info.name ? ` ${info.name}` : ""}, saya ingin bertanya tentang booking lapangan.`)} target="_blank" rel="noopener">
+                      <a className="shop-btn primary" href={whatsappLink(info.whatsapp, askText)} target="_blank" rel="noopener">
                         <MessageCircle size={18} aria-hidden="true" /> Chat WhatsApp
                       </a>
                     )}
@@ -332,8 +235,8 @@ export default async function HomePage() {
                 )}
               </div>
               {showMap && (
-                <div className="shop-map-embed">
-                  <iframe title={`Peta lokasi ${info.name || "venue"}`} src={mapsEmbed(info.address)} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
+                <div className="place-map">
+                  <iframe title={`Peta lokasi ${name || "venue"}`} src={mapsEmbed(info.address)} loading="lazy" referrerPolicy="no-referrer-when-downgrade" allowFullScreen />
                 </div>
               )}
             </div>
@@ -343,25 +246,22 @@ export default async function HomePage() {
 
       {/* ---- Sebelum memesan ---- */}
       {policies && (cancellation || faqs.length > 0) && (
-        <section className="shop-band tight" aria-labelledby="judul-bantuan">
+        <section className="home-sec soft" aria-labelledby="judul-bantuan">
           <div className="shop-wrap">
-            <div className="shop-sec-head">
-              <span className="shop-eyebrow">Sebelum memesan</span>
-              <h2 id="judul-bantuan">Hal yang biasanya ditanyakan</h2>
-            </div>
-            <div className={`shop-trust${cancellation && faqs.length ? "" : " single"}`}>
+            <header className="sec-head"><div><h2 id="judul-bantuan">Sebelum memesan</h2><p>Hal yang paling sering ditanyakan.</p></div></header>
+            <div className={`before${cancellation && faqs.length ? "" : " single"}`}>
               {cancellation && (
-                <article>
-                  <header><ShieldCheck size={22} aria-hidden="true" /><h3>Kebijakan pembatalan</h3></header>
+                <article className="card policy-card">
+                  <h3><ShieldCheck size={20} aria-hidden="true" /> Kebijakan pembatalan</h3>
                   <RefundTiers policies={policies} />
-                  {rescheduleLine(policies) && <p>{rescheduleLine(policies)}</p>}
-                  <Link className="shop-tlink" href="/kebijakan#pembatalan">Baca kebijakan lengkap <ArrowRight size={15} aria-hidden="true" /></Link>
+                  {rescheduleLine(policies) && <p className="muted">{rescheduleLine(policies)}</p>}
+                  <Link className="text-link" href="/kebijakan#pembatalan">Kebijakan lengkap <ArrowRight size={15} aria-hidden="true" /></Link>
                 </article>
               )}
               {faqs.length > 0 && (
-                <div className="shop-faq-side">
+                <div>
                   <FaqList items={faqs.slice(0, 4)} />
-                  {faqs.length > 4 && <Link className="shop-tlink" href="/faq">Lihat semua {faqs.length} pertanyaan <ArrowRight size={15} aria-hidden="true" /></Link>}
+                  {faqs.length > 4 && <Link className="text-link faq-more" href="/faq">Lihat semua {faqs.length} pertanyaan <ArrowRight size={15} aria-hidden="true" /></Link>}
                 </div>
               )}
             </div>
@@ -370,23 +270,21 @@ export default async function HomePage() {
       )}
 
       {/* ---- Ajakan penutup ---- */}
-      <section className="shop-band night">
-        <div className="shop-wrap shop-closing">
-          <div>
-            <h2>Lapangannya siap. Tinggal jamnya.</h2>
-            <p>
-              {freeToday > 0
-                ? `Masih ada ${freeToday} slot kosong hari ini. Pilih jam Anda sekarang sebelum diambil orang lain.`
-                : "Lihat jadwal hari berikutnya dan amankan jam main Anda."}
-            </p>
-          </div>
-          <div className="actions">
-            <Link className="shop-btn primary" href="/ketersediaan">Cek ketersediaan <ArrowRight size={18} aria-hidden="true" /></Link>
-            {info?.whatsapp && (
-              <a className="shop-btn outline" href={whatsappLink(info.whatsapp, `Halo${info.name ? ` ${info.name}` : ""}, saya ingin bertanya tentang booking lapangan.`)} target="_blank" rel="noopener">
-                <MessageCircle size={17} aria-hidden="true" /> Tanya dulu
-              </a>
-            )}
+      <section className="home-sec tight">
+        <div className="shop-wrap">
+          <div className="closing">
+            <div>
+              <h2>Siap main?</h2>
+              <p>{freeToday > 0 ? `Masih ada ${freeToday} slot kosong hari ini.` : "Lihat jadwal hari berikutnya dan amankan jam main Anda."}</p>
+            </div>
+            <div className="btn-row">
+              <Link className="shop-btn lime" href="/ketersediaan">Pesan sekarang <ArrowRight size={18} aria-hidden="true" /></Link>
+              {info?.whatsapp && (
+                <a className="shop-btn on-dark" href={whatsappLink(info.whatsapp, askText)} target="_blank" rel="noopener">
+                  <MessageCircle size={17} aria-hidden="true" /> Tanya dulu
+                </a>
+              )}
+            </div>
           </div>
         </div>
       </section>
