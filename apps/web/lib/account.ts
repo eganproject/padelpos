@@ -153,6 +153,13 @@ export async function deleteAccount() {
   setAccount(null);
 }
 
+/** Sama dengan aturan server (phoneSchema): nomor HP Indonesia 08…, 628…, atau +628…. */
+export function validPhone(value: string) {
+  const digits = value.replace(/[^0-9]/g, "");
+  const normalized = digits.startsWith("0") ? "62" + digits.slice(1) : digits.startsWith("62") ? digits : "62" + digits;
+  return /^628\d{7,12}$/.test(normalized);
+}
+
 /** Halaman tujuan setelah masuk. Hanya jalur di situs ini, bukan alamat luar. */
 export const safeNext = (value: string | null) => (value && value.startsWith("/") && !value.startsWith("//") ? value : "/akun");
 
@@ -160,7 +167,9 @@ export const safeNext = (value: string | null) => (value && value.startsWith("/"
 export function calendarFile(item: Pick<HistoryItem, "id" | "court_name" | "date" | "start_time" | "end_time">, venue: { name: string; address: string }) {
   // Jam venue memakai WIB; ditulis dengan offset tetap agar kalender di zona lain tetap tepat.
   const stamp = (date: string, time: string) => {
-    const local = new Date(`${date}T${time === "24:00" ? "23:59" : time}:00+07:00`);
+    // "24:00" adalah tengah malam berikutnya, bukan 23:59.
+    const local = new Date(`${date}T${time === "24:00" ? "00:00" : time}:00+07:00`);
+    if (time === "24:00") local.setUTCDate(local.getUTCDate() + 1);
     return local.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   };
   const escape = (value: string) => value.replace(/[\\,;]/g, match => `\\${match}`).replace(/\n/g, "\\n");

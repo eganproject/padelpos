@@ -160,14 +160,14 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
 
     await t.test("keranjang dua sesi dibayar sekali dan dibukukan per sesi", async () => {
       const created = await request("/public/checkout", "POST", checkout([
-        item("07:00", "08:00", [{ addon_id: addonId, quantity: 1 }]),
+        item("06:00", "07:00", [{ addon_id: addonId, quantity: 1 }]),
         item("08:00", "09:30"),
       ]));
       assert.equal(created.status, 201, JSON.stringify(created.data));
       assert.equal(created.data.sessions, 2);
       assert.equal(created.data.total, 300000 + 50000 + 450000, "dua sesi dijumlahkan dalam satu tagihan");
       assert.equal(created.data.amount, created.data.total);
-      assert.equal(await stateAt("07:00"), "booked");
+      assert.equal(await stateAt("06:00"), "booked");
       assert.equal(await stateAt("08:30"), "booked", "sesi kedua ikut terkunci");
 
       const settled = await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount), "", "");
@@ -195,7 +195,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       const quote = await request("/public/cart/quote", "POST", { items: [item("11:00", "12:00"), item("10:00", "11:00")] });
       assert.equal(quote.data.items[0].ok, true);
       assert.equal(quote.data.items[1].ok, false, "keranjang menandai sesi yang sudah terisi");
-      assert.equal((await request("/public/checkout", "POST", checkout([item("06:00", "07:00"), item("07:00", "08:00"), item("08:00", "09:00"), item("09:00", "10:00"), item("11:00", "12:00"), item("12:00", "13:00"), item("13:00", "14:00")]))).status, 400, "maksimal enam sesi per pesanan");
+      assert.equal((await request("/public/checkout", "POST", checkout([item("06:00", "07:00"), item("06:00", "07:00"), item("08:00", "09:00"), item("09:00", "10:00"), item("11:00", "12:00"), item("12:00", "13:00"), item("13:00", "14:00")]))).status, 400, "maksimal enam sesi per pesanan");
     });
 
     await t.test("halaman status pesanan menyamarkan nomor dan tidak membocorkan data lain", async () => {
@@ -383,6 +383,44 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(await stateAt("13:00"), "available", "slot dilepas kembali saat halaman pembayaran gagal dibuat");
       assert.equal(await stateAt("15:00"), "available", "sesi lain dalam pesanan yang sama ikut dilepas");
       snapReply = { status: 201, body: { token: "tok-uji", redirect_url: "https://app.sandbox.midtrans.com/snap/v2/vtweb/tok-uji" } };
+    });
+
+    await t.test("yang diperiksa keranjang sama dengan yang diterima checkout", async () => {
+      const lusaDate = new Date(tomorrow + "T12:00:00Z"); lusaDate.setUTCDate(lusaDate.getUTCDate() + 1);
+      const lusa = lusaDate.toISOString().slice(0, 10);
+      const later = (start: string, end: string, addons: unknown[] = []) => ({ ...item(start, end, addons), date: lusa });
+      const kasir = await request("/operations/addons", "POST", { name: "Raket kasir", category: "raket", type: "sewa", pricing: "per_booking", price: 40000, stock: 2, low_stock: 0, max_per_booking: 2, description: "", active: true, online: false }, admin);
+      assert.equal(kasir.status, 201);
+      const quote = await request("/public/cart/quote", "POST", { items: [later("06:00", "07:00", [{ addon_id: kasir.data.addon.id, quantity: 1 }])] });
+      assert.equal(quote.data.items[0].ok, false);
+      assert.match(quote.data.items[0].reason, /tidak tersedia/i);
+      const offline = await request("/public/checkout", "POST", checkout([later("06:00", "07:00", [{ addon_id: kasir.data.addon.id, quantity: 1 }])]));
+      assert.equal(offline.status, 409, "item khusus kasir tidak bisa dipesan lewat checkout online");
+      assert.equal((await slots(lusa)).find(slot => slot.start === "06:00")?.state, "available", "checkout yang ditolak tidak mengunci slot");
+
+      const raket = await request("/operations/addons", "POST", { name: "Raket online", category: "raket", type: "sewa", pricing: "per_booking", price: 40000, stock: 2, low_stock: 0, max_per_booking: 2, description: "", active: true, online: true }, admin);
+      assert.equal(raket.status, 201);
+      const first = await request("/public/checkout", "POST", checkout([later("10:00", "11:00", [{ addon_id: raket.data.addon.id, quantity: 2 }])]));
+      assert.equal(first.status, 201);
+      const lain = await request("/operations/courts", "POST", { name: "Court Lain", hourly_rate: 300000, opens_at: "06:00", closes_at: "23:00", active: true }, admin);
+      const habis = await request("/public/cart/quote", "POST", { items: [{ ...later("10:00", "11:00", [{ addon_id: raket.data.addon.id, quantity: 1 }]), court_id: lain.data.court.id }] });
+      assert.equal(habis.data.items[0].ok, false, "stok sewa di jam yang sama ikut diperhitungkan");
+      assert.match(habis.data.items[0].reason, /Raket online/);
+
+      assert.equal((await request("/public/checkout", "POST", checkout([later("06:00", "07:00")], { phone: "123456789" }))).status, 400, "nomor yang bukan nomor HP ditolak");
+      assert.equal((await request("/public/checkout", "POST", checkout([later("06:00", "07:00")], { phone: "+62 812-3450-0009" }))).status, 201, "format +62 dengan spasi tetap diterima");
+    });
+
+    await t.test("mode DP: nominal yang ditampilkan keranjang sama dengan yang ditagih", async () => {
+      assert.equal((await request("/operations/payments/settings", "PUT", settings({ mode: "dp", dp_percent: 30 }), admin)).status, 200);
+      await request("/operations/courts", "POST", { name: "Court Ganjil", hourly_rate: 175000, opens_at: "06:00", closes_at: "23:00", active: true }, admin);
+      const ganjil = (await request("/public/info", "GET")).data.courts.find((court: { name: string }) => court.name === "Court Ganjil").id;
+      const sessions = [{ court_id: ganjil, date: tomorrow, start_time: "08:00", end_time: "09:00", addons: [] }, { court_id: ganjil, date: tomorrow, start_time: "10:00", end_time: "11:00", addons: [] }];
+      const quote = await request("/public/cart/quote", "POST", { items: sessions });
+      assert.equal(quote.data.amount, 106000, "DP dibulatkan per sesi: 2 × 53.000");
+      const created = await request("/public/checkout", "POST", checkout(sessions));
+      assert.equal(created.data.amount, quote.data.amount);
+      assert.equal((await request("/operations/payments/settings", "PUT", settings(), admin)).status, 200);
     });
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));

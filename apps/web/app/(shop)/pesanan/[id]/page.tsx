@@ -56,7 +56,11 @@ export default function OrderPage() {
   const payment = data?.payment;
   const info = venue?.info;
   const copy = order ? statusCopy[order.status] ?? statusCopy.pending : null;
-  const remaining = order ? order.total - order.paid : 0;
+  // Sesi yang batal atau kedaluwarsa tidak ditagih lagi; dananya (bila ada) dikembalikan venue.
+  const active = order ? order.sessions.filter(session => session.status !== "cancelled" && session.status !== "expired") : [];
+  const billed = active.length ? active : order?.sessions ?? [];
+  const billTotal = billed.reduce((sum, session) => sum + session.total, 0);
+  const remaining = active.reduce((sum, session) => sum + Math.max(0, session.total - session.paid), 0);
   const timeLeft = payment && waiting ? countdown(payment.expires_at, now) : "";
   const message = order ? `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin menanyakan pesanan ${order.code}.` : "";
 
@@ -107,7 +111,7 @@ export default function OrderPage() {
                       <span><Clock3 size={14} aria-hidden="true" /> {session.start_time} – {session.end_time}</span>
                       {(session.addons.length > 0 || session.discount > 0 || session.tax > 0) && (
                         <ul className="lines">
-                          {session.addons.map(line => <li key={line.name}>{line.quantity}× {line.name} · {money(line.subtotal)}</li>)}
+                          {session.addons.map((line, index) => <li key={index}>{line.quantity}× {line.name} · {money(line.subtotal)}</li>)}
                           {session.discount > 0 && <li>Potongan{session.discount_note ? ` ${session.discount_note}` : ""} · −{money(session.discount)}</li>}
                           {session.tax > 0 && <li>{taxName(session)} · {money(session.tax)}</li>}
                         </ul>
@@ -122,10 +126,10 @@ export default function OrderPage() {
                 ))}
               </ul>
               <dl className="order-bill">
-                <div className="total"><dt>Total</dt><dd>{money(order.total)}</dd></div>
+                <div className="total"><dt>Total{active.length && active.length < order.sessions.length ? " sesi aktif" : ""}</dt><dd>{money(billTotal)}</dd></div>
                 <div><dt>Sudah dibayar</dt><dd>{money(order.paid)}</dd></div>
-                {remaining > 0 && order.status !== "expired" && (
-                  <div className="due"><dt>{order.paid > 0 ? "Dibayar di venue" : "Belum dibayar"}</dt><dd>{money(remaining)}</dd></div>
+                {remaining > 0 && (
+                  <div className="due"><dt>{order.status === "pending" ? "Belum dibayar" : "Dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
                 )}
               </dl>
               <p className="order-meta">Atas nama {order.customer} · {order.phone}{payment ? ` · ${intentLabel[payment.status]}` : ""}</p>

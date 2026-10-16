@@ -33,7 +33,7 @@ function parse(raw: string | null): CartItem[] {
     const now = venueNow();
     return value.filter(item =>
       item && typeof item.key === "string" && typeof item.court_id === "string"
-      && (item.date > now.date || (item.date === now.date && item.start_time > now.time)))
+      && (item.date > now.date || (item.date === now.date && item.start_time >= now.time)))
       .slice(0, maxCartItems);
   } catch { return empty; }
 }
