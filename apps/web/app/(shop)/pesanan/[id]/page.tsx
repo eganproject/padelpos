@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, CalendarDays, CheckCircle2, Clock3, Copy, CreditCard, Hourglass, MessageCircle, PartyPopper, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ArrowRight, CalendarDays, CheckCircle2, Clock3, Copy, CreditCard, ExternalLink, Hourglass, Loader2, Lock, MessageCircle, PartyPopper, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { money } from "@/lib/api";
 import { ShopSteps } from "@/components/shop-steps";
@@ -12,6 +12,7 @@ import { useVenueInfo } from "@/lib/use-venue-info";
 import { whatsappLink } from "@/lib/venue-info";
 import { countdown, fetchOrder, intentLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
+import { loadSnap } from "@/lib/snap";
 
 const statusCopy: Record<string, { title: string; tone: string; note: string; icon: typeof CheckCircle2 }> = {
   pending: { title: "Menunggu pembayaran", tone: "wait", note: "Selesaikan pembayaran sebelum waktu habis agar slot tidak dilepas.", icon: Hourglass },
@@ -45,14 +46,56 @@ export default function OrderPage() {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Selama menunggu pembayaran, status ditanyakan berkala ke Midtrans; webhook bisa telat.
+  // Selama menunggu pembayaran, status dibaca ulang beberapa detik sekali supaya halaman berubah
+  // sendiri begitu lunas. Webhook biasanya sudah memperbarui data; sesekali Midtrans ditanya langsung
+  // karena webhook bisa telat.
   const waiting = data?.payment?.status === "pending" && data.order.status === "pending";
   useEffect(() => {
     if (!waiting) return;
-    const poll = window.setInterval(() => void check(), 15000);
+    const poll = window.setInterval(() => void load(), 4000);
+    const ask = window.setInterval(() => void check(), 15000);
     const ticker = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => { window.clearInterval(poll); window.clearInterval(ticker); };
-  }, [waiting, check]);
+    return () => { window.clearInterval(poll); window.clearInterval(ask); window.clearInterval(ticker); };
+  }, [waiting, load, check]);
+
+  // Kabar singkat saat status berubah dari menunggu menjadi lunas di halaman ini.
+  const lastStatus = useRef<string | null>(null);
+  useEffect(() => {
+    const status = data?.order.status ?? null;
+    if (lastStatus.current === "pending" && status === "confirmed") toast.success("Pembayaran berhasil", { description: "Booking Anda sudah terkonfirmasi." });
+    lastStatus.current = status;
+  }, [data?.order.status]);
+
+  // Jendela pembayaran Midtrans (Snap) ditanam langsung di halaman ini.
+  const token = waiting ? data?.payment?.snap_token ?? "" : "";
+  const clientKey = venue?.payment.client_key ?? "";
+  const [snapState, setSnapState] = useState<"idle" | "loading" | "open" | "popup" | "failed">("idle");
+  const embedded = useRef("");
+  useEffect(() => {
+    if (!token || !venue) return;
+    if (!clientKey) { setSnapState("failed"); return; }
+    if (embedded.current === token) return;
+    embedded.current = token;
+    setSnapState("loading");
+    const callbacks = {
+      onSuccess: () => void check(),
+      onPending: () => void check(),
+      onError: () => toast.error("Pembayaran belum berhasil", { description: "Coba metode lain atau ulangi sebentar lagi." }),
+    };
+    loadSnap(clientKey, venue.payment.environment).then(snap => {
+      if (snap.embed) {
+        snap.embed(token, { embedId: "snap-bayar", ...callbacks });
+        setSnapState("open");
+      } else {
+        snap.pay(token, { ...callbacks, onClose: () => setSnapState("popup") });
+        setSnapState("popup");
+      }
+    }).catch(() => { embedded.current = ""; setSnapState("failed"); });
+  }, [token, clientKey, venue, check]);
+  const reopen = () => {
+    if (!token || !window.snap) return;
+    window.snap.pay(token, { onSuccess: () => void check(), onPending: () => void check(), onClose: () => setSnapState("popup") });
+  };
 
   const order = data?.order;
   const payment = data?.payment;
@@ -100,14 +143,21 @@ export default function OrderPage() {
                 </div>
                 <span className={`timer${timeLeft ? "" : " late"}`}><Clock3 size={16} aria-hidden="true" /> {timeLeft || "Hampir habis"}</span>
               </div>
+              {/* Snap mengisi kotak ini sendiri; tingginya ikut isi jendela pembayaran. */}
+              <div id="snap-bayar" className={`snap-box${snapState === "open" ? " on" : ""}`} />
+              {snapState === "loading" && <p className="snap-wait"><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan pilihan pembayaran…</p>}
               <div className="btn-col">
-                {payment.redirect_url && (
-                  <a className="shop-btn primary lg wide" href={payment.redirect_url}><CreditCard size={18} aria-hidden="true" /> Lanjutkan pembayaran</a>
+                {snapState === "popup" && (
+                  <button type="button" className="shop-btn primary lg wide" onClick={reopen}><CreditCard size={18} aria-hidden="true" /> Pilih metode pembayaran</button>
                 )}
-                <button type="button" className="shop-btn outline wide" onClick={() => void check()} disabled={busy}>
-                  <RefreshCw size={16} className={busy ? "spin" : ""} aria-hidden="true" /> Saya sudah bayar, cek status
+                {snapState === "failed" && payment.redirect_url && (
+                  <a className="shop-btn primary lg wide" href={payment.redirect_url}><ExternalLink size={18} aria-hidden="true" /> Buka halaman pembayaran</a>
+                )}
+                <button type="button" className="shop-btn ghost wide" onClick={() => void check()} disabled={busy}>
+                  <RefreshCw size={16} className={busy ? "spin" : ""} aria-hidden="true" /> Sudah bayar? Cek status sekarang
                 </button>
               </div>
+              <p className="snap-fine"><Lock size={14} aria-hidden="true" /> Diproses aman oleh Midtrans. Halaman ini berubah sendiri begitu pembayaran diterima.</p>
             </section>
           )}
 

@@ -168,5 +168,10 @@ export function adminPayment() {
 /** Yang boleh diketahui pelanggan. */
 export function publicPayment() {
   const config = paymentConfig();
-  return { enabled: paymentReady(), mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note, tax: taxSnapshot() };
+  const ready = paymentReady();
+  // Client key memang dibuat untuk browser: Snap.js memakainya agar pembayaran terbuka di halaman pesanan.
+  return {
+    enabled: ready, mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note, tax: taxSnapshot(),
+    client_key: ready ? config.clientKey : "", environment: config.environment,
+  };
 }

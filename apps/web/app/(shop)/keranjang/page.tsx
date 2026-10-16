@@ -118,7 +118,8 @@ export default function CartPage() {
       });
       // Sesi sudah menjadi pesanan di server; keranjang tidak perlu disimpan lagi.
       clearCart();
-      window.location.assign(result.redirect_url);
+      // Pembayaran dibuka di halaman pesanan sendiri (Snap tertanam), bukan di situs Midtrans.
+      window.location.assign(`/pesanan/${encodeURIComponent(result.order_id)}`);
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : "Pemesanan gagal. Coba lagi sebentar lagi.");
       setBusy(false);
