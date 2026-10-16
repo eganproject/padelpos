@@ -6,11 +6,12 @@ import { requireAdmin,revokeSessions,type AuthRequest } from "../auth.js";
 import { audit,getMenus,getRoles,getUsers,saveMenus,saveRoles,saveUsers,transaction } from "../store.js";
 import { check } from "../errors.js";
 import { passwordSchema,publicUser } from "./auth.js";
+import { contactPhoneSchema } from "../operations.js";
 import type { AccessMenu,AccessRole,User } from "../types.js";
 const router=Router();
 router.use(requireAdmin);
 router.get("/overview",(_req,res)=>res.json({users:getUsers().map(publicUser),roles:getRoles(),menus:getMenus()}));
-const userSchema=z.object({name:z.string().trim().min(3).max(60),email:z.email().toLowerCase(),phone:z.string().trim().min(9).max(18),role:z.string().min(1),password:passwordSchema.optional()});
+const userSchema=z.object({name:z.string().trim().min(3).max(60),email:z.email().toLowerCase(),phone:contactPhoneSchema,role:z.string().min(1),password:passwordSchema.optional()});
 router.post("/users",async(req:AuthRequest,res)=>{
   const data=userSchema.parse(req.body);check(data.password,400,"Password wajib diisi.");
   const passwordHash=await bcrypt.hash(data.password,12);
@@ -78,7 +79,8 @@ router.delete("/roles/:id",(req:AuthRequest,res)=>{transaction(()=>{
   check(!getUsers().some(u=>u.role===role.slug),400,"Role masih digunakan.");
   saveRoles(roles.filter(r=>r.id!==role.id));audit(req.auth!.sub,"role.delete",role.id);
 });res.status(204).send()});
-const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",payments:"/admin/payments",courts:"/admin/courts",addons:"/admin/addons",layout:"/admin/layout",info:"/admin/info",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
+// Path modul bawaan dipetakan langsung oleh halaman admin; mengubah atau menghapusnya membuat menunya mati.
+const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",customers:"/admin/customers",payments:"/admin/payments",finance:"/admin/keuangan",courts:"/admin/courts",addons:"/admin/addons",layout:"/admin/layout",info:"/admin/info",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
 const menuSchema=z.object({name:z.string().trim().min(2).max(40),path:z.string().regex(/^\/admin(?:\/[a-z0-9-]+)*$/),icon:z.string().min(2).max(40),group:z.string().min(2).max(40),order:z.number().int().min(0),active:z.boolean()});
 router.post("/menus",(req:AuthRequest,res)=>{
   const data=menuSchema.parse(req.body);

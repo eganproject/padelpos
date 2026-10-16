@@ -31,8 +31,12 @@ router.get("/photos/:id", rateLimit({ windowMs: 60 * 1000, limit: 300, standardH
   res.set("Cache-Control", "public, max-age=31536000, immutable").type(photo.mime).send(Buffer.from(photo.data));
 });
 
-// Endpoint publik tanpa autentikasi: batasi lalu lintasnya sendiri.
-router.use(rateLimit({ windowMs: 60 * 1000, limit: 60, standardHeaders: "draft-8", legacyHeaders: false, message: { message: "Terlalu banyak permintaan. Coba lagi sebentar lagi." } }));
+// Endpoint publik tanpa autentikasi: batasi lalu lintasnya sendiri. Bacaan (GET) diberi kuota lebih
+// longgar karena setiap halaman yang digambar server Next.js memanggil /info dan /availability dari
+// alamat yang sama (127.0.0.1); dengan kuota 60 per menit beranda sudah tampil "API mati" saat ramai.
+const publicLimit = (limit: number) => rateLimit({ windowMs: 60 * 1000, limit, standardHeaders: "draft-8", legacyHeaders: false, message: { message: "Terlalu banyak permintaan. Coba lagi sebentar lagi." } });
+const readLimit = publicLimit(600), writeLimit = publicLimit(60);
+router.use((req, res, next) => (req.method === "GET" || req.method === "HEAD" ? readLimit : writeLimit)(req, res, next));
 
 /** Batasi jendela yang dapat dilihat publik agar jadwal jauh ke depan tidak dapat dipanen. */
 const horizonDays = 90;
