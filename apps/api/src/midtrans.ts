@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { publicUrl } from "./config.js";
+import { taxSnapshot } from "./bill.js";
 
 /**
  * Midtrans Snap. Kunci dapat diisi dari panel admin atau dari environment; environment selalu
@@ -167,5 +168,5 @@ export function adminPayment() {
 /** Yang boleh diketahui pelanggan. */
 export function publicPayment() {
   const config = paymentConfig();
-  return { enabled: paymentReady(), mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note };
+  return { enabled: paymentReady(), mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note, tax: taxSnapshot() };
 }

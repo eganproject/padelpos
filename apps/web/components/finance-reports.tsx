@@ -216,6 +216,7 @@ function LedgerReport({ setup, range }: { setup:Setup; range:Range }) {
             </table>
             {!data.rows.length && <Empty title="Tidak ada mutasi" text="Akun ini belum dipakai pada rentang tanggal yang dipilih."/>}
           </div>
+          {data.truncated && <p className="fin-note">Rincian dipotong pada {data.rows.length.toLocaleString("id-ID")} baris pertama. Debit, kredit, dan saldo akhir di atas tetap menghitung seluruh mutasi; persempit periode untuk melihat sisanya.</p>}
         </>
       )}
     </div>
@@ -286,16 +287,31 @@ function SubsidiaryReport({ range }: { range:Range }) {
 
 function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:Range; today:string; onChanged:()=>void }) {
   const [entries,setEntries] = useState<JournalEntry[]|null>(null);
+  const [total,setTotal] = useState(0);
   const [term,setTerm] = useState("");
   const [source,setSource] = useState("");
   const [editing,setEditing] = useState<JournalEntry|null>(null);
   const [creating,setCreating] = useState(false);
-  const load = useCallback(async () => {
-    const query = new URLSearchParams({ from:range.from, to:range.to, q:term });
-    if (source) query.set("source", source);
-    try { setEntries((await api<{entries:JournalEntry[]}>(`/operations/finance/journal?${query}`)).entries) }
-    catch (error) { toast.error((error as Error).message) }
+  const query = useCallback((limit:number) => {
+    const params = new URLSearchParams({ from:range.from, to:range.to, q:term, limit:String(limit) });
+    if (source) params.set("source", source);
+    return `/operations/finance/journal?${params}`;
   }, [range.from, range.to, term, source]);
+  const load = useCallback(async () => {
+    try { const result = await api<{entries:JournalEntry[];total:number}>(query(200)); setEntries(result.entries); setTotal(result.total) }
+    catch (error) { toast.error((error as Error).message) }
+  }, [query]);
+  /** CSV memuat seluruh jurnal periode ini, bukan hanya 200 yang tampil di layar. */
+  async function exportCsv() {
+    try {
+      const { entries:all, total:count } = await api<{entries:JournalEntry[];total:number}>(query(10000));
+      if (count>all.length) toast.warning(`Hanya ${all.length} dari ${count} jurnal yang terunduh. Persempit periodenya.`);
+      downloadCsv(`jurnal-${range.from}-sd-${range.to}.csv`,[
+        ["Jurnal Umum"],["Periode",range.from,range.to],[],["Tanggal","Nomor","Keterangan","Akun","Debit","Kredit"],
+        ...all.flatMap(entry=>entry.lines.map(line=>[entry.date,entry.number,line.memo||entry.memo,`${line.account_code} ${line.account_name}`,line.debit,line.credit])),
+      ]);
+    } catch (error) { toast.error((error as Error).message) }
+  }
   useEffect(() => { const timer=setTimeout(()=>void load(),term?250:0); return ()=>clearTimeout(timer) }, [load, term]);
 
   async function remove(entry:JournalEntry) {
@@ -306,10 +322,7 @@ function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:
   return (
     <div className="fin-report">
       <ReportHead title="Jurnal umum" subtitle={`Semua pencatatan, ${rangeLabel(range.from,range.to)}`}
-        onCsv={()=>entries&&downloadCsv(`jurnal-${range.from}-sd-${range.to}.csv`,[
-          ["Jurnal Umum"],["Periode",range.from,range.to],[],["Tanggal","Nomor","Keterangan","Akun","Debit","Kredit"],
-          ...entries.flatMap(entry=>entry.lines.map(line=>[entry.date,entry.number,line.memo||entry.memo,`${line.account_code} ${line.account_name}`,line.debit,line.credit])),
-        ])}/>
+        onCsv={()=>void exportCsv()}/>
       <div className="fin-toolbar">
         <label className="fin-search"><Search size={15} aria-hidden="true"/>
           <input value={term} onChange={e=>setTerm(e.target.value)} placeholder="Cari keterangan atau nomor jurnal…" aria-label="Cari jurnal"/>
@@ -354,6 +367,7 @@ function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:
           );
         })}</ul>
       )}
+      {entries && total>entries.length && <p className="fin-note">Menampilkan {entries.length} jurnal terbaru dari {total}. Unduh CSV untuk daftar lengkapnya.</p>}
       {(creating||editing) && (
         <JournalForm setup={setup} today={today} entry={editing} close={()=>{setCreating(false);setEditing(null)}}
           saved={()=>{setCreating(false);setEditing(null);void load();onChanged()}}/>
@@ -362,13 +376,13 @@ function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:
   );
 }
 
-type FormLine = { account_id:string; debit:number; credit:number; memo:string };
+type FormLine = { account_id:string; debit:number; credit:number; memo:string; partner_id:string|null };
 function JournalForm({ setup, today, entry, close, saved }: { setup:Setup; today:string; entry?:JournalEntry|null; close:()=>void; saved:()=>void }) {
   const [date,setDate] = useState(entry?.date ?? today);
   const [memo,setMemo] = useState(entry?.memo ?? "");
   const [lines,setLines] = useState<FormLine[]>(() => entry
-    ? entry.lines.map(line => ({ account_id:line.account_id, debit:line.debit, credit:line.credit, memo:line.memo }))
-    : [{ account_id:"", debit:0, credit:0, memo:"" },{ account_id:"", debit:0, credit:0, memo:"" }]);
+    ? entry.lines.map(line => ({ account_id:line.account_id, debit:line.debit, credit:line.credit, memo:line.memo, partner_id:line.partner_id }))
+    : [{ account_id:"", debit:0, credit:0, memo:"", partner_id:null },{ account_id:"", debit:0, credit:0, memo:"", partner_id:null }]);
   const [saving,setSaving] = useState(false);
   const debit = lines.reduce((sum,line)=>sum+line.debit,0);
   const credit = lines.reduce((sum,line)=>sum+line.credit,0);
@@ -377,6 +391,8 @@ function JournalForm({ setup, today, entry, close, saved }: { setup:Setup; today
   async function submit(event:React.FormEvent) {
     event.preventDefault();
     if (!balanced) return toast.error("Total debit dan kredit harus sama");
+    // Baris bernominal tanpa akun dulu dibuang diam-diam, sehingga yang tersimpan berbeda dari yang diketik.
+    if (lines.some(line => !line.account_id && (line.debit || line.credit))) return toast.error("Pilih akun untuk setiap baris yang berisi nominal");
     setSaving(true);
     try {
       await api(`/operations/finance/journal${entry?`/${entry.id}`:""}`,{ method: entry?"PUT":"POST", body: JSON.stringify({ date, memo, lines: lines.filter(line=>line.account_id && (line.debit||line.credit)) }) });
@@ -397,7 +413,7 @@ function JournalForm({ setup, today, entry, close, saved }: { setup:Setup; today
             <div className="fin-line" key={index}>
               <select value={line.account_id} onChange={e=>update(index,{account_id:e.target.value})} aria-label={`Akun baris ${index+1}`}>
                 <option value="">Pilih akun…</option>
-                {setup.accounts.filter(account=>account.active).map(account => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
+                {setup.accounts.filter(account=>account.active||account.id===line.account_id).map(account => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
               </select>
               <AmountField label="Debit" value={line.debit} onChange={value=>update(index,{debit:value,credit:value?0:line.credit})}/>
               <AmountField label="Kredit" value={line.credit} onChange={value=>update(index,{credit:value,debit:value?0:line.debit})}/>
@@ -407,7 +423,7 @@ function JournalForm({ setup, today, entry, close, saved }: { setup:Setup; today
           ))}
         </div>
         <div className="fin-lines-foot">
-          <button type="button" className="ops-secondary" disabled={lines.length>=20} onClick={()=>setLines(current=>[...current,{account_id:"",debit:0,credit:0,memo:""}])}><Plus size={14}/> Tambah baris</button>
+          <button type="button" className="ops-secondary" disabled={lines.length>=20} onClick={()=>setLines(current=>[...current,{account_id:"",debit:0,credit:0,memo:"",partner_id:null}])}><Plus size={14}/> Tambah baris</button>
           <span className={balanced?"fin-tag ok":"fin-tag warn"}>
             {balanced ? <><Check size={13}/> Seimbang</> : <><Scale size={13}/> Debit {money(debit)} · Kredit {money(credit)}</>}
           </span>

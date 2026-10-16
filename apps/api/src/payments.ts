@@ -4,7 +4,8 @@ import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { localClock, minutes } from "./clock.js";
 import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
-import { syncBooking } from "./finance.js";
+import { gatewayFee, syncBooking } from "./finance.js";
+import { allocate, billOf, taxSnapshot } from "./bill.js";
 import { closeSchema, contactPhoneSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, timeSchema, type Booking } from "./operations.js";
 import {
   createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod,
@@ -106,13 +107,14 @@ export function quoteCart(input: unknown) {
   const { items } = cartSchema.parse(input);
   expireHolds();
   const rules = priceRules();
+  const snapshot = taxSnapshot();
   const catalog = publicAddons();
   const now = localClock();
   const results = items.map((item, index) => {
     const duration = minutes(item.end_time) - minutes(item.start_time);
     const court = db.prepare("SELECT id,name,hourly_rate,opens_at,closes_at,active FROM courts WHERE id=?").get(item.court_id) as
       { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; active: number } | undefined;
-    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time };
+    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0 };
     if (!court || !court.active) return { ...base, ok: false, reason: "Lapangan ini sedang tidak tersedia.", court_total: 0, total: 0, addons: [] };
     // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat.
     if (item.date < now.date || (item.date === now.date && item.start_time <= now.time))
@@ -134,16 +136,21 @@ export function quoteCart(input: unknown) {
         ok: !!option && quantity === pick.quantity,
       };
     });
-    const total = courtTotal + addons.reduce((sum, line) => sum + line.subtotal, 0);
+    // Hitungan yang sama dengan saat booking dibuat, jadi angka di keranjang = angka yang ditagih.
+    const { total, tax } = billOf(courtTotal + addons.reduce((sum, line) => sum + line.subtotal, 0), 0, snapshot);
     return {
       ...base, ok: !taken && addons.every(line => line.ok),
       reason: taken ? `Jam ini ${taken}.` : addons.some(line => !line.ok) ? "Ada tambahan yang stoknya tidak mencukupi." : "",
-      court_total: courtTotal, total, addons,
+      court_total: courtTotal, tax, total, addons,
     };
   });
-  const total = results.filter(item => item.ok).reduce((sum, item) => sum + item.total, 0);
+  const ok = results.filter(item => item.ok);
   const config = paymentConfig();
-  return { items: results, total, amount: results.filter(item => item.ok).reduce((sum, item) => sum + payableAmount(item.total, config), 0) };
+  return {
+    items: results, total: ok.reduce((sum, item) => sum + item.total, 0), tax: ok.reduce((sum, item) => sum + item.tax, 0),
+    tax_label: snapshot.tax_label, tax_inclusive: !!snapshot.tax_inclusive,
+    amount: ok.reduce((sum, item) => sum + payableAmount(item.total, config), 0),
+  };
 }
 
 /** 08xx dan +62xx disimpan seragam sebagai 62xx agar pelanggan lama dikenali. */
@@ -179,6 +186,9 @@ function itemsFor(bookings: Booking[], amount: number, full: boolean) {
       ...bookingAddons(booking.id).map(line => ({
         id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50),
       })),
+      ...(booking.discount ? [{ id: `diskon-${booking.id.slice(0, 8)}`, price: -booking.discount, quantity: 1, name: `Potongan ${booking.discount_note}`.slice(0, 50) }] : []),
+      // Pajak yang sudah termasuk harga tidak ditambahkan lagi.
+      ...(booking.tax && !booking.tax_inclusive ? [{ id: `pajak-${booking.id.slice(0, 8)}`, price: booking.tax, quantity: 1, name: `${booking.tax_label || "Pajak"} ${booking.tax_rate / 100}%`.slice(0, 50) }] : []),
     ])
     : bookings.map(booking => ({
       id: `dp-${booking.id.slice(0, 8)}`, price: payableAmount(booking.total, paymentConfig()), quantity: 1,
@@ -225,17 +235,19 @@ export async function createCheckout(input: unknown, accountId: string | null = 
 
   const { order, bookings } = transaction(() => {
     const customerId = upsertCustomer(data.customer, data.phone, data.email);
+    const snapshot = taxSnapshot();
     const orderId = randomUUID(), stamp = new Date().toISOString();
     const created: Booking[] = [];
     for (const item of data.items) {
       const court = ensureSlot(item.court_id, item.date, item.start_time, item.end_time);
       check(!slotTaken(item), 409, `${label(item, court.name)} sudah dipesan orang lain. Hapus sesi itu dari keranjang.`);
-      const total = quote(court, priceRules(), item.date, item.start_time, item.end_time);
+      const courtTotal = quote(court, priceRules(), item.date, item.start_time, item.end_time), bill = billOf(courtTotal, 0, snapshot);
       const id = randomUUID();
       // Baris pesanan baru dibuat setelah seluruh tagihan diketahui, jadi order_id diisi menyusul.
-      db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,status,source,hold_expires_at,notes,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,'pending','online',unixepoch()+?,?,?)`)
-        .run(id, item.court_id, customerId, accountId, data.customer, data.phone, item.date, item.start_time, item.end_time, total, total, config.hold_minutes * 60, data.notes, stamp);
+      db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,source,hold_expires_at,notes,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','online',unixepoch()+?,?,?)`)
+        .run(id, item.court_id, customerId, accountId, data.customer, data.phone, item.date, item.start_time, item.end_time, bill.total, courtTotal,
+          bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, config.hold_minutes * 60, data.notes, stamp);
       if (item.addons.length) applyLines(getBooking(id), item.addons, customerId);
       created.push(getBooking(id));
     }
@@ -312,17 +324,24 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
     const config = paymentConfig();
     if (outcome === "paid") {
       const reference = status.transaction_id ?? intent.order_id;
-      // Satu pembayaran Midtrans dibagi ke tiap sesi agar pembukuan per booking tetap utuh.
-      const shares = bookings.length === 1
-        ? [intent.amount]
-        : bookings.map(booking => payableAmount(booking.total, config));
+      // Satu pembayaran Midtrans dibagi ke tiap sesi agar pembukuan per booking tetap utuh. Nominal yang
+      // ditagih Midtrans adalah patokannya, jadi persen DP yang diubah setelah checkout tidak berpengaruh.
+      const shares = allocate(intent.amount, bookings.map(booking => payableAmount(booking.total, config)));
+      // Potongan gateway dihitung sekali per transaksi (biaya tetap VA tidak boleh terhitung per sesi).
+      const method = paymentMethod(status.payment_type);
+      const fees = allocate(gatewayFee(method, intent.amount), shares);
       bookings.forEach((booking, index) => {
         const key = `${reference}:${booking.id.slice(0, 8)}`;
-        if (!db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(key)) {
-          db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,'payment',?,'gateway',?,?,?)")
-            .run(randomUUID(), booking.id, shares[index], paymentMethod(status.payment_type), key, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
+        if (shares[index] > 0 && !db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(key)) {
+          db.prepare("INSERT INTO payments (id,booking_id,amount,fee,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,?,'payment',?,'gateway',?,?,?)")
+            .run(randomUUID(), booking.id, shares[index], Math.min(fees[index], shares[index]), method, key, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
         }
-        if (booking.status === "pending") {
+        if (booking.status === "expired") {
+          // Uang masuk setelah batas bayar lewat: slotnya sudah dilepas, jadi booking ditutup sebagai batal
+          // supaya staf dapat mencatat pengembaliannya dan dana tidak menggantung sebagai uang muka.
+          db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=?")
+            .run("Pembayaran masuk setelah batas waktu bayar. Dana perlu dikembalikan.", booking.id);
+        } else if (booking.status === "pending") {
           try {
             db.prepare("UPDATE bookings SET status='confirmed',hold_expires_at=NULL WHERE id=?").run(booking.id);
           } catch {
@@ -331,12 +350,6 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
               .run("Slot keburu terisi setelah pembayaran masuk. Dana perlu dikembalikan.", booking.id);
             releaseAddons(booking.id, "midtrans");
           }
-        } else if (booking.status === "expired") {
-          // Dana masuk setelah batas bayar lewat (Midtrans menghitung batasnya sedikit lebih lambat).
-          // Slot dan stoknya sudah dilepas, jadi booking dibatalkan agar dananya tampil sebagai
-          // pengembalian yang harus diproses, bukan menggantung di booking kedaluwarsa.
-          db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=?")
-            .run("Pembayaran masuk setelah batas waktu bayar. Dana perlu dikembalikan.", booking.id);
         }
       });
       for (const booking of bookings) syncBooking(booking.id);
@@ -415,6 +428,8 @@ export function orderView(id: string) {
         id: booking.id, code: bookingCode(booking.id), court_name: booking.court_name, date: booking.date,
         start_time: booking.start_time, end_time: booking.end_time, status: booking.status,
         court_total: booking.court_total, total: booking.total, paid: booking.paid, cancel_reason: booking.cancel_reason,
+        discount: booking.discount, discount_note: booking.discount_note,
+        tax: booking.tax, tax_rate: booking.tax_rate, tax_inclusive: booking.tax_inclusive, tax_label: booking.tax_label,
         addons: bookingAddons(booking.id).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
       })),
     },

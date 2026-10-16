@@ -206,6 +206,19 @@ jumlahnya sama, sehingga neraca tidak pernah perlu dicocokkan manual.
   *Uang Muka Pelanggan*, bukan sebagai pendapatan.
 - **Pembatalan booking** menarik kembali pendapatannya, dan pengembalian dana mengurangi kas.
 
+- **Pajak** (mis. PB1 atau PPN) diatur di Pengaturan → Kas & penguncian: nama, tarif, dan apakah
+  ditambahkan ke harga atau sudah termasuk. Tarifnya disalin ke setiap booking baru, jadi mengubah
+  pengaturan tidak mengubah tagihan lama. Pajak dicatat ke *Utang Pajak*, bukan pendapatan; setorannya
+  dicatat lewat Catat pengeluaran dengan kategori Utang Pajak.
+- **Potongan harga** diberikan staf dari detail booking aktif, wajib dengan alasan. Pajak dihitung dari
+  harga setelah potongan, dan potongannya tampil di laba rugi lewat akun *Potongan Harga*.
+- **Denda pembatalan**: pembayaran booking batal yang tidak dikembalikan dapat ditahan sebagian atau
+  seluruhnya dari detail booking. Bagian itu menjadi *Pendapatan Pembatalan*; sisanya tetap dapat
+  dikembalikan.
+- **Potongan payment gateway** diatur per metode (persen dan/atau nominal tetap). Pembayaran Midtrans
+  masuk ke rekening sebesar uang yang benar-benar diterima, dan potongannya menjadi *Biaya Bank &
+  Payment Gateway*. Tagihan pelanggan tetap lunas penuh.
+
 Karena itu, membatalkan booking atau mengubah tambahannya langsung terlihat di laporan tanpa pencatatan
 ulang. Jurnal yang dibuat otomatis ditandai sumbernya dan tidak dapat diubah dari menu Keuangan; yang
 berubah adalah data operasionalnya.

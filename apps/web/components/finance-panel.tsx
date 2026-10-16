@@ -128,6 +128,7 @@ function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup;
             <li><span>Piutang pelanggan</span><b>{money(data.receivable)}</b><small>Sesi yang sudah main tapi belum lunas.</small></li>
             <li><span>Uang muka pelanggan</span><b>{money(data.advances)}</b><small>Sudah dibayar untuk sesi yang belum main.</small></li>
             <li><span>Utang pemasok</span><b>{money(data.payable)}</b><small>Pembelian yang belum dibayar.</small></li>
+            {data.tax_payable!==0 && <li><span>Pajak belum disetor</span><b>{money(data.tax_payable)}</b><small>Setor lewat Catat pengeluaran dengan kategori Utang Pajak.</small></li>}
           </ul>
           {data.due.length>0 && (
             <>

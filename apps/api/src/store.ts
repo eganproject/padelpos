@@ -611,6 +611,56 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 13").get()) transactio
   }
   db.prepare("INSERT INTO migrations VALUES (13, ?)").run(stamp);
 });
+/**
+ * Potongan harga, pajak, DP hangus, dan biaya payment gateway.
+ * - `discount` dan `tax` adalah bagian dari tagihan: total = lapangan + tambahan − potongan (+ pajak bila
+ *   pajaknya di luar harga). Tarif pajak disalin ke booking (`tax_rate` dalam basis poin) agar
+ *   mengubah pengaturan tidak mengubah tagihan lama.
+ * - `forfeited` adalah bagian pembayaran booking batal yang ditahan venue sebagai denda pembatalan.
+ * - `payments.fee` adalah potongan payment gateway atas pembayaran online itu.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 14").get()) transaction(() => {
+  const stamp = new Date().toISOString();
+  db.exec(`
+    ALTER TABLE bookings ADD COLUMN discount INTEGER NOT NULL DEFAULT 0 CHECK(discount >= 0);
+    ALTER TABLE bookings ADD COLUMN discount_note TEXT NOT NULL DEFAULT '';
+    ALTER TABLE bookings ADD COLUMN tax INTEGER NOT NULL DEFAULT 0 CHECK(tax >= 0);
+    ALTER TABLE bookings ADD COLUMN tax_rate INTEGER NOT NULL DEFAULT 0 CHECK(tax_rate >= 0);
+    ALTER TABLE bookings ADD COLUMN tax_inclusive INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE bookings ADD COLUMN tax_label TEXT NOT NULL DEFAULT '';
+    ALTER TABLE bookings ADD COLUMN forfeited INTEGER NOT NULL DEFAULT 0 CHECK(forfeited >= 0);
+    ALTER TABLE bookings ADD COLUMN forfeited_at TEXT;
+    ALTER TABLE payments ADD COLUMN fee INTEGER NOT NULL DEFAULT 0 CHECK(fee >= 0);
+  `);
+  const accounts = db.prepare("SELECT code,name,system_key FROM accounts").all() as { code: string; name: string; system_key: string | null }[];
+  if (accounts.length) {
+    // Kode yang diinginkan bisa saja sudah dipakai akun buatan pengguna; cari nomor kosong berikutnya.
+    const freeCode = (prefix: string, start: number) => {
+      for (let value = start; value < 1000; value += 10) {
+        const code = `${prefix}-${value}`;
+        if (!accounts.some(account => account.code === code)) return code;
+      }
+      return `${prefix}-${Date.now() % 1000}`;
+    };
+    const freeName = (name: string) => accounts.some(account => account.name.toLowerCase() === name.toLowerCase()) ? `${name} (sistem)` : name;
+    const position = () => (db.prepare("SELECT COALESCE(MAX(position),0)+1 value FROM accounts").get() as { value: number }).value;
+    const insert = db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,0,?,?,1,?,?)");
+    const add = (key: string, prefix: string, start: number, name: string, type: string, subtype: string, description: string) => {
+      if (accounts.some(account => account.system_key === key)) return;
+      const code = freeCode(prefix, start);
+      insert.run(randomUUID(), code, freeName(name), type, subtype, key, description, position(), stamp);
+      accounts.push({ code, name, system_key: key });
+    };
+    add("utang_pajak", "2", 300, "Utang Pajak", "liabilitas", "utang", "Pajak yang dipungut dari pelanggan dan belum disetor.");
+    add("potongan_harga", "4", 950, "Potongan Harga", "pendapatan", "pendapatan", "Diskon yang diberikan pada booking. Saldonya mengurangi pendapatan.");
+    add("pendapatan_pembatalan", "4", 800, "Pendapatan Pembatalan", "pendapatan", "pendapatan", "DP atau pembayaran booking batal yang ditahan sebagai denda.");
+    // Akun biaya payment gateway bawaan diberi kunci sistem agar potongan Midtrans tercatat otomatis.
+    const gateway = db.prepare("SELECT id FROM accounts WHERE name='Biaya Bank & Payment Gateway' AND system_key IS NULL AND type='beban'").get() as { id: string } | undefined;
+    if (gateway) db.prepare("UPDATE accounts SET system_key='beban_gateway' WHERE id=?").run(gateway.id);
+    else add("beban_gateway", "5", 850, "Biaya Payment Gateway", "beban", "beban", "Potongan Midtrans atas pembayaran online.");
+  }
+  db.prepare("INSERT INTO migrations VALUES (14, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

@@ -6,12 +6,12 @@ import { api } from "@/lib/api";
 import { shrink } from "@/lib/image";
 import {
   type FinanceRecord, type RecordKind, type Setup,
-  categoryGroupLabel, formatDate, isCategory, money, partnerKindLabel,
+  categoryGroupLabel, formatDate, isCategory, money, partnerKindLabel, usableCash,
 } from "@/lib/finance";
 import { Modal } from "./operation-ui";
 import { AmountField, Empty } from "./finance-ui";
 
-type Data = { records:FinanceRecord[]; expense:number; income:number; unsettled:number };
+type Data = { records:FinanceRecord[]; count:number; expense:number; income:number; unsettled:number };
 type Range = { from:string; to:string };
 
 const cashAccounts = (setup:Setup) => setup.accounts.filter(account => account.is_cash && account.active);
@@ -120,6 +120,9 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
             </tr>
           ))}</tbody>
         </table>
+        {data && data.count>data.records.length && (
+          <p className="fin-note">Menampilkan {data.records.length} catatan terbaru dari {data.count}. Total di atas sudah menghitung semuanya; persempit periode atau pencarian untuk melihat sisanya.</p>
+        )}
         {data && !data.records.length && (
           <Empty title="Belum ada catatan pada periode ini"
             text="Mulai dari tombol “Catat pengeluaran”. Setiap catatan otomatis masuk ke laba rugi, neraca, dan buku besar." />
@@ -148,7 +151,8 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
     account_id: record?.account_id ?? "",
     amount: record?.amount ?? 0,
     settle: record?.settle ?? "tunai",
-    cash_account_id: record?.cash_account_id ?? setup.settings.default_cash_account ?? cash[0]?.id ?? "",
+    // Akun kas yang sudah nonaktif tidak ada di pilihan, jadi nilai awal disamakan dengan yang tampil.
+    cash_account_id: usableCash(setup, record?.cash_account_id ?? setup.settings.default_cash_account),
     partner_id: record?.partner_id ?? "",
     description: record?.description ?? "",
     due_date: record?.due_date ?? "",
@@ -289,7 +293,7 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
 function SettleForm({ setup, today, record, close, saved }: { setup:Setup; today:string; record:FinanceRecord; close:()=>void; saved:()=>void }) {
   const cash = cashAccounts(setup);
   const [date,setDate] = useState(today > record.date ? today : record.date);
-  const [account,setAccount] = useState(setup.settings.default_cash_account || cash[0]?.id || "");
+  const [account,setAccount] = useState(usableCash(setup, setup.settings.default_cash_account));
   const [note,setNote] = useState("");
   const [saving,setSaving] = useState(false);
   const expense = record.kind==="pengeluaran";
@@ -423,7 +427,7 @@ export function TransferForm({ setup, today, close, saved }: { setup:Setup; toda
 export function EquityForm({ setup, today, close, saved }: { setup:Setup; today:string; close:()=>void; saved:()=>void }) {
   const cash = cashAccounts(setup);
   const [form,setForm] = useState<{date:string;direction:"setor"|"ambil";cash_account_id:string;amount:number;memo:string}>({
-    date:today, direction:"setor", cash_account_id:setup.settings.default_cash_account||cash[0]?.id||"", amount:0, memo:"",
+    date:today, direction:"setor", cash_account_id:usableCash(setup, setup.settings.default_cash_account), amount:0, memo:"",
   });
   const [saving,setSaving] = useState(false);
   async function submit(event:React.FormEvent) {

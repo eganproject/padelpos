@@ -14,6 +14,7 @@ import {
   addonsTotal, cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
 } from "@/lib/cart";
 import { amountDue, quoteCart, startCheckout, type CartQuote } from "@/lib/payments";
+import { billOf, taxName } from "@/lib/bill";
 import { useAccount } from "@/lib/account";
 
 const durationLabel = (minutes: number) => `${(minutes / 60).toLocaleString("id-ID")} jam`;
@@ -64,13 +65,16 @@ export default function CartPage() {
     return {
       item,
       courtTotal: matches ? checked.court_total : item.court_total,
-      total: matches ? checked.total : itemTotal(item),
+      // Sebelum server menjawab, pajak dihitung dengan rumus yang sama supaya angkanya tidak melompat.
+      ...(matches ? { tax: checked.tax, total: checked.total } : billOf(itemTotal(item), 0, payment?.tax)),
       problem: matches && !checked.ok ? checked.reason || "Sesi ini tidak dapat dipesan." : "",
     };
-  }), [items, quote]);
+  }), [items, quote, payment?.tax]);
   const total = priced.reduce((sum, entry) => sum + (entry.problem ? 0 : entry.total), 0);
+  const tax = priced.reduce((sum, entry) => sum + (entry.problem ? 0 : entry.tax), 0);
   const blocked = priced.some(entry => entry.problem);
-  const payNow = payment ? amountDue(payment, total) : total;
+  // DP dihitung per sesi seperti di server, jadi pembulatannya sama dengan yang ditagih Midtrans.
+  const payNow = payment ? priced.reduce((sum, entry) => sum + (entry.problem ? 0 : amountDue(payment, entry.total)), 0) : total;
   const later = total - payNow;
   const policyLine = venue ? policySummary(venue.policies) : null;
   const phoneDigits = form.phone.replace(/[^0-9]/g, "");
@@ -227,6 +231,7 @@ export default function CartPage() {
                   <dd>{problem ? "—" : money(itemPrice)}</dd>
                 </div>
               ))}
+              {tax > 0 && payment?.tax && <div><dt>{taxName(payment.tax)}</dt><dd>{money(tax)}</dd></div>}
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
                 <>
