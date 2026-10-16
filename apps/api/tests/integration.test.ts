@@ -66,6 +66,12 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/operations/bookings","POST",booking({date:"2026-02-30"}),staff)).status,400);
       assert.equal((await request("/operations/bookings","POST",booking({date:"2000-01-01"}),staff)).status,400);
       assert.equal((await request("/operations/bookings","POST",booking({start_time:"09:15"}),staff)).status,400);
+      const badPhone=await request("/operations/bookings","POST",booking({phone:"nomor saya!!"}),staff);
+      assert.equal(badPhone.status,400,"nomor telepon harus berisi angka");
+      assert.match(badPhone.data.message,/Nomor telepon tidak valid/);
+      const tooShort=await request("/operations/bookings","POST",booking({customer:"A"}),staff);
+      assert.equal(tooShort.status,400);
+      assert.match(tooShort.data.message,/Terlalu kecil/,"pesan validasi bawaan ikut berbahasa Indonesia");
     });
     await t.test("simultaneous overlapping requests: only one booking is accepted",async()=>{
       const results=await Promise.all([request("/operations/bookings","POST",booking({total:1}),staff),request("/operations/bookings","POST",booking(),staff)]);
@@ -136,6 +142,12 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/operations/context","GET",undefined,staff)).status,200);
       assert.equal((await request("/access/roles/admin","PUT",{name:"Admin",slug:"admin",description:"test",menuIds:[]},admin)).status,400);
       assert.equal((await request("/access/menus/users","DELETE",undefined,admin)).status,400);
+      // Halaman admin memetakan path modul secara langsung, jadi Keuangan dan Pelanggan pun terkunci.
+      for(const id of ["finance","customers"]){
+        const menu=(await request("/access/overview","GET",undefined,admin)).data.menus.find((m:{id:string})=>m.id===id);
+        assert.equal((await request("/access/menus/"+id,"PUT",{name:menu.name,path:"/admin/lain",icon:menu.icon,group:menu.group,order:menu.order,active:true},admin)).status,400);
+        assert.equal((await request("/access/menus/"+id,"DELETE",undefined,admin)).status,400);
+      }
     });
     await t.test("layout venue: hanya peran berhak, tolak tumpang tindih dan yang keluar area",async()=>{
       assert.equal((await request("/operations/layout","GET",undefined,staff)).status,403,"peran tanpa menu layout harus ditolak");

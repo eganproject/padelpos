@@ -1,4 +1,4 @@
-﻿import "./config.js";
+﻿import { clientUrl, publicUrl } from "./config.js";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -22,13 +22,16 @@ app.disable("x-powered-by");
 const trustProxy=process.env.TRUST_PROXY?.trim();
 if(trustProxy)app.set("trust proxy",/^\d+$/.test(trustProxy)?Number(trustProxy):trustProxy);
 app.use(helmet());
-const origin=process.env.CLIENT_URL||"http://localhost:3000";
-app.use(cors({origin,credentials:true}));
+// Situs bisa dibuka lewat CLIENT_URL maupun PUBLIC_URL (mis. terowongan ngrok untuk menguji Midtrans);
+// keduanya asal yang sah, kalau tidak setiap POST dari alamat publik ditolak 403.
+const originOf=(value:string)=>{try{return new URL(value).origin}catch{return value.replace(/\/+$/,"")}};
+const origins=[...new Set([clientUrl,publicUrl].map(originOf))];
+app.use(cors({origin:origins,credentials:true}));
 /** Endpoint yang menerima berkas biner: unggah foto lapangan dan foto item tambahan. */
 const photoUpload=/^\/api\/operations\/(?:courts\/[^/]+\/photos|addons\/[^/]+\/photo|finance\/records\/[^/]+\/receipt)$/;
 app.use((req,res,next)=>{
   if(!["GET","HEAD","OPTIONS"].includes(req.method)){
-    if(req.headers.origin&&req.headers.origin!==origin)return res.status(403).json({message:"Asal permintaan tidak diizinkan."});
+    if(req.headers.origin&&!origins.includes(req.headers.origin))return res.status(403).json({message:"Asal permintaan tidak diizinkan."});
     // req.is() bernilai null untuk request tanpa body (mis. DELETE); tolak hanya body ber-tipe salah.
     if(req.method==="POST"&&photoUpload.test(req.path)){
       if(req.is(["image/jpeg","image/png","image/webp"])===false)return res.status(415).json({message:"Format foto harus JPG, PNG, atau WebP."});

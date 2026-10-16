@@ -3,10 +3,10 @@ import { requireMenu,type AuthRequest } from "../auth.js";
 import { db,getMenus,getRoles } from "../store.js";
 import { overview as financeOverview } from "../finance.js";
 import { addonSummary } from "../addons.js";
-import { bookings,courts,localClock,maintenances,minutes,refundable,type Payment } from "../operations.js";
+import { bookings,courts,localClock,maintenances,minutes,occupies,refundable,type Payment } from "../operations.js";
 const router=Router();
 router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
-  const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&b.status!=="cancelled");
+  const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&occupies(b));
   const allPayments=db.prepare("SELECT * FROM payments").all() as unknown as Payment[];
   const daily=Array.from({length:7},(_,index)=>{
     const day=new Date(now.date+"T12:00:00Z");day.setUTCDate(day.getUTCDate()-6+index);const date=day.toISOString().slice(0,10);

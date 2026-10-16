@@ -38,7 +38,7 @@ router.post("/addons/:id/stock",requireMenu("addons"),(req:AuthRequest,res)=>res
 router.get("/context",requireAnyMenu(["bookings","courts"]),(req,res)=>{
   const date=req.query.date===undefined?ops.localClock().date:ops.dateSchema.parse(req.query.date);
   expireHolds();
-  res.json({courts:ops.courts(),maintenance:ops.maintenances(date),price_rules:ops.priceRules(),tax:taxSnapshot(),schedule:ops.bookings(date).filter(b=>b.status!=="cancelled").map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
+  res.json({courts:ops.courts(),maintenance:ops.maintenances(date),price_rules:ops.priceRules(),tax:taxSnapshot(),schedule:ops.bookings(date).filter(ops.occupies).map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
 });
 router.get("/courts",requireMenu("courts"),(_req,res)=>{
   const photos=photoIndex();
