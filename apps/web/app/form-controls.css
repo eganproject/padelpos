@@ -1,0 +1,162 @@
+/* Kontrol isian bersama (components/form-controls.tsx): pilihan react-select, kalender
+   flatpickr, dan isian rupiah. Ukuran mengikuti form-control Frappe di tokens.css. */
+
+/* --- Pilihan (react-select) ------------------------------------------------ */
+.rs{position:relative;min-width:0;font-size:var(--fs-md);text-align:left;letter-spacing:.02em}
+.rs__control{
+  min-height:var(--control)!important;height:var(--control);padding:0 4px 0 var(--s2);
+  border:1px solid transparent;border-radius:var(--r-sm);background:var(--panel2);color:var(--text);cursor:pointer;
+  transition:background var(--fast) var(--ease),box-shadow var(--fast) var(--ease),border-color var(--fast) var(--ease);
+}
+.rs__control--is-focused{background:var(--panel);border-color:var(--gray-400);box-shadow:var(--focus-ring)}
+html[data-theme="dark"] .rs__control--is-focused{border-color:var(--gray-600);box-shadow:0 0 0 2px var(--gray-700)}
+.rs__control--is-disabled{background:var(--subtle);color:var(--muted);cursor:not-allowed}
+.rs__value-container{padding:0;gap:0;overflow:hidden}
+.rs__single-value{color:var(--text);font-weight:420;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs__control--is-disabled .rs__single-value{color:var(--muted)}
+.rs__placeholder{color:var(--placeholder);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rs__input-container{margin:0;padding:0;color:var(--text)}
+/* Isian pencarian bawaan react-select tidak boleh ikut gaya kotak isian panel. */
+.desk .rs__input-container input,.rs__input-container input{height:auto!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+.rs__indicators{gap:0}
+.rs__indicator-separator{display:none}
+.rs__indicator{display:grid;place-items:center;width:20px;color:var(--label)}
+.rs__indicator svg{width:14px;height:14px}
+.rs__control--menu-is-open .rs__dropdown-indicator svg{transform:rotate(180deg)}
+
+.rs-portal{z-index:200!important}
+.rs__menu{
+  margin:4px 0;padding:6px;border-radius:var(--r-sm);background:var(--panel);
+  box-shadow:var(--shadow-2);border:1px solid var(--line);font-family:var(--font-ui);font-size:var(--fs-md);letter-spacing:.02em;
+}
+html[data-theme="dark"] .rs__menu{background:var(--panel2);border-color:var(--line-strong)}
+.rs__menu-list{padding:0}
+.rs__option{
+  display:flex;align-items:center;min-height:var(--control);padding:4px var(--s2);border-radius:6px;
+  color:var(--text-soft);cursor:pointer;line-height:1.35;
+}
+.rs__option--is-focused{background:var(--hover);color:var(--text)}
+html[data-theme="dark"] .rs__option--is-focused{background:var(--btn-hover)}
+.rs__option--is-selected{color:var(--text);font-weight:600}
+.rs__option--is-selected::after{content:"";width:14px;height:14px;margin-left:auto;flex:none;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/contain no-repeat}
+.rs__option--is-disabled{color:var(--placeholder);cursor:not-allowed;background:none}
+.rs__menu-notice{padding:var(--s2);color:var(--muted);font-size:var(--fs-sm)}
+
+/* --- Tanggal dan jam (flatpickr) ------------------------------------------- */
+.dp-field{position:relative;display:flex;align-items:center;min-width:0}
+.dp-field .dp-input{width:100%;padding-right:30px!important;cursor:pointer;font-variant-numeric:tabular-nums}
+.dp-field.disabled .dp-input{cursor:not-allowed}
+.dp-icon{position:absolute;right:8px;width:15px;height:15px;color:var(--label);pointer-events:none}
+.dp-guard{position:absolute;left:50%;bottom:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none}
+
+.flatpickr-calendar.dp-desk,.flatpickr-calendar.dp-shop{
+  --dp-bg:var(--panel);--dp-line:var(--line);--dp-text:var(--text);--dp-soft:var(--text-soft);--dp-muted:var(--placeholder);
+  --dp-hover:var(--hover);--dp-accent:var(--primary);--dp-accent-ink:var(--primary-ink);--dp-today:var(--gray-400);
+  --dp-radius:var(--r-lg);--dp-cell:var(--r-sm);
+  width:288px;padding:var(--s3);border:1px solid var(--dp-line);border-radius:var(--dp-radius);background:var(--dp-bg);
+  box-shadow:var(--shadow-3);font-family:var(--font-ui);font-size:var(--fs-sm);color:var(--dp-text);letter-spacing:.01em;
+}
+html[data-theme="dark"] .flatpickr-calendar.dp-desk{--dp-bg:var(--panel2);--dp-line:var(--line-strong);--dp-hover:var(--btn-hover)}
+.flatpickr-calendar.dp-shop{
+  --dp-bg:#ffffff;--dp-line:#e3e7de;--dp-text:#111811;--dp-soft:#454c43;--dp-muted:#a3aaa1;
+  --dp-hover:#eef1ea;--dp-accent:#0f3326;--dp-accent-ink:#ffffff;--dp-today:#bfe075;--dp-radius:16px;--dp-cell:10px;
+  width:308px;box-shadow:0 1px 2px #11181108,0 12px 32px #1118111f;
+}
+.flatpickr-calendar.dp-desk::before,.flatpickr-calendar.dp-desk::after,
+.flatpickr-calendar.dp-shop::before,.flatpickr-calendar.dp-shop::after{display:none}
+.flatpickr-calendar.animate.open{animation:dp-in .14s var(--ease)}
+@keyframes dp-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+.dp-desk .flatpickr-months,.dp-shop .flatpickr-months{align-items:center;margin-bottom:var(--s2)}
+.dp-desk .flatpickr-months .flatpickr-month,.dp-shop .flatpickr-months .flatpickr-month{height:32px;color:var(--dp-text);fill:var(--dp-text)}
+.dp-desk .flatpickr-current-month,.dp-shop .flatpickr-current-month{
+  left:0;width:100%;height:32px;padding:0;display:flex;align-items:center;justify-content:center;gap:4px;
+  font-size:var(--fs-md);font-weight:600;
+}
+.dp-desk .flatpickr-current-month span.cur-month,.dp-shop .flatpickr-current-month span.cur-month{margin:0;font-weight:600;color:var(--dp-text)}
+.dp-desk .flatpickr-current-month span.cur-month:hover,.dp-shop .flatpickr-current-month span.cur-month:hover{background:none}
+.dp-desk .flatpickr-current-month .numInputWrapper,.dp-shop .flatpickr-current-month .numInputWrapper{width:7ch}
+.dp-desk .flatpickr-current-month input.cur-year,.dp-shop .flatpickr-current-month input.cur-year{
+  height:auto;padding:0 0 0 2px;border:0;background:none;box-shadow:none;color:var(--dp-text);font-weight:600;font-size:inherit;
+}
+.dp-desk .numInputWrapper span,.dp-shop .numInputWrapper span{border:0;opacity:0}
+.dp-desk .numInputWrapper:hover span,.dp-shop .numInputWrapper:hover span{opacity:.6}
+.dp-desk .numInputWrapper span.arrowUp::after{border-bottom-color:var(--dp-text)}
+.dp-desk .numInputWrapper span.arrowDown::after{border-top-color:var(--dp-text)}
+.dp-shop .numInputWrapper span.arrowUp::after{border-bottom-color:var(--dp-text)}
+.dp-shop .numInputWrapper span.arrowDown::after{border-top-color:var(--dp-text)}
+.dp-desk .numInputWrapper:hover,.dp-shop .numInputWrapper:hover{background:none}
+.dp-desk .flatpickr-months .flatpickr-prev-month,.dp-desk .flatpickr-months .flatpickr-next-month,
+.dp-shop .flatpickr-months .flatpickr-prev-month,.dp-shop .flatpickr-months .flatpickr-next-month{
+  top:var(--s3);display:grid;place-items:center;width:28px;height:28px;padding:0;border-radius:var(--dp-cell);color:var(--dp-soft);fill:var(--dp-soft);
+}
+.dp-desk .flatpickr-months .flatpickr-prev-month,.dp-shop .flatpickr-months .flatpickr-prev-month{left:var(--s3)}
+.dp-desk .flatpickr-months .flatpickr-next-month,.dp-shop .flatpickr-months .flatpickr-next-month{right:var(--s3)}
+.dp-desk .flatpickr-months .flatpickr-prev-month:hover,.dp-desk .flatpickr-months .flatpickr-next-month:hover,
+.dp-shop .flatpickr-months .flatpickr-prev-month:hover,.dp-shop .flatpickr-months .flatpickr-next-month:hover{background:var(--dp-hover)}
+.dp-desk .flatpickr-months .flatpickr-prev-month:hover svg,.dp-desk .flatpickr-months .flatpickr-next-month:hover svg,
+.dp-shop .flatpickr-months .flatpickr-prev-month:hover svg,.dp-shop .flatpickr-months .flatpickr-next-month:hover svg{fill:var(--dp-text)}
+.dp-desk .flatpickr-months svg,.dp-shop .flatpickr-months svg{width:10px;height:10px}
+.dp-desk .flatpickr-disabled,.dp-shop .flatpickr-disabled{opacity:.3}
+
+.dp-desk .flatpickr-innerContainer,.dp-shop .flatpickr-innerContainer,
+.dp-desk .flatpickr-rContainer,.dp-shop .flatpickr-rContainer,
+.dp-desk .flatpickr-days,.dp-shop .flatpickr-days{width:100%}
+.dp-desk .flatpickr-weekdays,.dp-shop .flatpickr-weekdays{height:28px}
+.dp-desk span.flatpickr-weekday,.dp-shop span.flatpickr-weekday{color:var(--dp-muted);font-size:var(--fs-xs);font-weight:500;background:none}
+.dp-desk .dayContainer,.dp-shop .dayContainer{width:100%;min-width:0;max-width:none;gap:2px 0}
+.dp-desk .flatpickr-day,.dp-shop .flatpickr-day{
+  flex-basis:calc(100% / 7);max-width:none;height:34px;line-height:32px;margin:0;
+  border:1px solid transparent;border-radius:var(--dp-cell);color:var(--dp-soft);font-variant-numeric:tabular-nums;
+}
+.dp-shop .flatpickr-day{height:38px;line-height:36px;font-size:14px;font-weight:600}
+.dp-desk .flatpickr-day:hover,.dp-desk .flatpickr-day:focus,.dp-shop .flatpickr-day:hover,.dp-shop .flatpickr-day:focus{background:var(--dp-hover);border-color:transparent;color:var(--dp-text)}
+.dp-desk .flatpickr-day.today,.dp-shop .flatpickr-day.today{border-color:var(--dp-today);font-weight:600;color:var(--dp-text)}
+.dp-desk .flatpickr-day.today:hover,.dp-shop .flatpickr-day.today:hover{background:var(--dp-hover);color:var(--dp-text)}
+.dp-desk .flatpickr-day.selected,.dp-desk .flatpickr-day.selected:hover,.dp-desk .flatpickr-day.selected:focus,
+.dp-shop .flatpickr-day.selected,.dp-shop .flatpickr-day.selected:hover,.dp-shop .flatpickr-day.selected:focus{
+  background:var(--dp-accent);border-color:var(--dp-accent);color:var(--dp-accent-ink);font-weight:600;
+}
+.dp-desk .flatpickr-day.prevMonthDay,.dp-desk .flatpickr-day.nextMonthDay,
+.dp-shop .flatpickr-day.prevMonthDay,.dp-shop .flatpickr-day.nextMonthDay{color:var(--dp-muted)}
+.dp-desk .flatpickr-day.flatpickr-disabled,.dp-desk .flatpickr-day.flatpickr-disabled:hover,
+.dp-shop .flatpickr-day.flatpickr-disabled,.dp-shop .flatpickr-day.flatpickr-disabled:hover{color:var(--dp-muted);opacity:.45;background:none;border-color:transparent;cursor:not-allowed}
+
+/* Jam saja (tanpa kalender) */
+.flatpickr-calendar.noCalendar.dp-desk,.flatpickr-calendar.noCalendar.dp-shop{width:180px;padding:var(--s2)}
+.dp-desk .flatpickr-time,.dp-shop .flatpickr-time{height:40px;max-height:40px;line-height:40px;border:0!important}
+.dp-desk .flatpickr-time input,.dp-shop .flatpickr-time input{
+  height:40px;padding:0;border:0;border-radius:var(--dp-cell);background:none;box-shadow:none;
+  color:var(--dp-text);font-size:var(--fs-lg);font-weight:600;font-variant-numeric:tabular-nums;
+}
+.dp-desk .flatpickr-time input:hover,.dp-desk .flatpickr-time input:focus,
+.dp-shop .flatpickr-time input:hover,.dp-shop .flatpickr-time input:focus{background:var(--dp-hover)}
+.dp-desk .flatpickr-time .flatpickr-time-separator,.dp-shop .flatpickr-time .flatpickr-time-separator{color:var(--dp-text);font-weight:600}
+.dp-desk .flatpickr-time .numInputWrapper span.arrowUp::after{border-bottom-color:var(--dp-text)}
+.dp-desk .flatpickr-time .numInputWrapper span.arrowDown::after{border-top-color:var(--dp-text)}
+
+/* --- Nominal rupiah (react-number-format) ---------------------------------- */
+.money-field{
+  display:flex;align-items:center;gap:6px;min-width:0;height:var(--control);padding:0 var(--s2);
+  border:1px solid transparent;border-radius:var(--r-sm);background:var(--panel2);
+  transition:background var(--fast) var(--ease),box-shadow var(--fast) var(--ease),border-color var(--fast) var(--ease);
+}
+.money-field:focus-within{background:var(--panel);border-color:var(--gray-400);box-shadow:var(--focus-ring)}
+html[data-theme="dark"] .money-field:focus-within{border-color:var(--gray-600);box-shadow:0 0 0 2px var(--gray-700)}
+.money-field.disabled{background:var(--subtle)}
+.money-prefix{flex:none;font-size:var(--fs-sm);color:var(--muted)}
+.desk .money-field input,.money-field input{
+  flex:1;width:100%;min-width:0;height:auto;padding:0;border:0;background:transparent;box-shadow:none;outline:0;
+  color:var(--text);font-size:var(--fs-md);font-weight:500;font-variant-numeric:tabular-nums;
+}
+.desk .money-field input:focus{box-shadow:none;background:transparent;border:0}
+
+/* --- Lebar di tata letak formulir yang ada --------------------------------- */
+.rs,.dp-field,.money-field{width:100%}
+.fin-inline-field .dp-field,.fin-inline-field .rs{width:auto;min-width:160px}
+.fin-dates .dp-field{width:150px}
+.rs__group{padding:0}
+.rs__group+.rs__group{margin-top:4px;padding-top:4px;border-top:1px solid var(--line)}
+.rs__group-heading{padding:6px var(--s2) 2px;font-size:var(--fs-xs);font-weight:500;color:var(--muted)}

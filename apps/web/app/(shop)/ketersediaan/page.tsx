@@ -19,6 +19,7 @@ import {
   addDays, fetchAvailability, floorLabel, formatDay, formatShortDay, priceFor, rangeIsFree, rulesFor, venueNow,
   type Availability, type ShopCourt, type ShopSlot,
 } from "@/lib/shop";
+import { DateInput } from "@/components/form-controls";
 
 const durations = [60, 90, 120];
 /** Sama dengan batas jendela jadwal di API publik. */
@@ -256,7 +257,7 @@ function AvailabilityView() {
           <label className="date-chip other">
             <CalendarDays size={18} aria-hidden="true" />
             <small>Lainnya</small>
-            <input type="date" aria-label="Pilih tanggal lain" value={date} min={today} max={lastDay} onChange={event => event.target.value && goto(event.target.value)} />
+            <DateInput theme="shop" bare aria-label="Pilih tanggal lain" value={date} min={today} max={lastDay} onChange={event => event.target.value && goto(event.target.value)} />
           </label>
         </div>
         <div className="book-filters">

@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 /* Panel staf lebih dulu, lalu situs pelanggan. Urutan ini disengaja: aturan
    .shop ditulis terakhir sehingga tema terang/gelap staf tidak pernah merembes
    ke halaman pelanggan lewat elemen yang dipakai bersama. */
+import "flatpickr/dist/flatpickr.css";
 import "./tokens.css";
 import "./globals.css";
 import "./management.css";
@@ -13,6 +14,7 @@ import "./admin-content.css";
 import "./addons.css";
 import "./payments.css";
 import "./finance.css";
+import "./form-controls.css";
 import "./shop.css";
 import "./shop-home.css";
 import "./shop-booking.css";

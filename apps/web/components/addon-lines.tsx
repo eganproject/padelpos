@@ -5,6 +5,7 @@ import { money } from "@/lib/api";
 import { type AddonOption, type AddonPricing, type BookingAddon, availabilityNote, lineTotal, maxFor, typeLabel, unitLabel } from "@/lib/addons";
 import { AddonThumb } from "./addon-icon";
 import { QtyStepper } from "./qty-stepper";
+import { MoneyInput } from "./form-controls";
 
 /** Baris tambahan yang sedang disusun. `id` hanya ada untuk baris yang sudah tersimpan. */
 export type Draft = {
@@ -100,8 +101,8 @@ export function AddonLinesEditor({ options, drafts, onChange, duration, allowCus
             <input value={custom.name} maxLength={60} placeholder="Mis. Ganti grip raket rusak" onChange={event => setCustom({ ...custom, name: event.target.value })}
               onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); addCustom(); } }} />
           </label>
-          <label>Harga (Rp)
-            <input type="number" min={0} max={10000000} step={1} value={custom.price} onChange={event => setCustom({ ...custom, price: event.target.value })}
+          <label>Harga
+            <MoneyInput min={0} max={10000000} value={custom.price} onChange={event => setCustom({ ...custom, price: event.target.value })}
               onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); addCustom(); } }} />
           </label>
           <button type="button" className="ops-secondary" disabled={!customValid} onClick={addCustom}><Plus size={14} /> Tambah</button>

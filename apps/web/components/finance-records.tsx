@@ -10,6 +10,7 @@ import {
 } from "@/lib/finance";
 import { Modal } from "./operation-ui";
 import { AmountField, Empty } from "./finance-ui";
+import { Select, DateInput } from "./form-controls";
 
 type Data = { records:FinanceRecord[]; count:number; expense:number; income:number; unsettled:number };
 type Range = { from:string; to:string };
@@ -67,10 +68,10 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
           <input value={term} onChange={e=>setTerm(e.target.value)} placeholder="Cari keterangan, nomor, atau pemasok…" aria-label="Cari catatan"/>
         </label>
         <label className="fin-inline-field"><span>Kategori</span>
-          <select value={category} onChange={e=>setCategory(e.target.value)}>
+          <Select value={category} onChange={e=>setCategory(e.target.value)}>
             <option value="">Semua kategori</option>
             {categories.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-          </select>
+          </Select>
         </label>
         <label className="fin-check"><input type="checkbox" checked={status==="belum"} onChange={e=>setStatus(e.target.checked?"belum":"semua")}/> Belum dibayar saja</label>
         <div className="fin-toolbar-actions">
@@ -87,7 +88,7 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
 
       <div className="manage-table-card ops-table table-cards">
         <table>
-          <thead><tr><th>TANGGAL</th><th>KETERANGAN</th><th>KATEGORI</th><th>CARA BAYAR</th><th className="right">JUMLAH</th><th>AKSI</th></tr></thead>
+          <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th>Cara bayar</th><th className="right">Jumlah</th><th>Aksi</th></tr></thead>
           <tbody>{(data?.records??[]).map(record => (
             <tr key={record.id}>
               <td data-label="Tanggal">{formatDate(record.date)}<small className="table-description">{record.number}</small></td>
@@ -215,19 +216,19 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
         )}
         <div className="fin-form-grid">
           <label className="fin-field"><span className="fin-label">Tanggal</span>
-            <input type="date" value={form.date} onChange={e=>e.target.value&&set("date",e.target.value)} required/>
+            <DateInput value={form.date} onChange={e=>e.target.value&&set("date",e.target.value)} required/>
           </label>
           <AmountField label="Jumlah" value={form.amount} onChange={value=>set("amount",value)} autoFocus={!record}/>
         </div>
         <label className="fin-field"><span className="fin-label">{expense ? "Untuk apa uangnya?" : "Dari apa uangnya?"}</span>
-          <select value={form.account_id} onChange={e=>set("account_id",e.target.value)} required>
+          <Select value={form.account_id} onChange={e=>set("account_id",e.target.value)} required>
             <option value="">Pilih kategori…</option>
             {groups.map(group => (
               <optgroup key={group.label} label={group.label}>
                 {group.accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
               </optgroup>
             ))}
-          </select>
+          </Select>
           {category?.description && <small className="fin-hint">{category.description}</small>}
         </label>
         <label className="fin-field"><span className="fin-label">Keterangan</span>
@@ -244,21 +245,21 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
           </div>
           {form.settle==="tunai" ? (
             <label className="fin-field"><span className="fin-label">{expense ? "Uangnya diambil dari" : "Uangnya masuk ke"}</span>
-              <select value={form.cash_account_id} onChange={e=>set("cash_account_id",e.target.value)} required>
+              <Select value={form.cash_account_id} onChange={e=>set("cash_account_id",e.target.value)} required>
                 {cash.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-              </select>
+              </Select>
             </label>
           ) : (
             <div className="fin-form-grid">
               <label className="fin-field"><span className="fin-label">{expense ? "Kepada siapa" : "Dari siapa"}</span>
-                <select value={form.partner_id} onChange={e=>set("partner_id",e.target.value)} required>
+                <Select value={form.partner_id} onChange={e=>set("partner_id",e.target.value)} required>
                   <option value="">Pilih…</option>
                   {partners.filter(partner => partner.active).map(partner => <option key={partner.id} value={partner.id}>{partner.name} · {partnerKindLabel[partner.kind]}</option>)}
-                </select>
+                </Select>
                 <small className="fin-hint">Dipakai untuk buku besar pembantu {expense?"utang":"piutang"}.</small>
               </label>
               <label className="fin-field"><span className="fin-label">Jatuh tempo <em>(opsional)</em></span>
-                <input type="date" value={form.due_date} min={form.date} onChange={e=>set("due_date",e.target.value)}/>
+                <DateInput value={form.due_date} min={form.date} onChange={e=>set("due_date",e.target.value)}/>
               </label>
             </div>
           )}
@@ -312,12 +313,12 @@ function SettleForm({ setup, today, record, close, saved }: { setup:Setup; today
         <p className="fin-note">{record.number} · {record.description} · <b>{money(record.amount)}</b>{record.partner_name?` · ${record.partner_name}`:""}</p>
         <div className="fin-form-grid">
           <label className="fin-field"><span className="fin-label">Tanggal pembayaran</span>
-            <input type="date" value={date} min={record.date} onChange={e=>e.target.value&&setDate(e.target.value)} required/>
+            <DateInput value={date} min={record.date} onChange={e=>e.target.value&&setDate(e.target.value)} required/>
           </label>
           <label className="fin-field"><span className="fin-label">{expense ? "Dibayar dari" : "Diterima di"}</span>
-            <select value={account} onChange={e=>setAccount(e.target.value)} required>
+            <Select value={account} onChange={e=>setAccount(e.target.value)} required>
               {cash.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-            </select>
+            </Select>
           </label>
         </div>
         <label className="fin-field"><span className="fin-label">Catatan <em>(opsional)</em></span>
@@ -406,15 +407,15 @@ export function TransferForm({ setup, today, close, saved }: { setup:Setup; toda
       <form className="fin-form" onSubmit={submit}>
         <p className="fin-note">Mis. menyetorkan uang tunai kasir ke rekening bank. Ini bukan pemasukan maupun pengeluaran, jadi laba rugi tidak berubah.</p>
         <div className="fin-form-grid">
-          <label className="fin-field"><span className="fin-label">Tanggal</span><input type="date" value={form.date} onChange={e=>e.target.value&&setForm({...form,date:e.target.value})} required/></label>
+          <label className="fin-field"><span className="fin-label">Tanggal</span><DateInput value={form.date} onChange={e=>e.target.value&&setForm({...form,date:e.target.value})} required/></label>
           <AmountField label="Jumlah" value={form.amount} onChange={amount=>setForm({...form,amount})} autoFocus/>
         </div>
         <div className="fin-form-grid">
           <label className="fin-field"><span className="fin-label">Dari</span>
-            <select value={form.from_account_id} onChange={e=>setForm({...form,from_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
+            <Select value={form.from_account_id} onChange={e=>setForm({...form,from_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select>
           </label>
           <label className="fin-field"><span className="fin-label">Ke</span>
-            <select value={form.to_account_id} onChange={e=>setForm({...form,to_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
+            <Select value={form.to_account_id} onChange={e=>setForm({...form,to_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select>
           </label>
         </div>
         <label className="fin-field"><span className="fin-label">Keterangan <em>(opsional)</em></span><input value={form.memo} maxLength={200} onChange={e=>setForm({...form,memo:e.target.value})} placeholder="Mis. setor tunai harian"/></label>
@@ -447,11 +448,11 @@ export function EquityForm({ setup, today, close, saved }: { setup:Setup; today:
           <button type="button" aria-pressed={form.direction==="ambil"} onClick={()=>setForm({...form,direction:"ambil"})}><ArrowLeftRight size={14}/> Pemilik mengambil</button>
         </div>
         <div className="fin-form-grid">
-          <label className="fin-field"><span className="fin-label">Tanggal</span><input type="date" value={form.date} onChange={e=>e.target.value&&setForm({...form,date:e.target.value})} required/></label>
+          <label className="fin-field"><span className="fin-label">Tanggal</span><DateInput value={form.date} onChange={e=>e.target.value&&setForm({...form,date:e.target.value})} required/></label>
           <AmountField label="Jumlah" value={form.amount} onChange={amount=>setForm({...form,amount})} autoFocus/>
         </div>
         <label className="fin-field"><span className="fin-label">{form.direction==="setor"?"Masuk ke":"Diambil dari"}</span>
-          <select value={form.cash_account_id} onChange={e=>setForm({...form,cash_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>
+          <Select value={form.cash_account_id} onChange={e=>setForm({...form,cash_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select>
         </label>
         <label className="fin-field"><span className="fin-label">Keterangan <em>(opsional)</em></span><input value={form.memo} maxLength={200} onChange={e=>setForm({...form,memo:e.target.value})}/></label>
         <div className="modal-actions"><button type="button" onClick={close}>Batal</button><button className="ops-primary" type="submit" disabled={saving}>{saving?"Menyimpan…":"Simpan"}</button></div>

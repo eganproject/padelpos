@@ -6,6 +6,7 @@ import { api,money } from "@/lib/api";
 import { formatShortDay } from "@/lib/shop";
 import { type AdminIntent,type PaymentSettings,amountDue,intentLabel,intentTone,payTypeLabel } from "@/lib/payments";
 import { ErrorBox } from "./operation-ui";
+import { Select } from "./form-controls";
 
 type Data={settings:PaymentSettings;intents:AdminIntent[];date:string;time:string;timezone:string};
 type Form={enabled:boolean;environment:"sandbox"|"production";client_key:string;server_key:string;clear_server_key:boolean;mode:"full"|"dp";dp_percent:number;hold_minutes:number;note:string};
@@ -81,10 +82,10 @@ export function PaymentsPanel(){
           <header><h2>Kunci Midtrans</h2><p>Ambil dari dashboard Midtrans: Settings → Access Keys. Server key bersifat rahasia dan tidak pernah ditampilkan lagi setelah disimpan.</p></header>
           <label className="cms-check"><input type="checkbox" checked={form.enabled} onChange={e=>set("enabled",e.target.checked)}/> Aktifkan pembayaran online</label>
           <label className="cms-field"><span className="cms-label">Lingkungan</span>
-            <select value={form.environment} onChange={e=>set("environment",e.target.value as Form["environment"])}>
+            <Select value={form.environment} onChange={e=>set("environment",e.target.value as Form["environment"])}>
               <option value="sandbox">Sandbox — untuk uji coba</option>
               <option value="production">Produksi — uang sungguhan</option>
-            </select>
+            </Select>
             <small className="cms-hint">Sandbox memakai kunci berawalan SB-. Ganti ke produksi setelah alurnya terbukti.</small>
           </label>
           <label className="cms-field"><span className="cms-label">Client key</span>
@@ -144,7 +145,7 @@ export function PaymentsPanel(){
 
     <div className="ops-section-title"><div><h2>Transaksi terakhir</h2><p>Dari checkout pelanggan dan link tagihan kasir. Zona waktu venue: {data.timezone}.</p></div></div>
     <div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>WAKTU</th><th>PESANAN</th><th>JADWAL</th><th>NOMINAL</th><th>METODE</th><th>STATUS</th><th>AKSI</th></tr></thead>
+      <thead><tr><th>Waktu</th><th>Pesanan</th><th>Jadwal</th><th>Nominal</th><th>Metode</th><th>Status</th><th>Aksi</th></tr></thead>
       <tbody>{data.intents.map(intent=><tr key={intent.order_id}>
         <td data-label="Waktu">{new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}<small className="table-description">{intent.environment==="production"?"Produksi":"Sandbox"}</small></td>
         <td className="wide" data-label="Pesanan"><b>{intent.customer}</b><small className="table-description">{intent.order_id} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</small></td>

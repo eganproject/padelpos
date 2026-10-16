@@ -1,85 +1,94 @@
-/* Sewa & tambahan: panel admin, tambahan di booking, dan pilihan di halaman pelanggan. */
+/* Sewa & tambahan: panel admin dan tambahan di formulir booking.
+   Pilihan tambahan di halaman pelanggan ditata ulang di shop-booking.css. */
 
-/* Foto atau ikon item */
-.addon-thumb{flex:none;width:44px;height:44px;border-radius:10px;display:grid;place-items:center;overflow:hidden;background:var(--panel2);border:1px solid var(--line);color:var(--lime)}
+/* Foto atau ikon item. Aturan dasar ini juga dipakai halaman pelanggan (shop.css menimpa warnanya),
+   jadi bentuknya dipertahankan; tampilan desk ada di bawah .desk. */
+.addon-thumb{flex:none;width:44px;height:44px;border-radius:10px;display:grid;place-items:center;overflow:hidden;background:var(--panel2);border:1px solid var(--line);color:var(--text-soft)}
 .addon-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.desk .addon-thumb{width:36px;height:36px;border:0;border-radius:var(--r-sm)}
+.desk .addon-thumb svg{width:18px;height:18px}
 
 /* Katalog admin */
-.addon-metrics{margin-bottom:6px}
-.addon-cell{display:flex;align-items:center;gap:12px;min-width:0}
+.addon-metrics{margin-bottom:var(--s1)}
+.addon-cell{display:flex;align-items:center;gap:10px;min-width:0}
 .addon-cell>div{min-width:0}
-.addon-table tr.inactive td:not(.actions){opacity:.6}
-.addon-type{display:inline-flex;padding:3px 9px;border-radius:99px;font-size:var(--fs-xs);font-weight:700;border:1px solid var(--line);white-space:nowrap}
-.addon-type.sewa{color:#7cc4ff;border-color:#7cc4ff44}
-.addon-type.jual{color:var(--lime);border-color:#c8ff3d44}
-.addon-type.layanan{color:#d6a6ff;border-color:#d6a6ff44}
-.addon-stock{display:inline-flex;align-items:center;gap:5px;font-weight:600;white-space:nowrap}
-.addon-stock.low{color:var(--orange)}
-.addon-stock.unlimited{color:var(--muted);font-weight:400}
-.addon-overdue{color:var(--orange);font-weight:700}
-.addon-alert{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px}
-.addon-alert .ops-link{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-weight:600}
+.addon-table tr.inactive td:not(.actions){opacity:.55}
+.addon-type{display:inline-flex;align-items:center;height:20px;padding:0 var(--s2);border-radius:var(--r-full);font-size:var(--fs-sm);white-space:nowrap;background:var(--gray-bg);color:var(--gray-text)}
+.addon-type.sewa{background:var(--blue-bg);color:var(--blue-text)}
+.addon-type.jual{background:var(--green-bg);color:var(--green-text)}
+.addon-type.layanan{background:var(--purple-bg);color:var(--purple-text)}
+.addon-stock{display:inline-flex;align-items:center;gap:5px;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
+.addon-stock svg{width:14px;height:14px}
+.addon-stock.low{color:var(--orange-text)}
+.addon-stock.unlimited{color:var(--muted);font-weight:420}
+.addon-overdue{color:var(--orange-text);font-weight:500}
+.addon-alert{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s1) var(--s4)}
+.addon-alert .ops-link{margin-left:auto}
 
 /* Formulir item */
-.addon-type-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.addon-type-picker button{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border:1px solid #30383a;border-radius:10px;background:#0c1012;color:var(--muted);text-align:left;cursor:pointer}
-.addon-type-picker button b{color:var(--text);font-size:13px}
+.addon-type-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s2)}
+.addon-type-picker button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:var(--s2) 10px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel);color:var(--muted);text-align:left;cursor:pointer}
+.addon-type-picker button:hover{background:var(--subtle)}
+.addon-type-picker button b{color:var(--text);font-size:var(--fs-md);font-weight:500}
 .addon-type-picker button small{font-size:var(--fs-xs);line-height:1.45}
-.addon-type-picker button[aria-pressed=true]{border-color:#7e9832;background:#c8ff3d10}
-.addon-type-picker button[aria-pressed=true] b{color:var(--lime)}
-.addon-photo-field{display:flex;align-items:center;gap:14px}
-.addon-photo-field>.addon-thumb{width:84px;height:84px;border-radius:12px;color:var(--muted)}
+.addon-type-picker button[aria-pressed=true]{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary);background:var(--panel)}
+.addon-photo-field{display:flex;align-items:center;gap:var(--s3)}
+.addon-photo-field>.addon-thumb{width:72px;height:72px;border-radius:var(--r-md);color:var(--muted)}
+.addon-photo-field>.addon-thumb svg{width:24px;height:24px}
 .addon-photo-field>div{display:flex;flex-direction:column;gap:6px}
-.addon-photo-actions{display:flex;flex-wrap:wrap;gap:8px}
+.addon-photo-actions{display:flex;flex-wrap:wrap;gap:var(--s2)}
 
 /* Stok */
-.stock-now{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
-.stock-now small{display:block;font-size:var(--fs-xs);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted)}
-.stock-now strong{font:700 30px var(--font-space)}
-.stock-form{display:flex;flex-direction:column;gap:14px;padding-bottom:6px}
+.stock-now{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--subtle)}
+.stock-now small{display:block;font-size:var(--fs-sm);color:var(--label)}
+.stock-now strong{font-size:var(--fs-3xl);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.stock-form{display:flex;flex-direction:column;gap:var(--s3);padding-bottom:var(--s1)}
 .stock-form>button{align-self:flex-start}
-.stock-preview{font-size:13px;color:var(--muted)}
-.stock-preview b{color:var(--text);font-size:15px}
-.stock-preview.invalid b{color:#ff8a80}
-.stock-delta{white-space:nowrap}
-.stock-delta small{margin-left:6px;font-weight:400;color:var(--muted)}
-.stock-delta.plus{color:var(--lime)}
-.stock-delta.minus{color:#ff8a80}
+.stock-preview{font-size:var(--fs-sm);color:var(--muted)}
+.stock-preview b{color:var(--text);font-size:var(--fs-md)}
+.stock-preview.invalid b{color:var(--danger)}
+.stock-delta{white-space:nowrap;font-variant-numeric:tabular-nums}
+.stock-delta small{margin-left:6px;font-weight:420;color:var(--muted)}
+.stock-delta.plus{color:var(--green-text)}
+.stock-delta.minus{color:var(--red-text)}
 
 /* Pilihan tambahan di formulir booking */
-.ops-modal .modal-subhead small{margin-left:6px;font-weight:400;font-size:12px}
-.addon-editor{display:flex;flex-direction:column;gap:10px}
-.addon-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.addon-lines li{display:grid;grid-template-columns:auto minmax(0,1fr) auto 96px;align-items:center;gap:12px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
-.addon-lines li.chosen{border-color:#7e983288;background:#c8ff3d08}
-.addon-lines .addon-thumb{width:38px;height:38px;border-radius:9px}
-.addon-lines .info{display:flex;flex-direction:column;gap:2px;min-width:0}
-.addon-lines .info b{font-size:13px}
+.ops-modal .modal-subhead small{margin-left:6px;font-weight:420;font-size:var(--fs-xs)}
+.addon-editor{display:flex;flex-direction:column;gap:var(--s2)}
+.addon-lines{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.addon-lines li{display:grid;grid-template-columns:auto minmax(0,1fr) auto 96px;align-items:center;gap:var(--s3);padding:var(--s2) 10px;background:var(--panel)}
+.addon-lines li+li{border-top:1px solid var(--line)}
+.addon-lines li.chosen{background:var(--subtle)}
+.addon-lines .addon-thumb{width:32px;height:32px}
+.addon-lines .info{display:flex;flex-direction:column;gap:1px;min-width:0}
+.addon-lines .info b{font-size:var(--fs-md);font-weight:500;color:var(--text)}
 .addon-lines .info small{font-size:var(--fs-xs);color:var(--muted)}
-.addon-lines .info em{font-style:normal;font-size:var(--fs-xs);font-weight:600;color:var(--orange)}
-.addon-lines .info em.out{color:#ff8a80}
-.addon-lines strong{text-align:right;font-size:13px;white-space:nowrap}
+.addon-lines .info em{font-style:normal;font-size:var(--fs-xs);font-weight:500;color:var(--orange-text)}
+.addon-lines .info em.out{color:var(--red-text)}
+.addon-lines strong{text-align:right;font-size:var(--fs-md);font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
 .qty-stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--panel)}
 .qty-stepper button{width:32px;height:32px;display:grid;place-items:center;border:0;background:transparent;color:var(--text);cursor:pointer;padding:0}
-.qty-stepper button:hover:not(:disabled){background:#ffffff12}
 .qty-stepper output{min-width:28px;text-align:center;font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
-.addon-custom{display:grid;grid-template-columns:minmax(0,1fr) 130px auto;align-items:end;gap:8px}
-.addon-custom button{height:42px}
+.desk .qty-stepper{border:0;border-radius:var(--r-sm);background:var(--panel2)}
+.desk .qty-stepper button{width:28px;height:28px;color:var(--text-soft)}
+.desk .qty-stepper button svg{width:14px;height:14px}
+.desk .qty-stepper button:hover:not(:disabled){background:var(--btn-hover)}
+.desk .qty-stepper output{min-width:24px;text-align:center;font-weight:500;font-size:var(--fs-md);font-variant-numeric:tabular-nums}
+.addon-custom{display:grid;grid-template-columns:minmax(0,1fr) 130px auto;align-items:end;gap:var(--s2)}
 
 /* Detail booking */
-.ops-addons{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px}
-.ops-addons .ops-card-head h3{margin:0}
+.ops-addons{display:flex;flex-direction:column;gap:var(--s3);border-top:1px solid var(--line);padding-top:var(--s4)}
 .addon-summary-lines{list-style:none;margin:0;padding:0}
-.addon-summary-lines li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13px}
+.addon-summary-lines li{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--s3);padding:var(--s2) 0;border-bottom:1px solid var(--line);font-size:var(--fs-md)}
 .addon-summary-lines li:first-child{padding-top:0}
-.addon-summary-lines li>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.addon-summary-lines li>div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .addon-summary-lines small{font-size:var(--fs-xs);color:var(--muted)}
-.addon-summary-lines strong{white-space:nowrap}
-.addon-return-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:3px}
-.addon-return{font-size:var(--fs-xs);font-weight:700;padding:2px 8px;border-radius:99px;color:var(--orange);background:#ff9c5114}
-.addon-return.done{color:var(--lime);background:#c8ff3d12}
-.ops-link-button{background:none;border:0;padding:0;color:var(--lime);font-size:12px;font-weight:600;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
-.addon-edit-actions{display:flex;justify-content:flex-end;gap:8px}
+.addon-summary-lines strong{white-space:nowrap;font-weight:500;font-variant-numeric:tabular-nums}
+.addon-return-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2);margin-top:2px}
+.addon-return{display:inline-flex;align-items:center;height:20px;padding:0 var(--s2);border-radius:var(--r-full);font-size:var(--fs-xs);background:var(--orange-bg);color:var(--orange-text)}
+.addon-return.done{background:var(--green-bg);color:var(--green-text)}
+.ops-link-button{background:none;border:0;padding:0;color:var(--text);font-size:var(--fs-xs);cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.addon-edit-actions{display:flex;justify-content:flex-end;gap:var(--s2)}
 .addon-return-all{align-self:flex-start}
 
 @media(max-width:600px){
@@ -91,21 +100,3 @@
   .addon-custom button{grid-column:1/-1}
   .addon-alert .ops-link{margin-left:0}
 }
-
-/* Tema terang admin */
-html[data-theme="light"] .addon-thumb{background:#f1f6e8;border-color:#dde2dc;color:#4d6b0a}
-html[data-theme="light"] .addon-type.sewa{color:#1f5f94;border-color:#9cc7ee}
-html[data-theme="light"] .addon-type.jual{color:#4d6b0a;border-color:#b9dd6e}
-html[data-theme="light"] .addon-type.layanan{color:#6b3fa0;border-color:#cfb3ec}
-html[data-theme="light"] .addon-stock.low,html[data-theme="light"] .addon-overdue{color:#9a5410}
-html[data-theme="light"] .addon-type-picker button{background:#f8faf7;border-color:#d8ded8}
-html[data-theme="light"] .addon-type-picker button[aria-pressed=true]{background:#eef8d9;border-color:#9fcc45}
-html[data-theme="light"] .addon-type-picker button[aria-pressed=true] b{color:#3f5a08}
-html[data-theme="light"] .stock-now,html[data-theme="light"] .addon-lines li{background:#f8faf7;border-color:#dde2dc}
-html[data-theme="light"] .addon-lines li.chosen{background:#f2f9e3;border-color:#b9dd6e}
-html[data-theme="light"] .addon-lines .info em{color:#9a5410}
-html[data-theme="light"] .stock-delta.plus,html[data-theme="light"] .ops-link-button{color:#4d6b0a}
-html[data-theme="light"] .qty-stepper{background:#fff;border-color:#d8ded8}
-html[data-theme="light"] .qty-stepper button:hover:not(:disabled){background:#f1f4ee}
-html[data-theme="light"] .addon-return{color:#9a5410;background:#fdf0e1}
-html[data-theme="light"] .addon-return.done{color:#4d6b0a;background:#eef8d9}

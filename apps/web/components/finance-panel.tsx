@@ -166,7 +166,7 @@ function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup;
         <header><h3>Pencatatan terbaru</h3><p>Termasuk jurnal yang dibuat otomatis dari booking dan pembayaran.</p></header>
         <div className="manage-table-card ops-table table-cards">
           <table>
-            <thead><tr><th>TANGGAL</th><th>KETERANGAN</th><th>SUMBER</th><th className="right">NILAI</th></tr></thead>
+            <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Sumber</th><th className="right">Nilai</th></tr></thead>
             <tbody>{data.entries.map(entry => (
               <tr key={entry.id}>
                 <td data-label="Tanggal">{formatDate(entry.date)}<small className="table-description">{entry.number}</small></td>

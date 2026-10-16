@@ -89,7 +89,7 @@ function AccountsTab({ accounts, ready, openSetup }: { accounts: AccountRow[]; r
       </div>
       <div className="manage-table-card table-cards">
         <table>
-          <thead><tr><th>PELANGGAN</th><th>WHATSAPP</th><th>BOOKING</th><th>TERAKHIR MAIN</th><th>TERAKHIR MASUK</th></tr></thead>
+          <thead><tr><th>Pelanggan</th><th>WhatsApp</th><th>Booking</th><th>Terakhir main</th><th>Terakhir masuk</th></tr></thead>
           <tbody>
             {shown.map(row => (
               <tr key={row.id}>
