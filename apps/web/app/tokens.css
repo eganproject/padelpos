@@ -43,7 +43,7 @@
   /* Lebar isi dan tepi halaman */
   --page-max:1600px;
   --navbar-h:48px;
-  --sidebar-w:220px;
+  --sidebar-w:248px;
   --gutter:clamp(12px,2.2vw,32px);
 
   /* Gerak */

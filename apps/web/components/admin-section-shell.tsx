@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronRight, ExternalLink, LogOut, Menu, Moon, Search, Sun, UserRound, X } from "lucide-react";
+import { ChevronRight, ExternalLink, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, UserRound, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "./brand";
@@ -24,6 +24,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [wide, setWide] = useState(true);
   const { menus, role, loading } = useAdminNavigation();
   usePermissionGuard(menus, loading);
   const current = menus.find(menu => isActiveMenu(menu, pathname));
@@ -46,6 +47,15 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setDrawerOpen(false), [pathname]);
 
+  /* Di atas 991px sidebar menempel di kiri (bisa diringkas jadi ikon); di bawahnya menjadi laci. */
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 992px)");
+    const update = () => { setWide(query.matches); if (query.matches) setDrawerOpen(false); };
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
   useEffect(() => {
     if (!drawerOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => event.key === "Escape" && setDrawerOpen(false);
@@ -57,11 +67,12 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
     };
   }, [drawerOpen]);
 
-  /** Di layar lebar tombol menu melipat sidebar seperti ERPNext; di layar sempit membuka laci. */
+  /** Di layar lebar tombol menu meringkas sidebar menjadi deretan ikon; di layar sempit membuka laci. */
   const toggleSidebar = () => {
-    if (window.matchMedia("(max-width: 991px)").matches) { setDrawerOpen(open => !open); return; }
+    if (!wide) { setDrawerOpen(open => !open); return; }
     setCollapsed(value => { localStorage.setItem("padelix_sidebar", value ? "open" : "collapsed"); return !value; });
   };
+  const compact = wide && collapsed;
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
@@ -71,11 +82,13 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
   const logout = async () => { try { await clearSession(); router.push("/login"); } catch(error) { toast.error((error as Error).message); } };
 
   return (
-    <div className={`desk${collapsed ? " sidebar-collapsed" : ""}`}>
+    <div className={`desk${compact ? " sidebar-collapsed" : ""}`}>
       <header className="desk-navbar">
-        <div className="desk-container desk-navbar-inner">
-          <button type="button" className="desk-icon-btn desk-sidebar-toggle" onClick={toggleSidebar} aria-label={drawerOpen ? "Tutup menu" : "Buka menu"} aria-expanded={drawerOpen}><Menu /></button>
-          <Link href="/admin" className="desk-logo" aria-label="Padelix, ke ringkasan"><Brand compact /></Link>
+        <div className="desk-navbar-inner">
+          <button type="button" className="desk-icon-btn desk-sidebar-toggle" onClick={toggleSidebar}
+            aria-label={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : drawerOpen ? "Tutup menu" : "Buka menu"}
+            aria-expanded={wide ? !compact : drawerOpen} title={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : undefined}><Menu /></button>
+          <Link href="/admin" className="desk-logo" aria-label="Padelix, ke ringkasan"><Brand /></Link>
           <nav className="desk-breadcrumbs" aria-label="Lokasi halaman">
             {current && <>
               <ChevronRight aria-hidden="true" /><span>{current.group}</span>
@@ -88,11 +101,22 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="desk-container desk-body">
+      <div className="desk-body">
         <button type="button" className={`desk-backdrop${drawerOpen ? " open" : ""}`} aria-label="Tutup navigasi" tabIndex={drawerOpen ? 0 : -1} onClick={() => setDrawerOpen(false)} />
-        <aside className={`desk-sidebar${drawerOpen ? " open" : ""}`} aria-label="Navigasi admin">
+        <aside className={`desk-sidebar${drawerOpen ? " open" : ""}`} aria-label="Navigasi admin" inert={!wide && !drawerOpen ? true : undefined}>
           <div className="desk-drawer-head"><Brand /><button type="button" className="desk-icon-btn" onClick={() => setDrawerOpen(false)} aria-label="Tutup menu"><X /></button></div>
-          {loading && !menus.length ? <div className="desk-sidebar-skeleton" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} />)}</div> : <AdminNavigation menus={menus} onNavigate={() => setDrawerOpen(false)} />}
+          <div className="desk-sidebar-scroll">
+            {loading && !menus.length ? <div className="desk-sidebar-skeleton" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} />)}</div> : <AdminNavigation menus={menus} compact={compact} onNavigate={() => setDrawerOpen(false)} />}
+          </div>
+          <div className="desk-sidebar-foot">
+            <Link href="/admin/profile" className="desk-sidebar-user" title={compact ? user?.name : undefined} onClick={() => setDrawerOpen(false)}>
+              <span className="desk-avatar" aria-hidden="true">{initials(user?.name)}</span>
+              <span className="desk-sidebar-user-text"><b>{user?.name || "Admin"}</b><small>{role.name || user?.email || "Staf"}</small></span>
+            </Link>
+            <button type="button" className="desk-icon-btn desk-collapse-btn" onClick={toggleSidebar} aria-label={compact ? "Lebarkan menu" : "Ringkas menu"} title={compact ? "Lebarkan menu" : "Ringkas menu"}>
+              {compact ? <PanelLeftOpen /> : <PanelLeftClose />}
+            </button>
+          </div>
         </aside>
         <main className="desk-main">{children}</main>
       </div>
