@@ -9,6 +9,7 @@ import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { whatsappLink } from "@/lib/venue-info";
 import { countdown, fetchOrder, intentLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
+import { taxName } from "@/lib/bill";
 
 const statusCopy: Record<string, { title: string; tone: string; note: string }> = {
   pending: { title: "Menunggu pembayaran", tone: "wait", note: "Selesaikan pembayaran sebelum batas waktu agar slot tidak dilepas." },
@@ -104,9 +105,11 @@ export default function OrderPage() {
                       <b>{session.court_name}</b>
                       <span><CalendarDays size={14} aria-hidden="true" /> {formatDay(session.date)}</span>
                       <span><Clock3 size={14} aria-hidden="true" /> {session.start_time} – {session.end_time}</span>
-                      {session.addons.length > 0 && (
+                      {(session.addons.length > 0 || session.discount > 0 || session.tax > 0) && (
                         <ul className="lines">
                           {session.addons.map(line => <li key={line.name}>{line.quantity}× {line.name} · {money(line.subtotal)}</li>)}
+                          {session.discount > 0 && <li>Potongan{session.discount_note ? ` ${session.discount_note}` : ""} · −{money(session.discount)}</li>}
+                          {session.tax > 0 && <li>{taxName(session)} · {money(session.tax)}</li>}
                         </ul>
                       )}
                       {session.cancel_reason && <em className="warn"><TriangleAlert size={14} aria-hidden="true" /> {session.cancel_reason}</em>}

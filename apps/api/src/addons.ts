@@ -4,6 +4,7 @@ import { audit, db, getUsers, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { clockLabel, localClock, minutes } from "./clock.js";
 import { checkImage } from "./photos.js";
+import { billOf } from "./bill.js";
 
 /**
  * Sewa & tambahan yang ditagihkan bersama booking: raket, bola, sepatu, pelatih, dan sejenisnya.
@@ -218,7 +219,7 @@ function consume(addonId:string|null,quantity:number,bookingId:string,actor:stri
   if(row)recordMove(addonId,-quantity,quantity>0?"terpakai":"kembali",row.stock,actor,note,bookingId);
 }
 
-export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number};
+export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number;discount:number;tax_rate:number;tax_inclusive:number};
 /**
  * Ganti seluruh tambahan booking dengan daftar baru, lalu perbarui total tagihan.
  * Harus dipanggil di dalam transaksi. Baris lama yang tidak ikut dikirim dihapus.
@@ -267,7 +268,9 @@ export function applyLines(booking:BookingRef,input:unknown,actor:string){
       check(use+entry.quantity<=addon.stock,409,`${addon.name} tersisa ${Math.max(0,addon.stock-use)} pada ${booking.start_time}–${booking.end_time}.`);
     }
   }
-  const total=booking.court_total+plan.reduce((sum,entry)=>sum+lineTotal(entry.unit_price,entry.quantity,entry.pricing,duration),0);
+  const subtotal=booking.court_total+plan.reduce((sum,entry)=>sum+lineTotal(entry.unit_price,entry.quantity,entry.pricing,duration),0);
+  check(booking.discount<=subtotal,409,`Potongan harga ${rupiah(booking.discount)} lebih besar dari tagihan baru. Ubah potongannya terlebih dahulu.`);
+  const {total,tax}=billOf(subtotal,booking.discount,booking);
   check(total>=booking.paid,409,`Total baru ${rupiah(total)} lebih kecil dari pembayaran yang sudah diterima (${rupiah(booking.paid)}).`);
 
   const kept=new Set(plan.flatMap(entry=>entry.line?[entry.line.id]:[]));
@@ -290,7 +293,7 @@ export function applyLines(booking:BookingRef,input:unknown,actor:string){
       if(entry.type==="jual")consume(entry.addon!.id,entry.quantity,booking.id,actor);
     }
   }
-  db.prepare("UPDATE bookings SET total=? WHERE id=?").run(total,booking.id);
+  db.prepare("UPDATE bookings SET total=?,tax=? WHERE id=?").run(total,tax,booking.id);
   return total;
 }
 

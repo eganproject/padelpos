@@ -6,13 +6,18 @@ import { photoIndex } from "./photos.js";
 import { clockLabel,localClock,minutes } from "./clock.js";
 import { applyLines,bookingAddons,linesSchema,releaseAddons,setReturned } from "./addons.js";
 import { syncBooking } from "./finance.js";
+import { billOf,taxSnapshot } from "./bill.js";
 export { clockLabel,localClock,minutes };
 
 export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id:string|null}
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
 export interface Booking {id:string;court_id:string;court_name:string;customer_id:string|null;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;status:BookingStatus;source:"staff"|"online";hold_expires_at:number|null;notes:string;created_by:string|null;created_at:string;cancel_reason:string;paid:number;
   /** Porsi sewa lapangan; `total` = court_total + tambahan. */
-  court_total:number;addon_count:number}
+  court_total:number;addon_count:number;
+  /** Potongan harga dan pajak sudah termasuk dalam `total`; `tax_rate` dalam basis poin (1000 = 10%). */
+  discount:number;discount_note:string;tax:number;tax_rate:number;tax_inclusive:number;tax_label:string;
+  /** Bagian pembayaran booking batal yang ditahan venue sebagai denda, bukan dikembalikan. */
+  forfeited:number;forfeited_at:string|null}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
 export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
 export const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
@@ -63,8 +68,8 @@ export function createBooking(input:unknown,actor:string){
   const data=bookingSchema.parse(input);
   return transaction(()=>{
     const court=ensureSlot(data.court_id,data.date,data.start_time,data.end_time),id=randomUUID();
-    const total=quote(court,priceRules(),data.date,data.start_time,data.end_time);
-    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.date,data.start_time,data.end_time,total,total,"confirmed",data.notes,actor,new Date().toISOString());
+    const courtTotal=quote(court,priceRules(),data.date,data.start_time,data.end_time),snapshot=taxSnapshot(),bill=billOf(courtTotal,0,snapshot);
+    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.date,data.start_time,data.end_time,bill.total,courtTotal,bill.tax,snapshot.tax_rate,snapshot.tax_inclusive,snapshot.tax_label,"confirmed",data.notes,actor,new Date().toISOString());
     if(data.addons.length)applyLines(getBooking(id),data.addons,actor);
     syncBooking(id);
     audit(actor,"booking.create",id);return getBooking(id);
@@ -114,7 +119,7 @@ export function recordPayment(id:string,input:unknown,actor:string){
       // bayarnya, mis. link tagihan dan pembayaran tunai yang masuk bersamaan.
       const closed=booking.status==="cancelled"||booking.status==="expired";
       check(closed||booking.paid>booking.total,409,"Batalkan booking sebelum mencatat pengembalian.");
-      check(data.amount<=(closed?booking.paid:booking.paid-booking.total),400,closed?"Pengembalian melebihi pembayaran yang diterima.":"Pengembalian melebihi kelebihan bayar booking ini.");
+      check(data.amount<=refundable(booking),400,closed?(booking.forfeited?"Pengembalian melebihi pembayaran yang tidak ditahan sebagai denda.":"Pengembalian melebihi pembayaran yang diterima."):"Pengembalian melebihi kelebihan bayar booking ini.");
       check(data.note.length>=3,400,"Isi catatan pengembalian.");
     }
     db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());
@@ -122,6 +127,46 @@ export function recordPayment(id:string,input:unknown,actor:string){
     audit(actor,data.kind,data.id);return {booking:getBooking(id),payments:payments(id)};
   });
 }
+/** Uang yang masih boleh dikembalikan ke pelanggan. */
+export const refundable=(booking:Pick<Booking,"status"|"paid"|"total"|"forfeited">)=>
+  booking.status==="cancelled"||booking.status==="expired"?Math.max(0,booking.paid-booking.forfeited):Math.max(0,booking.paid-booking.total);
+
+/** Potongan harga untuk booking aktif. Pajak dihitung ulang dari harga setelah potongan. */
+export const discountSchema=z.object({amount:z.number().int().min(0).max(240000000),note:z.string().trim().max(120).default("")});
+export function setBookingDiscount(id:string,input:unknown,actor:string){
+  const data=discountSchema.parse(input);
+  return transaction(()=>{
+    const booking=getBooking(id);
+    check(booking.status==="confirmed",409,"Potongan harga hanya dapat diubah pada booking yang masih aktif.");
+    if(data.amount>0)check(data.note.length>=3,400,"Isi alasan potongan, misalnya \"Member\" atau \"Kompensasi lampu mati\".");
+    const extras=(db.prepare("SELECT COALESCE(SUM(subtotal),0) n FROM booking_addons WHERE booking_id=?").get(id) as {n:number}).n;
+    const subtotal=booking.court_total+extras;
+    check(data.amount<subtotal,400,"Potongan tidak boleh sebesar atau melebihi seluruh tagihan.");
+    const bill=billOf(subtotal,data.amount,booking);
+    check(bill.total>=booking.paid,409,"Tagihan setelah potongan lebih kecil dari pembayaran yang sudah diterima. Catat pengembaliannya dulu atau kecilkan potongannya.");
+    db.prepare("UPDATE bookings SET discount=?,discount_note=?,total=?,tax=? WHERE id=?").run(data.amount,data.amount?data.note:"",bill.total,bill.tax,id);
+    syncBooking(id);
+    audit(actor,"booking.discount",id);return getBooking(id);
+  });
+}
+
+/**
+ * Booking batal yang uangnya tidak dikembalikan seluruhnya: bagian yang ditahan menjadi pendapatan
+ * pembatalan, sisanya tetap boleh dikembalikan. Nilai 0 membatalkan penahanan.
+ */
+export const forfeitSchema=z.object({amount:z.number().int().min(0).max(240000000)});
+export function forfeitBooking(id:string,input:unknown,actor:string){
+  const data=forfeitSchema.parse(input);
+  return transaction(()=>{
+    const booking=getBooking(id);
+    check(booking.status==="cancelled"||booking.status==="expired",409,"Hanya pembayaran booking yang batal yang dapat ditahan sebagai denda.");
+    check(data.amount<=booking.paid,400,`Yang dapat ditahan paling banyak ${booking.paid.toLocaleString("id-ID")}, yaitu uang yang belum dikembalikan.`);
+    db.prepare("UPDATE bookings SET forfeited=?,forfeited_at=? WHERE id=?").run(data.amount,data.amount?localClock().date:null,id);
+    syncBooking(id);
+    audit(actor,"booking.forfeit",id);return getBooking(id);
+  });
+}
+
 /** Ubah sewa & tambahan booking aktif. Tagihan ikut berubah, tetapi tidak boleh di bawah pembayaran. */
 export function updateBookingAddons(id:string,input:unknown,actor:string){
   const {lines}=z.object({lines:linesSchema}).parse(input);

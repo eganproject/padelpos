@@ -4,6 +4,7 @@ import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { localClock } from "./clock.js";
 import { checkImage } from "./photos.js";
+import { allocate, taxSettings, type TaxSettings } from "./bill.js";
 
 /**
  * Pembukuan venue. Seluruh laporan (laba rugi, neraca, buku besar, buku besar pembantu) dihitung
@@ -33,7 +34,11 @@ export interface FinanceRecord {
   partner_id: string | null; partner_name: string | null; description: string; due_date: string | null;
   settled_at: string | null; entry_id: string | null; entry_number: string | null; photo_id: string | null; created_by: string | null; created_at: string;
 }
-export interface FinanceSettings { cash_accounts: Record<string, string>; default_cash_account: string; locked_until: string; updated_at: string }
+export interface GatewayFee { percent: number; flat: number }
+export interface FinanceSettings {
+  cash_accounts: Record<string, string>; default_cash_account: string; locked_until: string; updated_at: string;
+  tax: TaxSettings; gateway_fees: Record<string, GatewayFee>;
+}
 
 const maxAmount = 999_999_999_999;
 const periodOf = (input: unknown) => {
@@ -68,7 +73,16 @@ function systemAccount(key: string) {
 export function settings(): FinanceSettings {
   const row = db.prepare("SELECT document FROM settings WHERE key='finance'").get() as { document: string } | undefined;
   const stored = row ? JSON.parse(row.document) as Partial<FinanceSettings> : {};
-  return { cash_accounts: stored.cash_accounts ?? {}, default_cash_account: stored.default_cash_account ?? "", locked_until: stored.locked_until ?? "", updated_at: stored.updated_at ?? "" };
+  return {
+    cash_accounts: stored.cash_accounts ?? {}, default_cash_account: stored.default_cash_account ?? "", locked_until: stored.locked_until ?? "", updated_at: stored.updated_at ?? "",
+    tax: taxSettings(), gateway_fees: stored.gateway_fees ?? {},
+  };
+}
+/** Potongan payment gateway untuk satu pembayaran online, sesuai tarif yang diatur di Pengaturan. */
+export function gatewayFee(method: string, amount: number) {
+  const fee = settings().gateway_fees[method];
+  if (!fee) return 0;
+  return Math.max(0, Math.min(amount, Math.round(amount * fee.percent / 100) + fee.flat));
 }
 /** Akun kas/bank tujuan sebuah metode pembayaran. Jatuh ke Kas bila pengaturannya sudah tidak valid. */
 function cashAccountFor(method: string) {
@@ -128,60 +142,65 @@ function dropEntry(source: EntrySource, refId: string) {
 // --- Penjurnalan otomatis dari operasional ---------------------------------
 
 const addonAccountKey: Record<string, string> = { sewa: "pendapatan_sewa", jual: "pendapatan_barang", layanan: "pendapatan_jasa", lainnya: "pendapatan_lain" };
-/** Bagi tagihan menjadi baris pendapatan yang jumlahnya persis sama dengan total booking. */
-function revenueSplit(total: number, parts: { key: string; amount: number }[]) {
-  const positive = parts.filter(part => part.amount > 0).map(part => ({ ...part }));
-  const sum = positive.reduce((value, part) => value + part.amount, 0);
-  if (sum !== total && positive.length) {
-    // Selisih pembulatan atau data lama dibebankan ke bagian terbesar agar jurnal tetap seimbang.
-    const largest = positive.reduce((a, b) => (b.amount > a.amount ? b : a));
-    largest.amount += total - sum;
-  }
-  const clean = positive.filter(part => part.amount > 0);
-  return clean.reduce((value, part) => value + part.amount, 0) === total ? clean : [{ key: "pendapatan_lapangan", amount: total }];
-}
 
 /**
  * Samakan jurnal sebuah booking dengan keadaannya sekarang: pendapatan diakui saat booking aktif
  * atau selesai, dan dihapus lagi bila booking batal atau kedaluwarsa. Dipanggil dari operations.ts
  * dan payments.ts di dalam transaksi yang sudah berjalan, jadi fungsi ini tidak membuka transaksi.
+ *
+ * Jurnal pendapatan: Dr Piutang (total tagihan) + Dr Potongan Harga (diskon)
+ *                    = Cr pendapatan per jenis (tanpa pajak) + Cr Utang Pajak.
+ * Booking batal yang pembayarannya ditahan sebagai denda: Dr Piutang, Cr Pendapatan Pembatalan.
  */
 export function syncBooking(bookingId: string) {
-  const booking = db.prepare("SELECT id,customer,date,status,total FROM bookings WHERE id=?").get(bookingId) as
-    { id: string; customer: string; date: string; status: string; total: number } | undefined;
+  const booking = db.prepare("SELECT id,customer,date,status,total,court_total,discount,tax,forfeited,forfeited_at FROM bookings WHERE id=?").get(bookingId) as
+    { id: string; customer: string; date: string; status: string; total: number; court_total: number | null; discount: number; tax: number; forfeited: number; forfeited_at: string | null } | undefined;
   if (!booking) return;
+  const receivable = { account_id: systemAccount("piutang").id, booking_id: booking.id, memo: booking.customer };
   if (booking.status === "confirmed" || booking.status === "completed") {
     const extras = db.prepare("SELECT type,SUM(subtotal) amount FROM booking_addons WHERE booking_id=? GROUP BY type").all(bookingId) as unknown as { type: string; amount: number }[];
     const extrasTotal = extras.reduce((sum, row) => sum + row.amount, 0);
-    const parts = [{ key: "pendapatan_lapangan", amount: booking.total - extrasTotal }];
+    // Pendapatan bersih pajak; berlaku untuk pajak di luar maupun sudah termasuk harga.
+    const revenue = booking.total + booking.discount - booking.tax;
+    const parts = [{ key: "pendapatan_lapangan", amount: booking.court_total ?? booking.total - extrasTotal }];
     for (const row of extras) parts.push({ key: addonAccountKey[row.type] ?? "pendapatan_lain", amount: row.amount });
+    const shares = allocate(revenue, parts.map(part => Math.max(0, part.amount)));
     const merged = new Map<string, number>();
-    for (const part of revenueSplit(booking.total, parts)) merged.set(part.key, (merged.get(part.key) ?? 0) + part.amount);
+    parts.forEach((part, index) => merged.set(part.key, (merged.get(part.key) ?? 0) + shares[index]));
     putEntry({
       date: booking.date, source: "booking", ref_id: booking.id, actor: null,
       memo: `Pendapatan booking ${booking.customer}`,
       lines: [
-        { account_id: systemAccount("piutang").id, debit: booking.total, booking_id: booking.id, memo: booking.customer },
+        { ...receivable, debit: booking.total },
+        { account_id: systemAccount("potongan_harga").id, debit: booking.discount, memo: "Potongan harga" },
         ...[...merged].map(([key, amount]) => ({ account_id: systemAccount(key).id, credit: amount })),
+        { account_id: systemAccount("utang_pajak").id, credit: booking.tax, memo: booking.customer },
       ],
+    });
+  } else if (booking.forfeited > 0) {
+    putEntry({
+      date: booking.forfeited_at ?? booking.date, source: "booking", ref_id: booking.id, actor: null,
+      memo: `Pembayaran booking batal ditahan · ${booking.customer}`,
+      lines: [{ ...receivable, debit: booking.forfeited }, { account_id: systemAccount("pendapatan_pembatalan").id, credit: booking.forfeited }],
     });
   } else dropEntry("booking", booking.id);
   // Pembayaran tidak pernah berubah setelah dicatat, jadi jurnalnya cukup dibuat sekali. Menulis ulang
   // jurnal lama akan memindahkan uang yang sudah diterima ke rekening lain begitu pemetaan kas di
   // Pengaturan diganti, dan saldo kas periode yang sudah ditutup ikut bergeser diam-diam.
-  const payments = db.prepare(`SELECT p.id,p.amount,p.kind,p.method,p.created_at FROM payments p
+  const payments = db.prepare(`SELECT p.id,p.amount,p.fee,p.kind,p.method,p.created_at FROM payments p
     WHERE p.booking_id=? AND NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.source='pembayaran' AND e.ref_id=p.id)
     ORDER BY p.created_at`).all(bookingId) as unknown as
-    { id: string; amount: number; kind: "payment" | "refund"; method: string; created_at: string }[];
+    { id: string; amount: number; fee: number; kind: "payment" | "refund"; method: string; created_at: string }[];
   for (const payment of payments) {
     const cash = { account_id: cashAccountFor(payment.method), memo: `${payment.kind === "refund" ? "Pengembalian" : "Pembayaran"} ${payment.method}` };
-    const receivable = { account_id: systemAccount("piutang").id, booking_id: booking.id, memo: booking.customer };
+    // Potongan payment gateway tidak pernah masuk rekening: dicatat sebagai beban, bukan pengurang piutang.
+    const fee = payment.kind === "payment" ? Math.min(payment.fee, payment.amount) : 0;
     putEntry({
       date: localClock(new Date(payment.created_at)).date, source: "pembayaran", ref_id: payment.id, actor: null,
       memo: `${payment.kind === "refund" ? "Pengembalian dana" : "Penerimaan"} ${booking.customer}`,
       lines: payment.kind === "refund"
         ? [{ ...receivable, debit: payment.amount }, { ...cash, credit: payment.amount }]
-        : [{ ...cash, debit: payment.amount }, { ...receivable, credit: payment.amount }],
+        : [{ ...cash, debit: payment.amount - fee }, { account_id: systemAccount("beban_gateway").id, debit: fee, memo: "Potongan payment gateway" }, { ...receivable, credit: payment.amount }],
     });
   }
 }
@@ -361,7 +380,7 @@ export function subsidiaryLedger(input: unknown) {
   }
   const payableRows = db.prepare(`SELECT l.partner_id key,COALESCE(p.name,'Tanpa pemasok') name,COALESCE(p.phone,'') phone,e.date,l.debit,l.credit
     FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id LEFT JOIN partners p ON p.id=l.partner_id
-    WHERE a.subtype='utang' AND e.date<=?`).all(to) as unknown as { key: string | null; name: string; phone: string; date: string; debit: number; credit: number }[];
+    WHERE a.subtype='utang' AND COALESCE(a.system_key,'')<>'utang_pajak' AND e.date<=?`).all(to) as unknown as { key: string | null; name: string; phone: string; date: string; debit: number; credit: number }[];
   const grouped = new Map<string, { key: string; name: string; subtitle: string; opening: number; debit: number; credit: number; balance: number; detail: { label: string; amount: number }[] }>();
   for (const row of payableRows) {
     const key = row.key ?? "tanpa-pemasok";
@@ -400,7 +419,9 @@ export function overview(input: unknown) {
     const sum = (type: AccountType) => all.filter(account => account.type === type).reduce((value, account) => value + balanceOf(account, period), 0);
     return { month: start.slice(0, 7), income: sum("pendapatan"), expense: sum("beban") };
   });
-  const payable = all.filter(account => account.subtype === "utang").reduce((sum, account) => sum + balanceOf(account, index), 0);
+  // Utang pajak bukan tagihan pemasok, jadi ditampilkan terpisah.
+  const payable = all.filter(account => account.subtype === "utang" && account.system_key !== "utang_pajak").reduce((sum, account) => sum + balanceOf(account, index), 0);
+  const taxPayable = all.filter(account => account.system_key === "utang_pajak").reduce((sum, account) => sum + balanceOf(account, index), 0);
   const due = db.prepare(`SELECT r.id,r.number,r.kind,r.date,r.amount,r.due_date,COALESCE(p.name,'') partner_name,a.name account_name
     FROM finance_records r JOIN accounts a ON a.id=r.account_id LEFT JOIN partners p ON p.id=r.partner_id
     WHERE r.settle='tempo' AND r.settled_at IS NULL ORDER BY COALESCE(r.due_date,r.date),r.number LIMIT 8`).all() as unknown as Record<string, unknown>[];
@@ -408,7 +429,7 @@ export function overview(input: unknown) {
     ...localClock(), from, to,
     income: report.income, expense: report.expense, net: report.net, previous: report.previous,
     cash, cash_total: cash.reduce((sum, row) => sum + row.balance, 0),
-    receivable: sheet.receivable, advances: sheet.advances, payable,
+    receivable: sheet.receivable, advances: sheet.advances, payable, tax_payable: taxPayable,
     expense_lines: [...report.expense_lines].sort((a, b) => b.amount - a.amount).slice(0, 6),
     income_lines: [...report.income_lines].sort((a, b) => b.amount - a.amount).slice(0, 6),
     series, due, entries: journal({ from, to, limit: 8 }).entries,
@@ -690,21 +711,38 @@ export function createEquity(input: unknown, actor: string) {
 export function setup() {
   return { accounts: accounts(), partners: partners(), settings: settings(), ...localClock() };
 }
+const methodKeys = ["cash", "transfer", "qris", "va", "ewallet", "card"];
 export const settingsSchema = z.object({
   cash_accounts: z.record(z.string().max(20), idSchema),
   default_cash_account: idSchema,
   locked_until: optionalDate,
+  /** Tidak dikirim berarti pengaturan pajak yang tersimpan dipertahankan. */
+  tax: z.object({
+    enabled: z.boolean(),
+    label: z.string().trim().min(2, "Nama pajak minimal 2 karakter, misalnya PB1 atau PPN.").max(20),
+    rate: z.number().min(0).max(100, "Tarif pajak maksimal 100%."),
+    inclusive: z.boolean(),
+  }).refine(value => !value.enabled || value.rate > 0, "Isi tarif pajak, misalnya 10.").optional(),
+  gateway_fees: z.record(z.string().max(20), z.object({ percent: z.number().min(0).max(20, "Persen potongan gateway terlalu besar."), flat: z.number().int().min(0).max(100000) })).optional(),
 });
 export function saveSettings(input: unknown, actor: string) {
   const data = settingsSchema.parse(input);
   return transaction(() => {
     cashFor(data.default_cash_account);
     const cashAccounts: Record<string, string> = {};
-    for (const method of ["cash", "transfer", "qris", "va", "ewallet", "card"]) {
+    for (const method of methodKeys) {
       const id = data.cash_accounts[method];
       if (id) { cashFor(id); cashAccounts[method] = id }
     }
-    const next = { cash_accounts: cashAccounts, default_cash_account: data.default_cash_account, locked_until: data.locked_until, updated_at: new Date().toISOString() };
+    const current = settings();
+    const fees: Record<string, GatewayFee> = {};
+    // Tunai tidak dipotong apa pun, jadi hanya metode online yang disimpan.
+    for (const method of methodKeys.filter(key => key !== "cash")) {
+      const fee = (data.gateway_fees ?? current.gateway_fees)[method];
+      if (fee && (fee.percent > 0 || fee.flat > 0)) fees[method] = { percent: Math.round(fee.percent * 100) / 100, flat: fee.flat };
+    }
+    const tax = data.tax ? { ...data.tax, rate: Math.round(data.tax.rate * 100) / 100 } : current.tax;
+    const next = { cash_accounts: cashAccounts, default_cash_account: data.default_cash_account, locked_until: data.locked_until, tax, gateway_fees: fees, updated_at: new Date().toISOString() };
     db.prepare("INSERT INTO settings (key,document) VALUES ('finance',?) ON CONFLICT(key) DO UPDATE SET document=excluded.document").run(JSON.stringify(next));
     audit(actor, "finance.settings", "finance");
     return settings();

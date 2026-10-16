@@ -278,6 +278,35 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(refund.data.booking.paid, 0);
     });
 
+    await t.test("pajak ikut di keranjang dan halaman Midtrans, potongan gateway dicatat sebagai beban", async () => {
+      const kas = (code: string) => (db.prepare("SELECT id FROM accounts WHERE code=?").get(code) as { id: string }).id;
+      const finance = (extra: object) => request("/operations/finance/settings", "PUT", {
+        cash_accounts: { cash: kas("1-100"), transfer: kas("1-200"), qris: kas("1-200"), va: kas("1-200"), ewallet: kas("1-200"), card: kas("1-200") },
+        default_cash_account: kas("1-100"), locked_until: "", ...extra,
+      }, admin);
+      assert.equal((await finance({ tax: { enabled: true, label: "PB1", rate: 10, inclusive: false }, gateway_fees: { qris: { percent: 0.7, flat: 0 }, va: { percent: 0, flat: 4000 } } })).status, 200);
+      const later = { ...item("17:00", "18:00"), date: (() => { const value = new Date(tomorrow + "T12:00:00Z"); value.setUTCDate(value.getUTCDate() + 1); return value.toISOString().slice(0, 10) })() };
+      const quoted = await request("/public/cart/quote", "POST", { items: [later] });
+      assert.equal(quoted.data.items[0].tax, 30000);
+      assert.equal(quoted.data.total, 330000, "keranjang menampilkan angka yang akan ditagih");
+      assert.equal(quoted.data.tax_label, "PB1");
+      const created = await request("/public/checkout", "POST", checkout([later]));
+      assert.equal(created.status, 201);
+      assert.equal(created.data.amount, 330000);
+      const snap = calls.at(-1)!.body as { item_details: { name: string; price: number; quantity: number }[]; transaction_details: { gross_amount: number } };
+      assert.ok(snap.item_details.some(line => line.name.startsWith("PB1") && line.price === 30000), "pajak tampil sebagai baris sendiri, bukan penyesuaian");
+      assert.equal(snap.item_details.reduce((sum, line) => sum + line.price * line.quantity, 0), snap.transaction_details.gross_amount);
+      await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount), "", "");
+      const fee = db.prepare("SELECT fee FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?)").get(created.data.order_id) as { fee: number };
+      assert.equal(fee.fee, 2310, "0,7% dari 330.000");
+      const lines = db.prepare(`SELECT a.code,l.debit,l.credit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
+        WHERE e.source='pembayaran' AND e.ref_id IN (SELECT id FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?))`).all(created.data.order_id) as { code: string; debit: number; credit: number }[];
+      assert.equal(lines.find(line => line.code === "1-200")!.debit, 330000 - 2310, "yang masuk rekening sudah dipotong");
+      assert.equal(lines.find(line => line.code === "5-800")!.debit, 2310, "potongan menjadi biaya payment gateway");
+      assert.equal(lines.find(line => line.code === "1-300")!.credit, 330000, "tagihan pelanggan lunas penuh");
+      assert.equal((await finance({ tax: { enabled: false, label: "PB1", rate: 10, inclusive: false }, gateway_fees: {} })).status, 200);
+    });
+
     await t.test("periksa status menanyakan langsung ke Midtrans bila webhook belum masuk", async () => {
       const created = await request("/public/checkout", "POST", checkout([item("21:00", "22:00")]));
       assert.equal(created.status, 201);

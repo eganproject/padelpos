@@ -3,7 +3,7 @@ import { requireMenu,type AuthRequest } from "../auth.js";
 import { db,getMenus,getRoles } from "../store.js";
 import { overview as financeOverview } from "../finance.js";
 import { addonSummary } from "../addons.js";
-import { bookings,courts,localClock,maintenances,minutes,type Payment } from "../operations.js";
+import { bookings,courts,localClock,maintenances,minutes,refundable,type Payment } from "../operations.js";
 const router=Router();
 router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
   const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&b.status!=="cancelled");
@@ -21,8 +21,8 @@ router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
   // (pending/kedaluwarsa) bukan utang pelanggan.
   const live=(b:{status:string})=>b.status==="confirmed"||b.status==="completed";
   const receivable=allBookings.filter(live).reduce((sum,b)=>sum+Math.max(0,b.total-b.paid),0);
-  // Uang yang masih harus dikembalikan: seluruh pembayaran booking batal/kedaluwarsa dan kelebihan bayar.
-  const refundsDue=allBookings.reduce((sum,b)=>sum+(live(b)?Math.max(0,b.paid-b.total):b.paid),0);
+  // Uang yang masih harus dikembalikan: pembayaran booking batal/kedaluwarsa yang tidak ditahan, dan kelebihan bayar.
+  const refundsDue=allBookings.reduce((sum,b)=>sum+refundable(b),0);
   const extras=addonSummary();
   // Angka pembukuan hanya untuk staf yang memang boleh membuka menu Keuangan.
   const role=getRoles().find(r=>r.slug===req.auth!.role);

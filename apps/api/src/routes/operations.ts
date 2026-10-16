@@ -5,6 +5,7 @@ import * as content from "../content.js";
 import { addPhoto,maxPhotoSize,orderPhotos,photoIndex,photoTypes,removePhoto } from "../photos.js";
 import * as addons from "../addons.js";
 import * as finance from "../finance.js";
+import { taxSnapshot } from "../bill.js";
 import { adminAccounts, adminLogin, bookingAccount, linkBooking, saveLoginSettings, testLogin } from "../customers.js";
 import { adminPayment,savePaymentSettings,testCredentials } from "../midtrans.js";
 import { bookingIntents,createPaymentLink,expireHolds,recentIntents,refreshIntent } from "../payments.js";
@@ -37,7 +38,7 @@ router.post("/addons/:id/stock",requireMenu("addons"),(req:AuthRequest,res)=>res
 router.get("/context",requireAnyMenu(["bookings","courts"]),(req,res)=>{
   const date=req.query.date===undefined?ops.localClock().date:ops.dateSchema.parse(req.query.date);
   expireHolds();
-  res.json({courts:ops.courts(),maintenance:ops.maintenances(date),price_rules:ops.priceRules(),schedule:ops.bookings(date).filter(b=>b.status!=="cancelled").map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
+  res.json({courts:ops.courts(),maintenance:ops.maintenances(date),price_rules:ops.priceRules(),tax:taxSnapshot(),schedule:ops.bookings(date).filter(b=>b.status!=="cancelled").map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
 });
 router.get("/courts",requireMenu("courts"),(_req,res)=>{
   const photos=photoIndex();
@@ -80,6 +81,8 @@ router.post("/customers/login/test",requireMenu("customers"),async(_req,res)=>re
 router.post("/bookings/:id/payment-link",requireMenu("bookings"),async(req:AuthRequest,res)=>res.status(201).json({intent:await createPaymentLink(String(req.params.id),req.body,req.auth!.sub)}));
 router.patch("/bookings/:id/status",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.changeBookingStatus(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/payments",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json(ops.recordPayment(String(req.params.id),req.body,req.auth!.sub)));
+router.put("/bookings/:id/discount",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.setBookingDiscount(String(req.params.id),req.body,req.auth!.sub)}));
+router.put("/bookings/:id/forfeit",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.forfeitBooking(String(req.params.id),req.body,req.auth!.sub)}));
 router.put("/bookings/:id/addons",requireMenu("bookings"),(req:AuthRequest,res)=>res.json(ops.updateBookingAddons(String(req.params.id),req.body,req.auth!.sub)));
 router.patch("/bookings/:id/addons/returned",requireMenu("bookings"),(req:AuthRequest,res)=>res.json(ops.returnBookingAddons(String(req.params.id),req.body,req.auth!.sub)));
 // --- Keuangan --------------------------------------------------------------
