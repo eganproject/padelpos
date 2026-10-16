@@ -1,102 +1,160 @@
-/* Fondasi tampilan: satu-satunya tempat skala huruf, jarak, sudut, dan warna ditetapkan.
-   Berkas lain memakai variabel di sini, tidak menulis ulang angka atau kode warna sendiri.
+/* Fondasi tampilan panel staf: skala huruf, jarak, sudut, dan warna.
+   Mengikuti sistem desain Frappe (Espresso) yang dipakai ERPNext v15: Inter, teks dasar 14px,
+   label 13px, kontrol setinggi 28px, sudut 8px, garis abu-abu tipis, tombol utama hitam.
+   Situs pelanggan memakai palet sendiri di shop.css; yang dipakai bersama hanya --font-ui
+   dan --font-display.
 
-   Aturan yang dijaga di seluruh aplikasi:
-   - Tidak ada teks di bawah 12px. Label mungil memakai --fs-xs dengan huruf kapital dan tebal.
-   - Setiap teks memenuhi kontras WCAG AA (4.5:1) pada kedua tema.
-   - Setiap kontrol yang dapat diklik setinggi minimal 40px, atau 36px untuk tombol ikon padat. */
+   Berkas lain memakai variabel di sini, tidak menulis ulang angka atau kode warna sendiri. */
 
 :root{
   /* Huruf */
-  --font-ui:var(--font-inter),"Segoe UI",system-ui,-apple-system,Arial,sans-serif;
+  --font-ui:var(--font-inter),"Inter","Segoe UI",system-ui,-apple-system,Arial,sans-serif;
   --font-display:var(--font-space),var(--font-inter),"Segoe UI",system-ui,sans-serif;
-  --fs-xs:12px;   /* batas terkecil: label kapital, keterangan tabel */
-  --fs-sm:13px;   /* tombol, isian, teks pendukung */
-  --fs-md:14px;   /* ukuran dasar antarmuka staf */
-  --fs-lg:16px;   /* judul kartu, teks utama situs pelanggan */
-  --fs-xl:18px;
-  --fs-2xl:21px;
-  --fs-3xl:26px;
-  --fs-4xl:32px;
+  --fs-xs:12px;   /* keterangan kecil, label di kartu tabel ponsel */
+  --fs-sm:13px;   /* label isian, pil status, teks pendukung */
+  --fs-md:14px;   /* teks dasar: baris daftar, tombol, isian, sidebar */
+  --fs-lg:16px;   /* judul kartu dan bagian */
+  --fs-xl:18px;   /* judul dialog */
+  --fs-2xl:20px;  /* judul halaman */
+  --fs-3xl:24px;  /* angka di kartu ringkasan */
+  --fs-4xl:26px;
   --lh-tight:1.3;
   --lh-snug:1.5;
-  --lh-normal:1.65;
-  --track-label:.07em;   /* renggang huruf untuk label kapital */
+  --lh-normal:1.6;
+  --track-label:.02em;
 
   /* Jarak — kelipatan 4 supaya margin seluruh halaman selaras */
   --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:32px;--s8:40px;--s9:56px;--s10:72px;
 
-  /* Sudut dan bayangan */
-  --r-xs:6px;--r-sm:8px;--r-md:10px;--r-lg:14px;--r-xl:18px;--r-full:999px;
-  --shadow-1:0 1px 2px #0000000f;
-  --shadow-2:0 2px 6px #00000014,0 8px 24px #0000000f;
-  --shadow-3:0 18px 50px #00000026;
+  /* Sudut dan bayangan (Espresso) */
+  --r-xs:4px;--r-sm:8px;--r-md:10px;--r-lg:12px;--r-xl:12px;--r-full:999px;
+  --shadow-xs:rgba(0,0,0,.05) 0 .5px 0 0,rgba(0,0,0,.08) 0 0 0 1px,rgba(0,0,0,.05) 0 2px 4px 0;
+  --shadow-1:0 1px 2px rgba(0,0,0,.1);
+  --shadow-2:0 0 1px rgba(0,0,0,.19),0 1px 2px rgba(0,0,0,.07),0 6px 15px -5px rgba(0,0,0,.11);
+  --shadow-3:0 0 1px rgba(0,0,0,.2),0 1px 3px rgba(0,0,0,.05),0 10px 24px -3px rgba(0,0,0,.1);
+  --focus-ring:0 0 0 2px #c9c9c9;
 
-  /* Kontrol: tinggi seragam supaya deretan tombol dan isian tidak bergerigi */
-  --control:40px;
-  --control-sm:36px;
-  --control-lg:46px;
-  --tap:40px;          /* target sentuh terkecil */
+  /* Kontrol: tinggi seragam seperti tombol dan isian Frappe */
+  --control:28px;
+  --control-sm:28px;
+  --control-lg:36px;
+  --tap:32px;
 
   /* Lebar isi dan tepi halaman */
-  --page-max:1320px;
-  --gutter:clamp(16px,3.4vw,40px);
+  --page-max:1600px;
+  --navbar-h:48px;
+  --sidebar-w:220px;
+  --gutter:clamp(12px,2.2vw,32px);
 
   /* Gerak */
   --ease:cubic-bezier(.2,.7,.3,1);
-  --fast:.14s;--normal:.22s;
+  --fast:.14s;--normal:.2s;
 }
 
-/* --- Tema gelap (bawaan panel staf) ------------------------------------- */
+/* Layar sentuh: kontrol sedikit lebih tinggi agar mudah diketuk. */
+@media(max-width:767px){
+  :root{--control:32px;--control-sm:32px;--control-lg:40px;--tap:36px}
+}
+
+/* --- Tema terang (bawaan, seperti ERPNext) ------------------------------- */
 :root{
-  --bg:#090c0e;
-  --panel:#111619;        /* permukaan kartu */
-  --panel2:#161c20;       /* permukaan cekung: isian, kepala tabel */
-  --rail:#0c1114;         /* sidebar */
-  --line:#252d31;
-  --line-strong:#384347;
-  --text:#f1f5f3;
-  --text-soft:#cdd5d2;    /* teks pendukung yang masih menonjol */
-  --muted:#9ba5a2;        /* keterangan; 7:1 di atas --panel */
-  --lime:#c8ff3d;
-  --lime-ink:#152000;     /* teks di atas lime */
-  --lime-text:#cdf95f;    /* lime sebagai teks di atas latar gelap */
-  --lime-wash:#c8ff3d14;
-  --lime-edge:#c8ff3d33;
-  --cyan:#5ee7f0;
-  --violet:#bb9bff;
-  --orange:#ffab6b;
-  --danger:#ff8b85;
-  --danger-wash:#ff5d5714;
-  --hover:#ffffff0a;      /* sorotan baris dan tombol */
-  --focus:#8fe3ea;
-  color-scheme:dark;
+  --gray-50:#f8f8f8;--gray-100:#f3f3f3;--gray-200:#ededed;--gray-300:#e2e2e2;--gray-400:#c7c7c7;
+  --gray-500:#999999;--gray-600:#7c7c7c;--gray-700:#525252;--gray-800:#383838;--gray-900:#171717;
+
+  --bg:#ffffff;
+  --panel:#ffffff;        /* kartu */
+  --panel2:#f3f3f3;       /* isian dan tombol biasa (control-bg) */
+  --rail:#ffffff;         /* sidebar */
+  --subtle:#f8f8f8;       /* sorotan baris */
+  --line:#ededed;         /* border-color */
+  --line-strong:#e2e2e2;  /* dark-border-color */
+  --text:#171717;         /* judul dan angka */
+  --text-soft:#383838;    /* teks isi */
+  --muted:#6b6b6b;        /* keterangan; 5.3:1 di atas putih */
+  --label:#525252;        /* label isian */
+  --placeholder:#999999;
+
+  --primary:#171717;      /* tombol utama */
+  --primary-ink:#ffffff;
+  --btn:#f3f3f3;          /* tombol biasa */
+  --btn-hover:#e2e2e2;
+  --hover:#f3f3f3;        /* sorotan menu sidebar */
+  --focus:#999999;
+  --link:#0070cc;
+
+  /* Nama lama tetap ada agar komponen yang belum memakai nama baru ikut berganti. */
+  --lime:var(--primary);
+  --lime-ink:var(--primary-ink);
+  --lime-text:var(--text);
+  --lime-wash:var(--gray-100);
+  --lime-edge:var(--gray-400);
+
+  /* Pasangan latar dan teks untuk pil status (indicator-pill Frappe) */
+  --green-bg:#e4f5e9;--green-text:#16794c;--green-solid:#30a66d;
+  --red-bg:#fff0f0;--red-text:#b52a2a;--red-solid:#e03636;
+  --orange-bg:#fff1e7;--orange-text:#bd3e0c;--orange-solid:#e86c13;
+  --yellow-bg:#fff7d3;--yellow-text:#ab6e05;--yellow-solid:#edba13;
+  --blue-bg:#edf6fd;--blue-text:#0070cc;--blue-solid:#0289f7;
+  --purple-bg:#f9f0ff;--purple-text:#6e399d;
+  --cyan-bg:#e0f8ff;--cyan-text:#267a94;
+  --gray-bg:#f3f3f3;--gray-text:#525252;
+
+  /* Palet grafik Frappe Charts */
+  --chart-blue:#318ad8;--chart-green:#48bb74;--chart-red:#f56b6b;--chart-orange:#f8814f;
+
+  --cyan:var(--blue-text);
+  --violet:var(--purple-text);
+  --orange:var(--orange-text);
+  --danger:#cc2929;
+  --danger-wash:#fff0f0;
+
+  --backdrop:rgba(56,56,56,.5);
+  --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23525252' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  --check:url("data:image/svg+xml,%3Csvg viewBox='0 0 8 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 4.00001L2.66667 5.80001L7 1.20001' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  color-scheme:light;
 }
 
-/* --- Tema terang --------------------------------------------------------- */
-html[data-theme="light"]{
-  --bg:#f2f4f0;
-  --panel:#ffffff;
-  --panel2:#f6f8f4;
-  --rail:#ffffff;
-  --line:#dde2da;
-  --line-strong:#c3cbbf;
-  --text:#121711;
-  --text-soft:#39423a;
-  --muted:#5a6560;        /* 6:1 di atas putih */
-  --lime:#c8ff3d;
-  --lime-ink:#1b2600;
-  --lime-text:#456a08;    /* lime tidak terbaca di atas putih; pakai hijau tua */
-  --lime-wash:#eef8d7;
-  --lime-edge:#b6d95f;
-  --cyan:#0e6a72;
-  --violet:#5c3ba0;
-  --orange:#93520e;
-  --danger:#b23a32;
-  --danger-wash:#fdeceb;
-  --hover:#f4f7f1;
-  --focus:#2f7d86;
-  color-scheme:light;
+/* --- Tema gelap (pilihan di menu akun) ----------------------------------- */
+html[data-theme="dark"]{
+  --gray-700:#383838;--gray-800:#232323;
+
+  --bg:#171717;
+  --panel:#171717;
+  --panel2:#232323;
+  --rail:#171717;
+  --subtle:#1f1f1f;
+  --line:#2c2c2c;
+  --line-strong:#383838;
+  --text:#f8f8f8;
+  --text-soft:#e2e2e2;
+  --muted:#a3a3a3;
+  --label:#c7c7c7;
+  --placeholder:#7c7c7c;
+
+  --primary:#e2e2e2;
+  --primary-ink:#171717;
+  --btn:#232323;
+  --btn-hover:#383838;
+  --hover:#232323;
+  --focus:#7c7c7c;
+  --link:#70b6f0;
+
+  --green-bg:#173b2c;--green-text:#b6dec5;
+  --red-bg:#4a1717;--red-text:#f9c6c6;
+  --orange-bg:#4a2410;--orange-text:#f7d6bd;
+  --yellow-bg:#4a3510;--yellow-text:#f5e171;
+  --blue-bg:#0c2f4d;--blue-text:#c9e7fc;
+  --purple-bg:#33194d;--purple-text:#e9d6f5;
+  --cyan-bg:#123845;--cyan-text:#b3ecfc;
+  --gray-bg:#2c2c2c;--gray-text:#e2e2e2;
+
+  --danger:#eb9091;
+  --danger-wash:#4a1717;
+
+  --backdrop:rgba(0,0,0,.6);
+  --select-arrow:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c7c7c7' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 15 5 5 5-5'/%3E%3Cpath d='m7 9 5-5 5 5'/%3E%3C/svg%3E");
+  --check:url("data:image/svg+xml,%3Csvg viewBox='0 0 8 7' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 4.00001L2.66667 5.80001L7 1.20001' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  color-scheme:dark;
 }
 
 /* --- Dasar --------------------------------------------------------------- */
@@ -106,7 +164,7 @@ html,body{margin:0;min-height:100%}
 body{
   background:var(--bg);color:var(--text);
   font-family:var(--font-ui);font-size:var(--fs-md);line-height:var(--lh-snug);
-  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;
 }
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -117,14 +175,6 @@ h1,h2,h3,h4,h5,h6{margin:0;line-height:var(--lh-tight)}
 small{font-size:var(--fs-xs)}
 p{margin:0}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:var(--r-xs)}
-::selection{background:var(--lime);color:var(--lime-ink)}
-
-/* Bilah geser yang serasi dengan tema, bukan bawaan sistem yang selalu terang. */
-*{scrollbar-color:var(--line-strong) transparent;scrollbar-width:thin}
-::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:var(--r-full);border:2px solid transparent;background-clip:content-box}
-::-webkit-scrollbar-thumb:hover{background:var(--muted);background-clip:content-box}
-::-webkit-scrollbar-track{background:transparent}
 
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{animation:spin 1s linear infinite}

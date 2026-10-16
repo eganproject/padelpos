@@ -1,118 +1,102 @@
-/* Perkakas operasional: tombol, saringan, tabel padat, kartu ringkasan, dan grafik.
-   Dipakai bersama oleh Booking, Lapangan, Sewa & Tambahan, Pembayaran, dan Keuangan. */
-
-/* --- Tombol -------------------------------------------------------------- */
-.ops-primary,.ops-secondary,.ops-danger{
-  display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);
-  min-height:var(--control);padding:0 var(--s4);border-radius:var(--r-sm);
-  font-size:var(--fs-sm);font-weight:600;line-height:1;white-space:nowrap;text-decoration:none;
-  transition:filter var(--fast) var(--ease),border-color var(--fast) var(--ease),color var(--fast) var(--ease);
-}
-.ops-primary{background:var(--lime);color:var(--lime-ink);border:1px solid var(--lime);font-weight:700}
-.ops-primary:hover{filter:brightness(1.06)}
-.ops-secondary{background:var(--panel);color:var(--text-soft);border:1px solid var(--line)}
-.ops-secondary:hover{color:var(--text);border-color:var(--line-strong)}
-.ops-danger{background:transparent;color:var(--danger);border:1px solid color-mix(in srgb,var(--danger) 40%,transparent)}
-.ops-danger:hover{background:var(--danger-wash)}
+/* Perkakas operasional: judul bagian, saringan, dialog rincian, peringatan, dan grafik.
+   Dipakai bersama oleh Ringkasan, Booking, Lapangan, Sewa & Tambahan, Pembayaran, dan Keuangan.
+   Tombol .ops-primary/.ops-secondary/.ops-danger ada di management.css. */
 
 /* --- Judul bagian dan baris tindakan ------------------------------------- */
 .ops-actions,.ops-section-title,.ops-card-head,.ops-detail-head,.ops-total,.ops-history{
-  display:flex;align-items:center;justify-content:space-between;gap:var(--s4);
+  display:flex;align-items:center;justify-content:space-between;gap:var(--s3);
 }
-.ops-actions{margin-bottom:var(--s6);flex-wrap:wrap}
-.ops-actions p,.ops-muted,.ops-section-title p{font-size:var(--fs-sm);color:var(--muted);line-height:var(--lh-normal);margin:0}
-.ops-section-title{margin:var(--s7) 0 var(--s4);flex-wrap:wrap}
-.ops-section-title h2,.ops-card-head h2{font-family:var(--font-display);font-size:var(--fs-xl);font-weight:700;letter-spacing:-.02em;margin:0}
-.ops-card-head strong{font-size:var(--fs-lg);font-weight:700}
-.ops-price{font-family:var(--font-display);font-size:var(--fs-3xl);font-weight:700;letter-spacing:-.02em}
-.ops-price small{font-size:var(--fs-sm);font-weight:400;color:var(--muted)}
+.ops-actions{margin-bottom:var(--s4);flex-wrap:wrap}
+.ops-actions p,.ops-muted,.ops-section-title p{font-size:var(--fs-sm);color:var(--muted);line-height:var(--lh-snug);margin:0}
+.ops-section-title{margin:var(--s6) 0 var(--s3);flex-wrap:wrap}
+.ops-section-title h2,.ops-card-head h2{font-size:var(--fs-lg);font-weight:600;margin:0}
+.ops-card-head h3{font-size:var(--fs-md);font-weight:600;margin:0}
+.ops-card-head strong{font-size:var(--fs-lg);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.ops-price{font-size:var(--fs-2xl);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.ops-price small{font-size:var(--fs-sm);font-weight:420;color:var(--muted)}
 
 /* --- Kisi kartu ---------------------------------------------------------- */
-.ops-court-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:var(--s5)}
-.ops-empty{padding:var(--s9) var(--s5);text-align:center;color:var(--muted);font-size:var(--fs-md);line-height:var(--lh-normal)}
-.ops-empty h2{font-size:var(--fs-xl);color:var(--text);margin-bottom:var(--s2)}
+.ops-court-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:var(--s4)}
+.ops-empty{padding:var(--s8) var(--s5);text-align:center;color:var(--muted);font-size:var(--fs-md);line-height:var(--lh-normal)}
+.ops-empty h2{font-size:var(--fs-lg);font-weight:600;color:var(--text);margin-bottom:var(--s1)}
 
 /* --- Tabel padat --------------------------------------------------------- */
-.ops-table{border-radius:var(--r-lg)}
 .ops-table table{width:100%}
-.ops-table td{font-size:var(--fs-md)}
-.ops-table th{font-size:var(--fs-xs)}
 
-/* --- Saringan ------------------------------------------------------------ */
-.ops-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s3);margin-bottom:var(--s5)}
-.ops-filters label{display:flex;flex-direction:column;gap:var(--s2);font-size:var(--fs-xs);font-weight:700;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--muted)}
-.ops-filters input,.ops-filters select{
-  height:var(--control);padding:0 var(--s3);border:1px solid var(--line);border-radius:var(--r-sm);
-  background:var(--panel);color:var(--text);font-size:var(--fs-md);font-weight:400;letter-spacing:normal;text-transform:none;
-  transition:border-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease);
+/* --- Saringan (page-form Frappe) ----------------------------------------- */
+.ops-filters{
+  display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--s2) var(--s3);margin-bottom:var(--s3);
+  padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);
 }
-.ops-filters input:focus,.ops-filters select:focus{outline:0;border-color:var(--lime-edge);box-shadow:0 0 0 3px var(--lime-wash)}
-.ops-filters label:first-child{flex:1;min-width:220px;max-width:420px}
-.ops-filters .ops-secondary{margin-bottom:0}
+.ops-filters:has(+.manage-table-card){margin-bottom:0;border-bottom:0;border-radius:var(--r-lg) var(--r-lg) 0 0}
+.ops-filters+.manage-table-card{border-top-left-radius:0;border-top-right-radius:0}
+.ops-filters+.manage-table-card thead th{border-top-width:4px}
+.ops-filters label{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm);font-weight:420;color:var(--label)}
+.ops-filters label:first-child{flex:1;min-width:200px;max-width:420px}
+.ops-filters input,.ops-filters select{width:100%;min-width:140px}
 
 /* --- Dialog operasional -------------------------------------------------- */
-.ops-modal{width:min(660px,100%)}
-.ops-modal .modal-fields{gap:var(--s4)}
-.ops-modal textarea{
-  min-height:88px;resize:vertical;padding:var(--s3);line-height:var(--lh-normal);
-  border:1px solid var(--line);border-radius:var(--r-sm);background:var(--panel2);color:var(--text);
-  font-size:var(--fs-md);font-weight:400;letter-spacing:normal;text-transform:none;
-}
+.ops-modal{width:min(760px,100%)}
+.ops-modal .modal-fields{gap:var(--s3)}
 .ops-modal p{font-size:var(--fs-sm);line-height:var(--lh-normal);margin:0;color:var(--text-soft)}
-.ops-modal h3{font-size:var(--fs-lg);margin:var(--s1) 0}
+.ops-modal h3{font-size:var(--fs-lg);font-weight:600;margin:var(--s1) 0}
 
-/* --- Pesan galat --------------------------------------------------------- */
+/* --- Pesan (alert Frappe) ------------------------------------------------ */
 .ops-error,.ops-alert{
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s3);
-  margin-bottom:var(--s4);padding:var(--s4) var(--s5);border-radius:var(--r-md);
-  font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--text);
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:var(--s2) var(--s3);
+  margin-bottom:var(--s3);padding:var(--s2) var(--s3);border-radius:var(--r-sm);
+  font-size:var(--fs-sm);line-height:var(--lh-normal);
 }
-.ops-error{border:1px solid color-mix(in srgb,var(--danger) 35%,transparent);background:var(--danger-wash)}
-.ops-alert{border:1px solid color-mix(in srgb,var(--orange) 35%,transparent);background:color-mix(in srgb,var(--orange) 9%,transparent)}
-.ops-alert b{color:var(--orange)}
-.ops-error button{margin-left:var(--s3);border:0;background:none;color:inherit;text-decoration:underline;font-size:inherit}
+.ops-error{background:var(--red-bg);color:var(--red-text)}
+.ops-alert{background:var(--yellow-bg);color:var(--yellow-text)}
+.ops-alert b,.ops-error b{font-weight:600}
+.ops-alert .ops-link,.ops-error .ops-link{color:inherit;min-height:0}
+.ops-error button{margin-left:var(--s2);padding:0;border:0;background:none;color:inherit;text-decoration:underline;font-size:inherit}
 
 /* --- Rincian booking ----------------------------------------------------- */
-.ops-schedule{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s4);border:1px solid var(--line);border-radius:var(--r-md);font-size:var(--fs-sm)}
-.ops-schedule b{margin-bottom:var(--s1)}
+.ops-schedule{display:flex;flex-direction:column;gap:6px;padding:var(--s3);border-radius:var(--r-sm);background:var(--subtle);border:1px solid var(--line);font-size:var(--fs-sm)}
+.ops-schedule b{color:var(--text)}
 .ops-schedule span{color:var(--muted)}
-.ops-total{padding:var(--s3) 0;border-bottom:1px solid var(--line);font-size:var(--fs-md)}
-.ops-total strong{font-size:var(--fs-2xl);font-weight:700}
-.ops-payment,.ops-status-actions{display:flex;flex-direction:column;gap:var(--s4);border-top:1px solid var(--line);padding-top:var(--s6);margin-top:var(--s2)}
+.ops-total{padding:var(--s2) 0;border-bottom:1px solid var(--line);font-size:var(--fs-md)}
+.ops-total strong{font-size:var(--fs-xl);font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.ops-payment,.ops-status-actions{display:flex;flex-direction:column;gap:var(--s3);border-top:1px solid var(--line);padding-top:var(--s4);margin-top:var(--s1)}
 .ops-payment>button,.ops-status-actions>button{align-self:flex-start}
-.ops-history{padding:var(--s3) 0;border-bottom:1px solid var(--line);font-size:var(--fs-sm)}
-.ops-history>div{display:flex;flex-direction:column;gap:var(--s1)}
+.ops-history{padding:10px 0;border-bottom:1px solid var(--line);font-size:var(--fs-md)}
+.ops-history:last-child{border-bottom:0}
+.ops-history>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ops-history b{color:var(--text);font-weight:500}
 .ops-history small{font-size:var(--fs-xs);color:var(--muted)}
 .ops-history strong{white-space:nowrap}
 
-/* --- Grafik ringkasan ---------------------------------------------------- */
-.ops-dashboard-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:var(--s5);margin-top:var(--s6)}
-.ops-chart{display:flex;gap:var(--s3);align-items:stretch;padding-top:var(--s3)}
-.ops-chart-column{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:var(--s2)}
-.ops-chart-column>span{font-size:var(--fs-xs);color:var(--muted);text-align:center;overflow-wrap:anywhere}
-.ops-chart-column>small{font-size:var(--fs-xs);color:var(--text-soft);white-space:nowrap}
-.ops-bar-track{height:156px;width:66%;background:var(--panel2);border-radius:var(--r-xs);display:flex;align-items:flex-end}
-.ops-bar-track i{display:block;width:100%;background:var(--lime);border-radius:var(--r-xs);min-height:2px}
-.ops-bar-track i.negative{background:var(--danger)}
+/* --- Grafik ringkasan (gaya Frappe Charts) ------------------------------- */
+.ops-dashboard-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:var(--s4);margin-top:var(--s4)}
+.ops-chart{display:flex;gap:var(--s2);align-items:stretch;padding-top:var(--s3);border-bottom:1px solid var(--line)}
+.ops-chart-column{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px}
+.ops-chart-column>span{font-size:11px;color:var(--muted);text-align:center;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.ops-chart-column>small{padding-bottom:6px;font-size:var(--fs-xs);color:var(--muted);white-space:nowrap}
+.ops-bar-track{height:156px;width:56%;max-width:36px;display:flex;align-items:flex-end;background:repeating-linear-gradient(to top,transparent 0 38px,var(--line) 38px 39px)}
+.ops-bar-track i{display:block;width:100%;background:var(--chart-blue);border-radius:3px 3px 0 0;min-height:2px}
+.ops-bar-track i.negative{background:var(--chart-red)}
 .ops-chart-empty{
   min-height:196px;display:grid;place-items:center;text-align:center;
-  border:1px dashed var(--line);border-radius:var(--r-md);padding:var(--s5);
-  color:var(--muted);font-size:var(--fs-md);
+  border:1px dashed var(--line-strong);border-radius:var(--r-sm);padding:var(--s5);
+  color:var(--muted);font-size:var(--fs-sm);
 }
 .ops-chart-empty p{margin:0;line-height:var(--lh-normal)}
 
 /* Tautan teks di dalam isi halaman staf. */
-.manage-content a:not(.ops-primary):not(.ops-secondary):not(.ops-danger):not(.site-link){color:var(--lime-text)}
-
-/* Pemilih tanggal mengikuti tema agar ikonnya terlihat. */
-.ops-modal input[type=date],.ops-modal select,.ops-filters input[type=date],.ops-filters select{color-scheme:inherit}
+.manage-content a:not(.ops-primary):not(.ops-secondary):not(.ops-danger):not(.ops-link):not(.site-link){color:var(--text)}
 
 @media(max-width:900px){.ops-dashboard-grid{grid-template-columns:1fr}}
-@media(max-width:620px){
-  .ops-actions,.ops-section-title{flex-direction:column;align-items:flex-start;gap:var(--s3)}
-  .ops-filters label{flex:1;min-width:150px}
+@media(max-width:767px){
+  .ops-actions,.ops-section-title{align-items:flex-start;gap:var(--s2)}
+  .ops-actions>.ops-primary{width:100%}
+  .ops-filters label,.ops-filters label:first-child{flex:1 1 140px;min-width:0;max-width:none}
+  .ops-filters label:first-child{flex-basis:100%}
+  .ops-filters input,.ops-filters select{min-width:0}
+  .ops-filters>.ops-secondary{flex:1}
   .ops-modal .field-grid{grid-template-columns:1fr}
-  .ops-chart{gap:var(--s1)}
+  .ops-chart{gap:2px}
+  .ops-chart-column>span{font-size:10px}
   .ops-detail-head,.ops-card-head{flex-wrap:wrap;align-items:flex-start}
-  .ops-court-grid{grid-template-columns:1fr}
 }

@@ -135,7 +135,7 @@ function PartnersView({ setup, reload }: { setup:Setup; reload:()=>void }) {
       </div>
       <div className="manage-table-card ops-table table-cards">
         <table>
-          <thead><tr><th>NAMA</th><th>JENIS</th><th>TELEPON</th><th>CATATAN</th><th>AKSI</th></tr></thead>
+          <thead><tr><th>Nama</th><th>Jenis</th><th>Telepon</th><th>Catatan</th><th>Aksi</th></tr></thead>
           <tbody>{setup.partners.map(partner => (
             <tr key={partner.id}>
               <td className="wide" data-label="Nama"><b>{partner.name}</b>{!partner.active && <small className="table-description">Nonaktif</small>}</td>

@@ -1,31 +1,22 @@
-/* Pembayaran online: panel admin Midtrans, form checkout, dan halaman status pesanan. */
+/* Pembayaran online: panel admin Midtrans dan riwayat transaksinya. */
 
-/* Panel admin */
-.pay-status{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:18px 20px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
-.pay-badge{display:flex;align-items:center;gap:12px;min-width:260px;flex:1}
-.pay-badge b{display:block;font-size:15px}
-.pay-badge small{display:block;margin-top:3px;font-size:12px;line-height:1.6;color:var(--muted)}
-.pay-badge.on>svg{color:var(--lime)}
-.pay-badge.off>svg{color:var(--orange)}
-.pay-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px;margin:0}
-.pay-meta dt{font-size:var(--fs-xs);font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--muted)}
-.pay-meta dd{margin:2px 0 0;font-size:13px;font-weight:600}
-.pay-test{display:flex;align-items:center;gap:8px;margin:0;padding:11px 14px;border-radius:10px;font-size:13px;line-height:1.6}
-.pay-test.ok{border:1px solid #7e983288;background:#c8ff3d0d;color:var(--text)}
-.pay-test.warn{border:1px solid #ff9c5166;background:#ff9c510d;color:var(--orange)}
-.pay-copy{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.pay-copy input{flex:1;min-width:240px;min-height:42px;border:1px solid #30383a;border-radius:8px;background:#0c1012;color:var(--text);padding:9px 12px;font-size:13px}
-.pay-copy button{flex:none;height:42px}
-.pay-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.65;color:var(--muted)}
-.pay-steps code{padding:1px 6px;border-radius:5px;background:#ffffff12;color:var(--text);font-size:12px}
-.row-actions a{width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;color:var(--muted)}
-.row-actions a:hover{color:var(--text)}
-@media(max-width:600px){.pay-meta{grid-template-columns:1fr}.pay-status{padding:16px}}
-
-html[data-theme="light"] .pay-status{background:#fff;border-color:#dce1db}
-html[data-theme="light"] .pay-badge.on>svg{color:#4d6b0a}
-html[data-theme="light"] .pay-badge.off>svg{color:#9a5410}
-html[data-theme="light"] .pay-copy input{background:#f8faf7;border-color:#d8ded8;color:#222925}
-html[data-theme="light"] .pay-test.ok{background:#eef8d9;border-color:#9fcc45}
-html[data-theme="light"] .pay-test.warn{background:#fdf0e1;border-color:#efc79b;color:#9a5410}
-html[data-theme="light"] .pay-steps code{background:#eef1ec;color:#222925}
+.pay-status{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s4);padding:var(--s4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel)}
+.pay-badge{display:flex;align-items:flex-start;gap:10px;min-width:min(100%,260px);flex:1}
+.pay-badge>svg{width:20px;height:20px;flex:none;margin-top:1px}
+.pay-badge b{display:block;font-size:var(--fs-md);font-weight:600;color:var(--text)}
+.pay-badge small{display:block;margin-top:2px;font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--muted)}
+.pay-badge.on>svg{color:var(--green-text)}
+.pay-badge.off>svg{color:var(--orange-text)}
+.pay-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2) var(--s5);margin:0}
+.pay-meta dt{font-size:var(--fs-sm);color:var(--label)}
+.pay-meta dd{margin:2px 0 0;font-size:var(--fs-md);font-weight:500;color:var(--text)}
+.pay-test{display:flex;align-items:center;gap:var(--s2);margin:0;padding:var(--s2) var(--s3);border-radius:var(--r-sm);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.pay-test svg{width:16px;height:16px;flex:none}
+.pay-test.ok{background:var(--green-bg);color:var(--green-text)}
+.pay-test.warn{background:var(--yellow-bg);color:var(--yellow-text)}
+.pay-copy{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+.pay-copy input{flex:1;min-width:min(100%,240px);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--fs-sm)}
+.pay-copy button{flex:none}
+.pay-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:var(--s2);font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--text-soft)}
+.pay-steps code{padding:1px 6px;border-radius:var(--r-xs);background:var(--panel2);color:var(--text);font-size:var(--fs-xs)}
+@media(max-width:600px){.pay-meta{grid-template-columns:1fr}.pay-status{padding:var(--s3)}}

@@ -73,7 +73,7 @@ export function AddonsPanel(){
 
     <div className="ops-section-title"><div><h2>Katalog</h2><p>Urutan di sini sama dengan urutan yang dilihat kasir dan pelanggan.</p></div></div>
     {data.addons.length>0&&<div className="ops-filters"><label>Cari item<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nama, kategori, atau deskripsi"/></label><label>Jenis<select value={type} onChange={e=>setType(e.target.value as AddonType|"")}><option value="">Semua jenis</option>{types.map(t=><option key={t} value={t}>{typeLabel[t]}</option>)}</select></label></div>}
-    <div className="manage-table-card ops-table table-cards addon-table"><table><thead><tr><th>ITEM</th><th>JENIS</th><th>HARGA</th><th>STOK</th><th>STATUS</th><th>AKSI</th></tr></thead><tbody>{list.map((a,index)=>{
+    <div className="manage-table-card ops-table table-cards addon-table"><table><thead><tr><th>Item</th><th>Jenis</th><th>Harga</th><th>Stok</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{list.map((a,index)=>{
       const low=a.active&&isLowStock(a);
       return <tr key={a.id} className={a.active?"":"inactive"}>
         <td className="wide" data-label="Item"><div className="addon-cell"><AddonThumb category={a.category} photoId={a.photo_id}/><div><b>{a.name}</b><small className="table-description">{categoryLabel[a.category]}{a.description?` · ${a.description}`:""}</small></div></div></td>
@@ -94,13 +94,13 @@ export function AddonsPanel(){
     </div>
 
     <div className="ops-section-title"><div><h2>Barang sewa belum kembali</h2><p>Dari booking yang jam mainnya sudah dimulai. Tandai setelah barang diterima kembali di resepsionis.</p></div></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>PELANGGAN</th><th>JADWAL</th><th>BARANG</th><th>AKSI</th></tr></thead><tbody>{summary.unreturned.map(l=>{
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Jadwal</th><th>Barang</th><th>Aksi</th></tr></thead><tbody>{summary.unreturned.map(l=>{
       const over=l.date<data.date||l.end_time<=data.time;
       return <tr key={l.id}><td className="wide" data-label="Pelanggan"><b>{l.customer}</b><small className="table-description">{l.phone}</small></td><td data-label="Jadwal">{l.court_name}<small className="table-description">{formatShortDay(l.date)} · {l.start_time} – {l.end_time}{over?<span className="addon-overdue"> · jam main sudah selesai</span>:" · sedang dipakai"}</small></td><td data-label="Barang"><b>{l.quantity}× {l.name}</b></td><td className="actions"><button className="ops-secondary" disabled={busy===l.id} onClick={()=>void returned(l)}><PackageCheck size={14}/> Sudah kembali</button></td></tr>;
     })}</tbody></table>{!summary.unreturned.length&&<p className="empty-state">Semua barang sewa sudah kembali.</p>}</div>
 
     <div className="ops-section-title"><div><h2>Terlaris 30 hari terakhir</h2><p>Dari booking aktif dan selesai sejak {formatShortDay(summary.since)}, termasuk biaya lain di luar katalog.</p></div></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>ITEM</th><th>JUMLAH</th><th>BOOKING</th><th>PENDAPATAN</th></tr></thead><tbody>{summary.top.map(t=><tr key={t.addon_id??t.name}><td className="wide" data-label="Item"><b>{t.name}</b><small className="table-description">{t.type==="lainnya"?"Biaya lain":typeLabel[t.type]}</small></td><td data-label="Jumlah">{t.quantity}</td><td data-label="Booking">{t.bookings}</td><td data-label="Pendapatan">{money(t.revenue)}</td></tr>)}</tbody></table>{!summary.top.length&&<p className="empty-state">Belum ada tambahan yang tercatat dalam 30 hari terakhir.</p>}</div>
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Item</th><th>Jumlah</th><th>Booking</th><th>Pendapatan</th></tr></thead><tbody>{summary.top.map(t=><tr key={t.addon_id??t.name}><td className="wide" data-label="Item"><b>{t.name}</b><small className="table-description">{t.type==="lainnya"?"Biaya lain":typeLabel[t.type]}</small></td><td data-label="Jumlah">{t.quantity}</td><td data-label="Booking">{t.bookings}</td><td data-label="Pendapatan">{money(t.revenue)}</td></tr>)}</tbody></table>{!summary.top.length&&<p className="empty-state">Belum ada tambahan yang tercatat dalam 30 hari terakhir.</p>}</div>
 
     {editing!==undefined&&<AddonFormModal addon={editing} close={closeForm} done={()=>{closeForm();void load()}}/>}
     {stockOf&&<StockModal addon={stockOf} close={closeStock} changed={reload}/>}

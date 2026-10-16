@@ -87,7 +87,7 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
 
       <div className="manage-table-card ops-table table-cards">
         <table>
-          <thead><tr><th>TANGGAL</th><th>KETERANGAN</th><th>KATEGORI</th><th>CARA BAYAR</th><th className="right">JUMLAH</th><th>AKSI</th></tr></thead>
+          <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th>Cara bayar</th><th className="right">Jumlah</th><th>Aksi</th></tr></thead>
           <tbody>{(data?.records??[]).map(record => (
             <tr key={record.id}>
               <td data-label="Tanggal">{formatDate(record.date)}<small className="table-description">{record.number}</small></td>

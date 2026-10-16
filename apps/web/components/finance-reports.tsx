@@ -202,7 +202,7 @@ function LedgerReport({ setup, range }: { setup:Setup; range:Range }) {
           </div>
           <div className="manage-table-card ops-table table-cards">
             <table>
-              <thead><tr><th>TANGGAL</th><th>KETERANGAN</th><th>LAWAN AKUN</th><th className="right">DEBIT</th><th className="right">KREDIT</th><th className="right">SALDO</th></tr></thead>
+              <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Lawan akun</th><th className="right">Debit</th><th className="right">Kredit</th><th className="right">Saldo</th></tr></thead>
               <tbody>{data.rows.map((row,index) => (
                 <tr key={`${row.entry_id}-${index}`}>
                   <td data-label="Tanggal">{formatDate(row.date)}<small className="table-description">{row.number}</small></td>
@@ -257,7 +257,7 @@ function SubsidiaryReport({ range }: { range:Range }) {
       ) : (
         <div className="manage-table-card ops-table table-cards">
           <table>
-            <thead><tr><th>NAMA</th><th className="right">SALDO AWAL</th><th className="right">DEBIT</th><th className="right">KREDIT</th><th className="right">SALDO AKHIR</th><th/></tr></thead>
+            <thead><tr><th>Nama</th><th className="right">Saldo awal</th><th className="right">Debit</th><th className="right">Kredit</th><th className="right">Saldo akhir</th><th/></tr></thead>
             <tbody>{data.rows.map(row => (
               <tr key={row.key} className={open===row.key?"open":""}>
                 <td className="wide" data-label="Nama">

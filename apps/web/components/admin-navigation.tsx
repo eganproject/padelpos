@@ -30,6 +30,11 @@ export function useAdminNavigation() {
   return { ...navigation, loading };
 }
 
+/** Menu yang sedang dibuka: path sama persis, atau halaman turunannya. */
+export const isActiveMenu = (menu:NavigationMenu, pathname:string) => pathname === menu.path || (menu.path !== "/admin" && pathname.startsWith(`${menu.path}/`));
+export const menuIcon = (name:string) => icons[name as keyof typeof icons] || Circle;
+
+/** Sidebar ruang kerja ala ERPNext: label grup kecil, lalu baris ikon dan nama menu. */
 export function AdminNavigation({ menus, onNavigate }: { menus:NavigationMenu[]; onNavigate?:()=>void }) {
   const pathname = usePathname();
   const groups = useMemo(() => {
@@ -38,11 +43,11 @@ export function AdminNavigation({ menus, onNavigate }: { menus:NavigationMenu[];
     return [...result.entries()];
   }, [menus]);
 
-  return <>{groups.map(([group, items]) => <div className="admin-nav-group" key={group}><p className="admin-nav-label">{group}</p><nav>{items.map((menu) => {
-    const Icon = icons[menu.icon as keyof typeof icons] || Circle;
-    const active = pathname === menu.path || (menu.path !== "/admin" && pathname.startsWith(`${menu.path}/`));
-    return <Link href={menu.path} className={active ? "active" : ""} onClick={onNavigate} key={menu.id}><Icon/><span className="admin-nav-text">{menu.name}</span></Link>;
-  })}</nav></div>)}</>;
+  return <nav className="desk-nav">{groups.map(([group, items]) => <div className="desk-nav-section" key={group}><p className="desk-nav-label">{group}</p>{items.map((menu) => {
+    const Icon = menuIcon(menu.icon);
+    const active = isActiveMenu(menu, pathname);
+    return <Link href={menu.path} className={`desk-nav-item${active ? " selected" : ""}`} aria-current={active ? "page" : undefined} onClick={onNavigate} key={menu.id}><Icon aria-hidden="true"/><span>{menu.name}</span></Link>;
+  })}</div>)}</nav>;
 }
 
 export function usePermissionGuard(menus:NavigationMenu[], loading:boolean) {
@@ -50,7 +55,7 @@ export function usePermissionGuard(menus:NavigationMenu[], loading:boolean) {
   const router = useRouter();
   useEffect(() => {
     if (loading) return;
-    const allowed = menus.some((menu) => pathname === menu.path || (menu.path !== "/admin" && pathname.startsWith(`${menu.path}/`)));
+    const allowed = menus.some((menu) => isActiveMenu(menu, pathname));
     if (!allowed && menus.length) router.replace(menus[0].path);
   }, [loading, menus, pathname, router]);
 }

@@ -144,7 +144,7 @@ export function PaymentsPanel(){
 
     <div className="ops-section-title"><div><h2>Transaksi terakhir</h2><p>Dari checkout pelanggan dan link tagihan kasir. Zona waktu venue: {data.timezone}.</p></div></div>
     <div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>WAKTU</th><th>PESANAN</th><th>JADWAL</th><th>NOMINAL</th><th>METODE</th><th>STATUS</th><th>AKSI</th></tr></thead>
+      <thead><tr><th>Waktu</th><th>Pesanan</th><th>Jadwal</th><th>Nominal</th><th>Metode</th><th>Status</th><th>Aksi</th></tr></thead>
       <tbody>{data.intents.map(intent=><tr key={intent.order_id}>
         <td data-label="Waktu">{new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}<small className="table-description">{intent.environment==="production"?"Produksi":"Sandbox"}</small></td>
         <td className="wide" data-label="Pesanan"><b>{intent.customer}</b><small className="table-description">{intent.order_id} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</small></td>
