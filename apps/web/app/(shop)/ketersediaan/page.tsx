@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, ChevronDown, Clock3, Layers, Map as MapIcon, PackagePlus, RefreshCw, ShoppingBag, X } from "lucide-react";
+import { ArrowRight, CalendarDays, Check, ChevronDown, Clock3, Layers, Map as MapIcon, PackagePlus, RefreshCw, ShoppingBag, X } from "lucide-react";
 import { toast } from "sonner";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
@@ -148,10 +148,6 @@ function AvailabilityView() {
   const end = picked && effective ? endAt(picked.start, effective) : "";
   const total = picked && effective ? priceFor(pickedSlots, picked.start, effective) : 0;
   const appliedRules = picked && effective ? rulesFor(pickedSlots, picked.start, effective) : [];
-  // Mengetuk kotak "Termasuk" sama dengan mengetuk jam mulainya: pilihan dibatalkan.
-  const pickedSlot = (slots: ShopSlot[]) => slots.find(slot => slot.start === picked?.start) ?? slots[0];
-  const covered = (courtId: string, start: string) =>
-    !!picked && !!effective && picked.courtId === courtId && minute(start) >= minute(picked.start) && minute(start) < minute(picked.start) + effective;
 
   // Stok raket sewa bergantung pada jam main, jadi diperiksa ulang setiap jam, durasi, atau jadwal berubah.
   useEffect(() => {
@@ -296,7 +292,7 @@ function AvailabilityView() {
         <p className="shop-empty">Belum ada lapangan yang dibuka untuk pemesanan.</p>
       ) : (
         <>
-          <p className="book-hint"><Clock3 size={15} aria-hidden="true" /><span>Ketuk <b>jam mulai</b>. Anda main {durationLabel(duration)}, jam selesai tertulis di setiap kotak.</span></p>
+          <p className="book-hint"><Clock3 size={15} aria-hidden="true" /><span>Jam di kotak adalah <b>jam mulai</b>. Ketuk satu kotak, lalu Anda main {durationLabel(duration)} dari jam itu.</span></p>
           <div className="book-legend" aria-label="Keterangan">
             <span><i className="free" />Kosong</span>
             <span><i className="pick" />Pilihan Anda</span>
@@ -364,19 +360,17 @@ function AvailabilityView() {
                     ) : (
                       <div className="slot-grid">
                         {shown.map(slot => {
-                          const chosen = covered(court.id, slot.start);
-                          // Hanya kotak jam mulai yang ditandai "Dipilih"; kotak sesudahnya cukup "Termasuk".
-                          const first = chosen && slot.start === picked?.start;
+                          // Satu pilihan = satu kotak: hanya jam mulai yang ditandai, dengan jam selesainya.
+                          const chosen = picked?.courtId === court.id && picked.start === slot.start && !!end;
                           const booked = inCart(court.id, slot.start);
                           const open = slot.state === "available";
                           const fits = open && rangeIsFree(slots, slot.start, duration);
                           const longest = open && !fits ? durations.filter(value => rangeIsFree(slots, slot.start, value)).at(-1) : undefined;
                           const special = open && !!slot.rule;
-                          const state = first ? "picked" : chosen ? "inrange" : booked ? "incart" : !open ? slot.state : fits ? "free" : longest ? "short" : "nofit";
-                          const until = first ? end : chosen ? "" : fits ? endAt(slot.start, duration) : "";
-                          const label = first ? `dipilih, ${slot.start} sampai ${end}` : chosen ? `termasuk jadwal ${picked?.start}–${end}` : booked ? "sudah di keranjang"
+                          const state = chosen ? "picked" : booked ? "incart" : !open ? slot.state : fits ? "free" : longest ? "short" : "nofit";
+                          const label = chosen ? `dipilih, main ${slot.start} sampai ${end}` : booked ? "sudah di keranjang"
                             : slot.state === "booked" ? "sudah dipesan" : slot.state === "maintenance" ? "sedang perawatan"
-                              : fits ? `kosong, main ${slot.start} sampai ${until}, ${money(priceFor(slots, slot.start, duration))}`
+                              : fits ? `kosong, main ${slot.start} sampai ${endAt(slot.start, duration)}, ${money(priceFor(slots, slot.start, duration))}`
                                 : longest ? `hanya muat ${durationLabel(longest)}` : "tidak muat";
                           return (
                             <button
@@ -384,17 +378,26 @@ function AvailabilityView() {
                               type="button"
                               className={`slot ${state}${special ? " special" : ""}`}
                               disabled={!open || booked}
-                              aria-pressed={first}
+                              aria-pressed={chosen}
                               title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
                               aria-label={`${court.name} mulai ${slot.start}, ${label}${special ? `, tarif ${slot.rule}` : ""}`}
-                              onClick={() => pick(court.id, slots, chosen ? pickedSlot(slots) : slot)}
+                              onClick={() => pick(court.id, slots, slot)}
                             >
-                              <b>{slot.start}</b>
-                              {until && <span className="until">s/d {until}</span>}
-                              <small>
-                                {first ? "Dipilih" : chosen ? "Termasuk" : booked ? "Keranjang" : slot.state === "booked" ? "Terisi" : slot.state === "maintenance" ? "Perawatan"
-                                  : fits ? shortMoney(priceFor(slots, slot.start, duration)) : longest ? `Maks ${durationLabel(longest)}` : "Tak muat"}
-                              </small>
+                              {chosen ? (
+                                <>
+                                  <b>{slot.start}</b>
+                                  <span className="until">s/d {end}</span>
+                                  <small><Check size={12} strokeWidth={3} aria-hidden="true" /> {durationLabel(effective!)}</small>
+                                </>
+                              ) : (
+                                <>
+                                  <b>{slot.start}</b>
+                                  <small>
+                                    {booked ? "Keranjang" : slot.state === "booked" ? "Terisi" : slot.state === "maintenance" ? "Perawatan"
+                                      : fits ? shortMoney(priceFor(slots, slot.start, duration)) : longest ? `Maks ${durationLabel(longest)}` : "Tak muat"}
+                                  </small>
+                                </>
+                              )}
                             </button>
                           );
                         })}

@@ -43,7 +43,7 @@
 /* --- Tombol jam ---------------------------------------------------------- */
 .shop .slot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
 .shop .slot{
-  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:62px;padding:5px 4px;
+  position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:56px;padding:4px;
   border:1.5px solid var(--lime-edge);border-radius:12px;background:#fff;color:var(--ink);cursor:pointer;
   transition:background .12s,border-color .12s,transform .1s;
 }
@@ -66,13 +66,9 @@
 .shop .slot.picked{border-color:var(--green);background:var(--green);color:#fff}
 .shop .slot.picked small{color:var(--lime)}
 .shop .slot.picked:after{display:none}
-.shop .slot .until{font-size:11.5px;font-weight:500;color:var(--ink-3);font-variant-numeric:tabular-nums;line-height:1.2}
-.shop .slot.picked .until{color:#d4e0d7}
-/* Kotak sesudah jam mulai yang ikut terpakai: tampak sambungan, bukan pilihan terpisah. */
-.shop .slot.inrange{border-color:var(--green);border-style:solid;background:var(--green-wash);color:var(--green)}
-.shop .slot.inrange b{font-weight:600}
-.shop .slot.inrange small{color:var(--green)}
-.shop .slot.inrange:after{display:none}
+.shop .slot.picked .until{font-size:12px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
+.shop .slot.picked small{display:inline-flex;align-items:center;gap:3px}
+.shop .slot.picked{box-shadow:0 6px 16px #0f332640}
 .shop .book-hint{display:flex;align-items:flex-start;gap:6px;margin:10px 0 0;font-size:13.5px;color:var(--ink-2)}
 .shop .book-hint svg{flex:none;margin-top:2px;color:var(--lime-deep)}
 
