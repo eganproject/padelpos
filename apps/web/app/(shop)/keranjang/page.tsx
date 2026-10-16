@@ -14,6 +14,7 @@ import {
   cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
 } from "@/lib/cart";
 import { amountDue, quoteCart, startCheckout, type CartQuote } from "@/lib/payments";
+import { billOf, taxName } from "@/lib/bill";
 import { useAccount, validPhone } from "@/lib/account";
 
 const durationLabel = (minutes: number) => `${(minutes / 60).toLocaleString("id-ID")} jam`;
@@ -65,15 +66,17 @@ export default function CartPage() {
     return {
       item,
       courtTotal: matches ? checked.court_total : item.court_total,
-      total: matches ? checked.total : itemTotal(item),
+      // Sebelum server menjawab, pajak dihitung dengan rumus yang sama supaya angkanya tidak melompat.
+      ...(matches ? { tax: checked.tax, total: checked.total } : billOf(itemTotal(item), 0, payment?.tax)),
       /** Subtotal tambahan menurut server; harga di browser bisa sudah usang. */
       lineTotals: new Map(matches ? checked.addons.map(line => [line.addon_id, line.subtotal]) : []),
       problem: matches && !checked.ok ? checked.reason || "Sesi ini tidak dapat dipesan." : "",
       matches: !!matches,
     };
-  }), [items, quote]);
+  }), [items, quote, payment?.tax]);
   const valid = priced.filter(entry => !entry.problem);
   const total = valid.reduce((sum, entry) => sum + entry.total, 0);
+  const tax = valid.reduce((sum, entry) => sum + entry.tax, 0);
   const blocked = priced.some(entry => entry.problem);
   // DP dibulatkan per sesi oleh server, jadi nominalnya dijumlah per sesi, bukan dari total keranjang.
   const payNow = quote && priced.every(entry => entry.matches)
@@ -235,6 +238,7 @@ export default function CartPage() {
                   <dd>{problem ? "—" : money(itemPrice)}</dd>
                 </div>
               ))}
+              {tax > 0 && payment?.tax && <div><dt>{taxName(payment.tax)}</dt><dd>{money(tax)}</dd></div>}
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
                 <>

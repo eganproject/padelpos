@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { createSession,endSession,requireAuth,type AuthRequest } from "../auth.js";
 import { production } from "../config.js";
+import { contactPhoneSchema } from "../operations.js";
 import { getMenus,getRoles,getUsers,saveUsers,transaction } from "../store.js";
 import type { User } from "../types.js";
 export const publicUser=({passwordHash:_,...user}:User)=>user;
@@ -17,7 +18,7 @@ router.post("/register",async(req,res)=>{
     const provided=Buffer.from(typeof req.body.bootstrapToken==="string"?req.body.bootstrapToken:"");
     if(!expected.length||expected.length!==provided.length||!timingSafeEqual(expected,provided)) return res.status(403).json({message:"Token penyiapan admin tidak sesuai."});
   }
-  const parsed=z.object({name:z.string().trim().min(3).max(60),email:z.email().toLowerCase(),phone:z.string().trim().min(9).max(18),password:passwordSchema}).safeParse(req.body);
+  const parsed=z.object({name:z.string().trim().min(3).max(60),email:z.email().toLowerCase(),phone:contactPhoneSchema,password:passwordSchema}).safeParse(req.body);
   if(!parsed.success) return res.status(400).json({message:"Lengkapi data. Password 8–72 karakter dengan huruf kapital dan angka."});
   const {password,...data}=parsed.data;
   const passwordHash=await bcrypt.hash(password,12);

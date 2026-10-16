@@ -5,7 +5,9 @@ export type RecordKind = "pengeluaran" | "pemasukan";
 
 export type Account = { id:string; code:string; name:string; type:AccountType; subtype:AccountSubtype; is_cash:number; system_key:string|null; description:string; active:number; position:number; created_at:string };
 export type Partner = { id:string; name:string; kind:"pemasok"|"pelanggan"|"karyawan"|"lainnya"; phone:string; note:string; active:number; created_at:string };
-export type FinanceSettings = { cash_accounts:Record<string,string>; default_cash_account:string; locked_until:string; updated_at:string };
+export type TaxSettings = { enabled:boolean; label:string; rate:number; inclusive:boolean };
+export type GatewayFee = { percent:number; flat:number };
+export type FinanceSettings = { cash_accounts:Record<string,string>; default_cash_account:string; locked_until:string; updated_at:string; tax:TaxSettings; gateway_fees:Record<string,GatewayFee> };
 export type Setup = { accounts:Account[]; partners:Partner[]; settings:FinanceSettings; date:string; time:string; timezone:string };
 export type JournalLine = { id:string; account_id:string; account_code:string; account_name:string; debit:number; credit:number; memo:string; partner_id:string|null; partner_name:string|null; booking_id:string|null };
 export type JournalEntry = { id:string; number:string; date:string; memo:string; source:EntrySource; ref_id:string|null; created_by:string|null; created_at:string; lines:JournalLine[] };
@@ -23,14 +25,14 @@ export type BalanceSheet = {
   total_assets:number; total_liabilities:number; total_equity:number; difference:number; receivable:number; advances:number;
 };
 export type LedgerRow = { entry_id:string; number:string; date:string; memo:string; source:EntrySource; debit:number; credit:number; line_memo:string; counter:string; balance:number };
-export type GeneralLedger = { from:string; to:string; account:Account; opening:number; closing:number; rows:LedgerRow[]; debit:number; credit:number };
+export type GeneralLedger = { from:string; to:string; account:Account; opening:number; closing:number; rows:LedgerRow[]; debit:number; credit:number; truncated:boolean };
 export type SubsidiaryRow = { key:string; name:string; subtitle:string; opening:number; debit:number; credit:number; balance:number; detail:{label:string;amount:number}[] };
 export type SubsidiaryLedger = { kind:"piutang"|"utang"|"kas"; from:string; to:string; rows:SubsidiaryRow[]; total:number };
 export type Overview = {
   date:string; time:string; timezone:string; from:string; to:string;
   income:number; expense:number; net:number; previous:{from:string;to:string;income:number;expense:number;net:number};
   cash:{id:string;name:string;balance:number}[]; cash_total:number;
-  receivable:number; advances:number; payable:number;
+  receivable:number; advances:number; payable:number; tax_payable:number;
   expense_lines:ReportLine[]; income_lines:ReportLine[];
   series:{month:string;income:number;expense:number}[];
   due:{id:string;number:string;kind:RecordKind;date:string;amount:number;due_date:string|null;partner_name:string;account_name:string}[];
@@ -51,6 +53,11 @@ export const methodLabels:{key:string;label:string}[] = [
   { key:"cash", label:"Tunai di kasir" }, { key:"transfer", label:"Transfer bank" }, { key:"qris", label:"QRIS" },
   { key:"va", label:"Virtual account" }, { key:"ewallet", label:"Dompet digital" }, { key:"card", label:"Kartu kredit/debit" },
 ];
+/** Akun kas pilihan awal: yang diminta bila masih aktif, kalau tidak akun kas aktif pertama. */
+export const usableCash = (setup:Setup, preferred?:string|null) => {
+  const cash = setup.accounts.filter(account => account.is_cash && account.active);
+  return cash.some(account => account.id===preferred) ? preferred! : cash[0]?.id ?? "";
+};
 /** Kelompok akun yang boleh dipakai sebagai kategori pada formulir catatan. */
 export const categoryTypes:Record<RecordKind,AccountType[]> = { pengeluaran:["beban","aset","liabilitas"], pemasukan:["pendapatan","aset","liabilitas"] };
 export const categoryGroupLabel:Record<RecordKind,Record<string,string>> = {

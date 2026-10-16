@@ -3,10 +3,10 @@ import { requireMenu,type AuthRequest } from "../auth.js";
 import { db,getMenus,getRoles } from "../store.js";
 import { overview as financeOverview } from "../finance.js";
 import { addonSummary } from "../addons.js";
-import { bookings,courts,localClock,maintenances,minutes,type Payment } from "../operations.js";
+import { bookings,courts,localClock,maintenances,minutes,occupies,refundable,type Payment } from "../operations.js";
 const router=Router();
 router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
-  const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&b.status!=="cancelled");
+  const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&occupies(b));
   const allPayments=db.prepare("SELECT * FROM payments").all() as unknown as Payment[];
   const daily=Array.from({length:7},(_,index)=>{
     const day=new Date(now.date+"T12:00:00Z");day.setUTCDate(day.getUTCDate()-6+index);const date=day.toISOString().slice(0,10);
@@ -17,8 +17,12 @@ router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
   const maintenance=maintenances(now.date);
   const availableMinutes=active.reduce((sum,c)=>sum+minutes(c.closes_at)-minutes(c.opens_at)-maintenance.filter(m=>m.court_id===c.id).reduce((n,m)=>n+minutes(m.end_time)-minutes(m.start_time),0),0);
   const occupiedMinutes=today.filter(b=>active.some(c=>c.id===b.court_id)).reduce((sum,b)=>sum+minutes(b.end_time)-minutes(b.start_time),0);
-  const receivable=allBookings.filter(b=>b.status!=="cancelled").reduce((sum,b)=>sum+b.total-b.paid,0);
-  const refundsDue=allBookings.filter(b=>b.status==="cancelled").reduce((sum,b)=>sum+b.paid,0);
+  // Hanya booking yang benar-benar berjalan yang menjadi tagihan; booking online yang batal bayar
+  // (pending/kedaluwarsa) bukan utang pelanggan.
+  const live=(b:{status:string})=>b.status==="confirmed"||b.status==="completed";
+  const receivable=allBookings.filter(live).reduce((sum,b)=>sum+Math.max(0,b.total-b.paid),0);
+  // Uang yang masih harus dikembalikan: pembayaran booking batal/kedaluwarsa yang tidak ditahan, dan kelebihan bayar.
+  const refundsDue=allBookings.reduce((sum,b)=>sum+refundable(b),0);
   const extras=addonSummary();
   // Angka pembukuan hanya untuk staf yang memang boleh membuka menu Keuangan.
   const role=getRoles().find(r=>r.slug===req.auth!.role);
