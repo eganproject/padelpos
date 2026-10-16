@@ -661,6 +661,40 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 14").get()) transactio
   }
   db.prepare("INSERT INTO migrations VALUES (14, ?)").run(stamp);
 });
+/**
+ * Menu admin disusun ulang menurut kegunaannya: pekerjaan harian (Operasional), data venue yang
+ * dilihat pelanggan (Venue & Layanan), dan konfigurasi sistem (Pengaturan) seperti Midtrans,
+ * login Google pelanggan, serta hak akses staf. Pengaturan login Google pindah dari halaman
+ * Pelanggan ke menu "Login Pelanggan"; role yang dulu bisa membuka Pelanggan tetap memegangnya.
+ * Menu yang grupnya sudah diganti admin ke nama lain tidak dipindahkan, dan nama yang sudah
+ * diubah admin tidak ditimpa.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 15").get()) transaction(() => {
+  const stamp = new Date().toISOString();
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "customer-login" || menu.path === "/admin/customer-login")) {
+    menus.push({ id: "customer-login", name: "Login Pelanggan", path: "/admin/customer-login", icon: "KeyRound", group: "Pengaturan", order: 0, active: true, createdAt: stamp });
+  }
+  const plan: Record<string, [group: string, order: number]> = {
+    dashboard: ["Operasional", 1], bookings: ["Operasional", 2], customers: ["Operasional", 3], finance: ["Operasional", 4],
+    courts: ["Venue & Layanan", 101], addons: ["Venue & Layanan", 102], layout: ["Venue & Layanan", 103], info: ["Venue & Layanan", 104],
+    payments: ["Pengaturan", 201], "customer-login": ["Pengaturan", 202], users: ["Pengaturan", 203], roles: ["Pengaturan", 204], menus: ["Pengaturan", 205],
+    profile: ["Akun", 301],
+  };
+  const defaultGroups = new Set(["Operasional", "Hak Akses", "Akun", "Pengaturan"]);
+  for (const menu of menus) {
+    const target = plan[menu.id];
+    if (!target || !defaultGroups.has(menu.group)) continue;
+    [menu.group, menu.order] = target;
+  }
+  const payments = menus.find(menu => menu.id === "payments");
+  if (payments?.name === "Pembayaran") payments.name = "Pembayaran Online";
+  saveCollection("menus", menus);
+  const roles = collection<AccessRole>("roles");
+  for (const role of roles) if (role.menuIds.includes("customers") && !role.menuIds.includes("customer-login")) role.menuIds.push("customer-login");
+  saveCollection("roles", roles);
+  db.prepare("INSERT INTO migrations VALUES (15, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

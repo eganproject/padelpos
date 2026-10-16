@@ -1,6 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, CircleHelp, Copy, ExternalLink, KeyRound, Loader2, MessageCircle, RefreshCw, Search, ShieldCheck, TriangleAlert, UsersRound, X } from "lucide-react";
+import { Check, CircleHelp, Copy, ExternalLink, KeyRound, Loader2, MessageCircle, RefreshCw, Search, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatShortDay } from "@/lib/shop";
@@ -31,17 +32,13 @@ export function parseFirebaseConfig(text: string): Partial<Form> {
   return Object.fromEntries(Object.entries(found).filter(([, value]) => value)) as Partial<Form>;
 }
 
+/** Daftar akun pelanggan. Pengaturan login Google ada di menu Pengaturan → Login Pelanggan. */
 export function CustomersPanel() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<"akun" | "login">("akun");
   const load = useCallback(async () => {
-    try {
-      const result = await api<Data>("/operations/customers");
-      setData(result); setError("");
-      // Belum siap: admin paling butuh panduan penyiapan, jadi tab itu yang dibuka.
-      if (!result.settings.ready) setTab(current => (current === "akun" && !result.accounts.length ? "login" : current));
-    } catch (problem) { setError((problem as Error).message); }
+    try { setData(await api<Data>("/operations/customers")); setError(""); }
+    catch (problem) { setError((problem as Error).message); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -49,21 +46,30 @@ export function CustomersPanel() {
   if (!data) return <p className="empty-state">Memuat data pelanggan…</p>;
   return (
     <div className="cms">
-      <div className="cms-tabs" role="tablist" aria-label="Bagian pelanggan">
-        <button type="button" role="tab" aria-selected={tab === "akun"} onClick={() => setTab("akun")}><UsersRound size={16} aria-hidden="true" /> <span>Akun pelanggan</span></button>
-        <button type="button" role="tab" aria-selected={tab === "login"} onClick={() => setTab("login")}>
-          <KeyRound size={16} aria-hidden="true" /> <span>Login Google</span>
-          {!data.settings.ready && <i className="cms-dot" title="Belum aktif" />}
-        </button>
-      </div>
-      {tab === "akun"
-        ? <AccountsTab accounts={data.accounts} ready={data.settings.ready} openSetup={() => setTab("login")} />
-        : <LoginTab settings={data.settings} saved={settings => setData(current => current && { ...current, settings })} />}
+      {!data.settings.ready && data.accounts.length > 0 && (
+        <p className="cust-note"><TriangleAlert size={15} aria-hidden="true" /> Login Google pelanggan sedang tidak aktif. <Link className="ops-link" href="/admin/customer-login">Buka pengaturan login</Link></p>
+      )}
+      <AccountsTab accounts={data.accounts} ready={data.settings.ready} />
     </div>
   );
 }
 
-function AccountsTab({ accounts, ready, openSetup }: { accounts: AccountRow[]; ready: boolean; openSetup: () => void }) {
+/** Pengaturan login Google (Firebase) untuk akun pelanggan, sebagai halaman pengaturan tersendiri. */
+export function CustomerLoginPanel() {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try { setSettings((await api<{ settings: Settings }>("/operations/customers/login")).settings); setError(""); }
+    catch (problem) { setError((problem as Error).message); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  if (error && !settings) return <ErrorBox message={error} retry={load} />;
+  if (!settings) return <p className="empty-state">Memuat pengaturan login…</p>;
+  return <div className="cms"><LoginTab settings={settings} saved={setSettings} /></div>;
+}
+
+function AccountsTab({ accounts, ready }: { accounts: AccountRow[]; ready: boolean }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -77,7 +83,7 @@ function AccountsTab({ accounts, ready, openSetup }: { accounts: AccountRow[]; r
       <div className="ops-empty">
         <h2>Belum ada pelanggan yang mendaftar</h2>
         <p>{ready ? "Pelanggan dapat mendaftar dari tombol Masuk di situs. Akun yang dibuat akan tampil di sini." : "Siapkan login Google lebih dulu supaya pelanggan dapat membuat akun."}</p>
-        {!ready && <button type="button" className="ops-primary" onClick={openSetup}><KeyRound size={15} aria-hidden="true" /> Siapkan login Google</button>}
+        {!ready && <Link className="ops-primary" href="/admin/customer-login"><KeyRound size={15} aria-hidden="true" /> Siapkan login Google</Link>}
       </div>
     );
   }

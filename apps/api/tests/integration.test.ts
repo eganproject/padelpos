@@ -452,7 +452,12 @@ test("nama menu bawaan diterjemahkan tanpa menimpa nama yang sudah diubah admin"
     assert.equal(byId.users.name,"Pengguna");
     assert.equal(byId.layout.name,"Denah Venue","menu yang ditambahkan migrasi 3 ikut diterjemahkan");
     assert.equal(byId.bookings.name,"Jadwal Lapangan","nama yang sudah diubah admin harus dipertahankan");
-    assert.equal(byId.users.group,"Hak Akses");
+    assert.equal(byId.users.group,"Pengaturan","hak akses staf termasuk pengaturan sistem");
+    assert.equal(byId.payments.group,"Pengaturan","Midtrans dipisah dari menu operasional");
+    assert.equal(byId.payments.name,"Pembayaran Online");
+    assert.equal(byId["customer-login"].group,"Pengaturan");
+    assert.equal(byId.layout.group,"Venue & Layanan");
+    assert.equal(byId.dashboard.group,"Operasional");
     assert.equal(byId.laporan.group,"Operasional","menu kustom tetap satu grup dengan menu bawaan");
   } finally {
     assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-menu-test-"));

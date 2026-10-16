@@ -76,8 +76,10 @@ router.post("/bookings/:id/account",requireMenu("bookings"),(req:AuthRequest,res
 
 // Akun pelanggan dan pengaturan login Google (Firebase).
 router.get("/customers",requireMenu("customers"),(_req,res)=>res.json({settings:adminLogin(),accounts:adminAccounts()}));
-router.put("/customers/login",requireMenu("customers"),(req:AuthRequest,res)=>res.json({settings:saveLoginSettings(req.body,req.auth!.sub)}));
-router.post("/customers/login/test",requireMenu("customers"),async(_req,res)=>res.json(await testLogin()));
+// Pengaturan login Firebase punya menu sendiri di grup Pengaturan, terpisah dari daftar pelanggan.
+router.get("/customers/login",requireMenu("customer-login"),(_req,res)=>res.json({settings:adminLogin()}));
+router.put("/customers/login",requireMenu("customer-login"),(req:AuthRequest,res)=>res.json({settings:saveLoginSettings(req.body,req.auth!.sub)}));
+router.post("/customers/login/test",requireMenu("customer-login"),async(_req,res)=>res.json(await testLogin()));
 router.post("/bookings/:id/payment-link",requireMenu("bookings"),async(req:AuthRequest,res)=>res.status(201).json({intent:await createPaymentLink(String(req.params.id),req.body,req.auth!.sub)}));
 router.patch("/bookings/:id/status",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.changeBookingStatus(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/payments",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json(ops.recordPayment(String(req.params.id),req.body,req.auth!.sub)));
