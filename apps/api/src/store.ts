@@ -726,6 +726,57 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 16").get()) transactio
   saveCollection("roles", roles);
   db.prepare("INSERT INTO migrations VALUES (16, ?)").run(stamp);
 });
+/**
+ * Pindah jadwal, notifikasi email, dan indeks untuk dashboard.
+ * - Trigger bentrok jadwal kini juga menjaga UPDATE lapangan/tanggal/jam, karena booking aktif
+ *   dapat dipindah. `reschedule_count` membatasi pindah jadwal oleh pelanggan sendiri.
+ * - `bookings.email` menyimpan email pelanggan untuk booking yang dibuat staf (booking online memakai
+ *   email pesanan atau akun Google).
+ * - `email_outbox` adalah antrean email: ditulis di dalam transaksi yang sama dengan perubahannya,
+ *   lalu dikirim oleh proses latar. `key` unik membuat email yang sama tidak terkirim dua kali.
+ * - Indeks tanggal booking dan waktu pembayaran dipakai dashboard dan daftar booking per rentang.
+ * - Menu "Notifikasi Email" disisipkan di grup Pengaturan, bawaannya hanya untuk admin.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 17").get()) transaction(() => {
+  const stamp = new Date().toISOString();
+  db.exec(`
+    ALTER TABLE bookings ADD COLUMN reschedule_count INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE bookings ADD COLUMN email TEXT NOT NULL DEFAULT '';
+    CREATE TRIGGER booking_overlap_move BEFORE UPDATE OF court_id,date,start_time,end_time ON bookings WHEN NEW.status IN ('pending','confirmed','completed') BEGIN${overlapGuard(true)}
+    END;
+    CREATE INDEX bookings_date ON bookings (date, start_time);
+    CREATE INDEX payments_created ON payments (created_at);
+    CREATE TABLE email_outbox (
+      id TEXT PRIMARY KEY,
+      key TEXT NOT NULL UNIQUE,
+      kind TEXT NOT NULL,
+      recipient TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      text TEXT NOT NULL,
+      html TEXT NOT NULL,
+      ref_id TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at INTEGER NOT NULL,
+      last_error TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      sent_at TEXT
+    );
+    CREATE INDEX email_outbox_queue ON email_outbox (status, next_attempt_at);
+    CREATE INDEX email_outbox_created ON email_outbox (created_at);
+  `);
+  const menus = collection<AccessMenu>("menus");
+  if (!menus.some(menu => menu.id === "notifications" || menu.path === "/admin/notifications")) {
+    menus.push({ id: "notifications", name: "Notifikasi Email", path: "/admin/notifications", icon: "Mail", group: "Pengaturan", order: 203, active: true, createdAt: stamp });
+    // Menu pengaturan setelah Pengaturan Keuangan bergeser satu agar Notifikasi Email duduk di antaranya.
+    for (const menu of menus) if (menu.id !== "notifications" && menu.group === "Pengaturan" && menu.order >= 203 && menu.order < 300) menu.order += 1;
+    saveCollection("menus", menus);
+    const roles = collection<AccessRole>("roles");
+    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("notifications")) role.menuIds.push("notifications");
+    saveCollection("roles", roles);
+  }
+  db.prepare("INSERT INTO migrations VALUES (17, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

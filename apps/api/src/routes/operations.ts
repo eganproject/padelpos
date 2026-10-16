@@ -5,6 +5,7 @@ import * as content from "../content.js";
 import { addPhoto,maxPhotoSize,orderPhotos,photoIndex,photoTypes,removePhoto } from "../photos.js";
 import * as addons from "../addons.js";
 import * as finance from "../finance.js";
+import * as notifications from "../notifications.js";
 import { taxSnapshot } from "../bill.js";
 import { adminAccounts, adminLogin, bookingAccount, linkBooking, saveLoginSettings, testLogin } from "../customers.js";
 import { adminPayment,savePaymentSettings,testCredentials } from "../midtrans.js";
@@ -66,13 +67,19 @@ router.put("/content/faqs",requireMenu("info"),(req:AuthRequest,res)=>res.json({
 router.post("/maintenance",requireMenu("courts"),(req:AuthRequest,res)=>res.status(201).json({maintenance:ops.createMaintenance(req.body,req.auth!.sub)}));
 router.delete("/maintenance/:id",requireMenu("courts"),(req:AuthRequest,res)=>{ops.removeMaintenance(String(req.params.id),req.auth!.sub);res.status(204).send()});
 router.get("/bookings",requireMenu("bookings"),(req,res)=>{
-  const date=req.query.date===undefined?undefined:ops.dateSchema.parse(req.query.date);
   expireHolds();
-  res.json({bookings:ops.bookings(date),...ops.localClock()});
+  res.json({...ops.searchBookings(req.query),...ops.localClock()});
 });
 router.post("/bookings",requireMenu("bookings"),(req:AuthRequest,res)=>res.status(201).json({booking:ops.createBooking(req.body,req.auth!.sub)}));
 router.get("/bookings/:id",requireMenu("bookings"),(req,res)=>{const booking=ops.getBooking(String(req.params.id));res.json({booking,payments:ops.payments(booking.id),addons:addons.bookingAddons(booking.id),intents:bookingIntents(booking.id),account:bookingAccount(booking)})});
+router.post("/bookings/:id/reschedule",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({booking:ops.rescheduleBooking(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/account",requireMenu("bookings"),(req:AuthRequest,res)=>res.json({account:linkBooking(String(req.params.id),req.body,req.auth!.sub)}));
+
+// Notifikasi email: pengaturan SMTP, email uji, dan antrean kiriman.
+router.get("/notifications",requireMenu("notifications"),(_req,res)=>res.json({settings:notifications.adminEmail(),outbox:notifications.outbox()}));
+router.put("/notifications/settings",requireMenu("notifications"),(req:AuthRequest,res)=>res.json({settings:notifications.saveEmailSettings(req.body,req.auth!.sub)}));
+router.post("/notifications/test",requireMenu("notifications"),async(req:AuthRequest,res)=>res.json(await notifications.sendTestEmail(req.body,req.auth!.sub)));
+router.post("/notifications/:id/retry",requireMenu("notifications"),async(req:AuthRequest,res)=>{await notifications.retryEmail(String(req.params.id),req.auth!.sub);res.json({outbox:notifications.outbox()})});
 
 // Akun pelanggan dan pengaturan login Google (Firebase).
 router.get("/customers",requireMenu("customers"),(_req,res)=>res.json({settings:adminLogin(),accounts:adminAccounts()}));

@@ -1,7 +1,7 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import { createCustomerSession, customerAccountId, endCustomerSession } from "../auth.js";
-import { claim, deleteAccount, history, overview, publicAccount, signIn, getAccount, updateProfile } from "../customers.js";
+import { claim, deleteAccount, history, overview, publicAccount, rescheduleOwn, signIn, getAccount, updateProfile } from "../customers.js";
 
 /** Area akun pelanggan. Terpisah dari sesi staf: cookie, batas permintaan, dan hak aksesnya sendiri. */
 const router = Router();
@@ -45,6 +45,8 @@ router.delete("/me", requireCustomer, (req: CustomerRequest, res) => {
 });
 router.get("/overview", requireCustomer, (req: CustomerRequest, res) => res.json(overview(req.accountId!)));
 router.get("/bookings", requireCustomer, (req: CustomerRequest, res) => res.json(history(req.accountId!, req.query.scope)));
+router.post("/bookings/:id/reschedule", requireCustomer, limit(15, 10, "Terlalu banyak percobaan pindah jadwal. Coba lagi dalam 15 menit."),
+  (req: CustomerRequest, res) => res.json({ booking: rescheduleOwn(req.accountId!, String(req.params.id), req.body) }));
 router.post("/claim", requireCustomer, limit(15, 10, "Terlalu banyak percobaan klaim. Coba lagi dalam 15 menit."),
   (req: CustomerRequest, res) => res.json(claim(req.accountId!, req.body)));
 

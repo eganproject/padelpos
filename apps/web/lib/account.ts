@@ -13,6 +13,8 @@ export type HistoryItem = {
   court_id: string; court_name: string; date: string; start_time: string; end_time: string;
   status: "pending" | "confirmed" | "completed" | "cancelled" | "expired"; phase: Phase; source: "staff" | "online";
   total: number; paid: number; cancel_reason: string;
+  /** Boleh tidaknya pelanggan memindah jadwal sendiri, dengan keterangan untuk ditampilkan. */
+  reschedule?: { allowed: boolean; reason: string };
   addons: { name: string; quantity: number; subtotal: number }[];
 };
 export type Overview = {
@@ -146,6 +148,8 @@ export const saveProfile = async (body: { name: string; phone: string }) => {
   setAccount(result.account);
   return result.account;
 };
+export const rescheduleBooking = (id: string, body: { court_id: string; date: string; start_time: string; end_time: string }) =>
+  member(api<{ booking: HistoryItem }>(`/customer/bookings/${encodeURIComponent(id)}/reschedule`, { method: "POST", body: JSON.stringify(body) }));
 export const claimOrder = (body: { code: string; phone: string }) =>
   api<{ linked: number; already: number }>("/customer/claim", { method: "POST", body: JSON.stringify(body) });
 export async function deleteAccount() {

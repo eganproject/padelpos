@@ -212,6 +212,26 @@ export const linesSchema=z.array(lineSchema).max(30,"Maksimal 30 baris tambahan 
 export function bookingAddons(bookingId:string){
   return db.prepare("SELECT id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,returned_at,created_at FROM booking_addons WHERE booking_id=? ORDER BY created_at,rowid").all(bookingId) as unknown as BookingAddon[];
 }
+/**
+ * Tambahan booking yang dipindah ke jam lain: barang sewa harus cukup di jam baru, dan harga per jam
+ * mengikuti durasi baru. Barang jual tidak bergantung jam. Mengembalikan subtotal baru tiap baris
+ * tanpa menyimpan apa pun; `saveMovedLines` menuliskannya setelah semua pemeriksaan lolos.
+ */
+export function moveLines(bookingId:string,window:AddonWindow){
+  const duration=minutes(window.end)-minutes(window.start),catalog=addons();
+  return bookingAddons(bookingId).map(line=>{
+    const addon=line.type==="sewa"&&line.addon_id?catalog.find(entry=>entry.id===line.addon_id):undefined;
+    if(addon&&addon.stock!==null){
+      const use=peakUse(addon.id,window,bookingId);
+      check(use+line.quantity<=addon.stock,409,`${addon.name} hanya tersisa ${Math.max(0,addon.stock-use)} pada ${window.start}–${window.end}. Kurangi jumlahnya atau pilih jam lain.`);
+    }
+    return {id:line.id,subtotal:lineTotal(line.unit_price,line.quantity,line.pricing,duration)};
+  });
+}
+export function saveMovedLines(lines:{id:string;subtotal:number}[]){
+  const update=db.prepare("UPDATE booking_addons SET subtotal=? WHERE id=?");
+  for(const line of lines)update.run(line.subtotal,line.id);
+}
 /** Potong (atau kembalikan bila negatif) stok barang jual yang dilacak. */
 function consume(addonId:string|null,quantity:number,bookingId:string,actor:string,note=""){
   if(!addonId||quantity===0)return;

@@ -93,7 +93,7 @@ function cashAccountFor(method: string) {
   return systemAccount("kas").id;
 }
 /** Pembukuan yang sudah dikunci tidak boleh disentuh lagi oleh pencatatan manual. */
-function ensureOpen(date: string) {
+export function ensureOpen(date: string) {
   const locked = settings().locked_until;
   check(!locked || date > locked, 409, `Pembukuan sampai ${locked} sudah dikunci. Pilih tanggal setelahnya atau ubah kuncinya di Pengaturan.`);
 }

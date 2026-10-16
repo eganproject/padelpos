@@ -5,7 +5,8 @@ import { check } from "./errors.js";
 import { localClock } from "./clock.js";
 import { publicUrl } from "./config.js";
 import { bookingAddons } from "./addons.js";
-import { getBooking, type Booking } from "./operations.js";
+import { customerMaxReschedules, getBooking, rescheduleBooking, type Booking } from "./operations.js";
+import { getPolicies } from "./content.js";
 import { bookingCode, expireHolds, normalizePhone } from "./payments.js";
 
 /**
@@ -260,7 +261,19 @@ const pendingIntent = (orderId: string) =>
   db.prepare("SELECT amount,expires_at,redirect_url FROM payment_intents WHERE order_ref=? AND status='pending' ORDER BY created_at DESC LIMIT 1").get(orderId) as
     { amount: number; expires_at: number; redirect_url: string | null } | undefined;
 
-export function historyItem(booking: Booking, now = localClock()) {
+/**
+ * Boleh tidaknya pelanggan memindah jadwal sendiri, beserta alasannya bila tidak. Aturannya sama
+ * dengan pemeriksaan di `rescheduleBooking`; ini hanya untuk menampilkan tombol dan keterangannya.
+ */
+function reschedulable(booking: Booking, now: { date: string; time: string }, policy = getPolicies()) {
+  if (booking.status !== "confirmed" || phaseOf(booking, now) !== "upcoming") return { allowed: false, reason: "" };
+  if (policy.reschedule !== "yes") return { allowed: false, reason: "Hubungi venue untuk pindah jadwal." };
+  if (booking.reschedule_count >= customerMaxReschedules) return { allowed: false, reason: "Jadwal booking ini sudah pernah dipindah." };
+  const startsIn = (Date.parse(`${booking.date}T${booking.start_time}:00Z`) - Date.parse(`${now.date}T${now.time}:00Z`)) / 3600000;
+  if (startsIn < policy.reschedule_hours) return { allowed: false, reason: `Batas pindah jadwal ${policy.reschedule_hours} jam sebelum main sudah lewat.` };
+  return { allowed: true, reason: policy.reschedule_hours ? `Bisa dipindah sekali, paling lambat ${policy.reschedule_hours} jam sebelum main.` : "Bisa dipindah sekali sebelum main." };
+}
+export function historyItem(booking: Booking, now = localClock(), policy = getPolicies()) {
   const order = orderOf(booking.id);
   return {
     id: booking.id, code: bookingCode(booking.id), order_id: order?.id ?? null, order_code: order?.code ?? null,
@@ -268,6 +281,7 @@ export function historyItem(booking: Booking, now = localClock()) {
     date: booking.date, start_time: booking.start_time, end_time: booking.end_time,
     status: booking.status, phase: phaseOf(booking, now), source: booking.source,
     total: booking.total, paid: booking.paid, cancel_reason: booking.cancel_reason,
+    reschedule: reschedulable(booking, now, policy),
     addons: bookingAddons(booking.id).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
   };
 }
@@ -277,7 +291,8 @@ function accountBookings(accountId: string) {
   expireHolds();
   const now = localClock();
   const ids = db.prepare("SELECT id FROM bookings WHERE account_id=? ORDER BY date DESC,start_time DESC").all(accountId) as { id: string }[];
-  return ids.map(row => historyItem(getBooking(row.id), now));
+  const policy = getPolicies();
+  return ids.map(row => historyItem(getBooking(row.id), now, policy));
 }
 
 export function history(accountId: string, scope: unknown) {
@@ -405,4 +420,12 @@ export function linkBooking(bookingId: string, input: unknown, actor: string) {
   db.prepare("UPDATE bookings SET account_id=? WHERE id=?").run(account_id, booking.id);
   audit(actor, account_id ? "booking.account.link" : "booking.account.unlink", booking.id);
   return bookingAccount(booking);
+}
+
+/** Pelanggan memindah jadwal booking miliknya sendiri. Booking orang lain dijawab "tidak ditemukan". */
+export function rescheduleOwn(accountId: string, bookingId: string, input: unknown) {
+  getAccount(accountId);
+  const owner = db.prepare("SELECT account_id FROM bookings WHERE id=?").get(bookingId) as { account_id: string | null } | undefined;
+  check(owner && owner.account_id === accountId, 404, "Booking tidak ditemukan di akun Anda.");
+  return historyItem(rescheduleBooking(bookingId, input, accountId, true));
 }

@@ -1,7 +1,7 @@
 import type { TaxSnapshot } from "./bill";
 export type Court={id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id?:string|null;photos?:string[];state?:string;until?:string|null};
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
-export type Booking={id:string;court_id:string;court_name:string;customer:string;phone:string;date:string;start_time:string;end_time:string;total:number;paid:number;status:BookingStatus;notes:string;cancel_reason:string;
+export type Booking={id:string;court_id:string;court_name:string;customer:string;phone:string;email?:string;reschedule_count?:number;date:string;start_time:string;end_time:string;total:number;paid:number;status:BookingStatus;notes:string;cancel_reason:string;
   /** Porsi sewa lapangan; selisih dengan `total` adalah sewa & tambahan. */
   court_total:number;addon_count:number;
   /** Sudah termasuk dalam `total`. `tax_rate` dalam basis poin (1000 = 10%). */

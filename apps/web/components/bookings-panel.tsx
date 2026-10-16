@@ -1,6 +1,6 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
-import { Copy,CreditCard,PackageCheck,PackagePlus,Plus } from "lucide-react";
+import { CalendarClock,Copy,CreditCard,PackageCheck,PackagePlus,Plus } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
@@ -34,24 +34,33 @@ function firstStart(court:{opens_at:string;closes_at:string},date:string,context
 }
 
 export function BookingsPanel(){
-  const [data,setData]=useState<{bookings:Booking[];date:string;timezone:string}|null>(null);
+  const [data,setData]=useState<{bookings:Booking[];truncated:boolean;date:string;timezone:string}|null>(null);
   const [date,setDate]=useState(""),[query,setQuery]=useState(""),[status,setStatus]=useState("");
   const [error,setError]=useState(""),[creating,setCreating]=useState(false),[selected,setSelected]=useState<string|null>(null);
-  const load=useCallback(async()=>{try{setData(await api("/operations/bookings"));setError("")}catch(e){setError((e as Error).message)}},[]);
+  // Pencarian dikirim ke server setelah berhenti mengetik sebentar, bukan di setiap ketukan.
+  const [search,setSearch]=useState("");
+  useEffect(()=>{const timer=setTimeout(()=>setSearch(query.trim()),300);return()=>clearTimeout(timer)},[query]);
+  /** Tanpa tanggal dan kata kunci, server hanya mengirim 30 hari terakhir sampai 90 hari ke depan. */
+  const load=useCallback(async()=>{
+    const params=new URLSearchParams();
+    if(date)params.set("date",date);if(status)params.set("status",status);if(search)params.set("q",search);
+    if(!date&&!search)params.set("window","recent");
+    try{setData(await api(`/operations/bookings?${params}`));setError("")}catch(e){setError((e as Error).message)}
+  },[date,status,search]);
   useEffect(()=>{void load()},[load]);
   const closeCreate=useCallback(()=>setCreating(false),[]);
   const closeDetail=useCallback(()=>setSelected(null),[]);
-  const list=data?.bookings.filter(b=>(!date||b.date===date)&&(!status||b.status===status)&&`${b.customer} ${b.phone} ${b.court_name} ${b.id}`.toLowerCase().includes(query.toLowerCase()))||[];
+  const list=data?.bookings||[];
   return <>{error&&<ErrorBox message={error} retry={load}/>}<div className="ops-actions"><p>Semua jam mengikuti zona waktu venue ({data?.timezone||"…"}).</p><button className="ops-primary" onClick={()=>setCreating(true)}><Plus size={16}/> Booking baru</button></div>
     <div className="ops-filters"><label>Cari pelanggan / lapangan<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nama, telepon, atau kode booking"/></label><label>Tanggal<DateInput value={date} onChange={e=>setDate(e.target.value)}/></label><label>Status<Select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Semua status</option>{Object.entries(statusLabel).map(([key,value])=><option key={key} value={key}>{value}</option>)}</Select></label><button className="ops-secondary" onClick={()=>setDate(data?.date||"")}>Hari ini</button><button className="ops-secondary" onClick={()=>{setDate("");setStatus("");setQuery("")}}>Reset</button></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Lapangan / jadwal</th><th>Status</th><th>Tagihan</th><th>Pembayaran neto</th><th>Aksi</th></tr></thead><tbody>{list.map(b=><tr key={b.id}><td className="wide" data-label="Pelanggan"><b>{b.customer}</b><small className="table-description">{b.phone} · {b.id.slice(0,8).toUpperCase()}</small></td><td className="wide" data-label="Lapangan & jadwal">{b.court_name}<small className="table-description">{formatShortDay(b.date)} · {b.start_time} – {b.end_time}</small></td><td data-label="Status"><span className={`status-pill ${statusTone[b.status]}`}>{statusLabel[b.status]}</span></td><td data-label="Tagihan">{money(b.total)}{b.addon_count>0&&<small className="table-description">Termasuk tambahan {money(b.total-b.court_total)}</small>}</td><td data-label="Pembayaran neto">{money(b.paid)}<small className="table-description">{balanceNote(b)}</small></td><td className="actions"><button className="ops-secondary" onClick={()=>setSelected(b.id)}>Detail / bayar</button></td></tr>)}</tbody></table>{!data?<p className="empty-state">Memuat booking…</p>:!list.length&&<div className="ops-empty"><h2>Belum ada booking yang sesuai</h2><p>Buat reservasi pertama atau ubah filter pencarian.</p></div>}</div>
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Lapangan / jadwal</th><th>Status</th><th>Tagihan</th><th>Pembayaran neto</th><th>Aksi</th></tr></thead><tbody>{list.map(b=><tr key={b.id}><td className="wide" data-label="Pelanggan"><b>{b.customer}</b><small className="table-description">{b.phone} · {b.id.slice(0,8).toUpperCase()}</small></td><td className="wide" data-label="Lapangan & jadwal">{b.court_name}<small className="table-description">{formatShortDay(b.date)} · {b.start_time} – {b.end_time}</small></td><td data-label="Status"><span className={`status-pill ${statusTone[b.status]}`}>{statusLabel[b.status]}</span></td><td data-label="Tagihan">{money(b.total)}{b.addon_count>0&&<small className="table-description">Termasuk tambahan {money(b.total-b.court_total)}</small>}</td><td data-label="Pembayaran neto">{money(b.paid)}<small className="table-description">{balanceNote(b)}</small></td><td className="actions"><button className="ops-secondary" onClick={()=>setSelected(b.id)}>Detail / bayar</button></td></tr>)}</tbody></table>{data&&list.length>0&&(data.truncated||(!date&&!search))&&<p className="empty-state">{data.truncated?`Menampilkan ${list.length} booking pertama. Pilih tanggal atau cari nama untuk mempersempit.`:"Menampilkan 30 hari terakhir sampai 90 hari ke depan. Pilih tanggal atau cari nama, telepon, atau kode untuk booking lain."}</p>}{!data?<p className="empty-state">Memuat booking…</p>:!list.length&&<div className="ops-empty"><h2>Belum ada booking yang sesuai</h2><p>Buat reservasi pertama atau ubah filter pencarian.</p></div>}</div>
     {creating&&<BookingForm close={closeCreate} done={id=>{closeCreate();setSelected(id);void load()}}/>}
     {selected&&<BookingDetail id={selected} close={closeDetail} changed={()=>void load()}/>}
   </>;
 }
 function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
   const [context,setContext]=useState<Context|null>(null);
-  const [form,setForm]=useState({court_id:"",customer:"",phone:"",date:"",start_time:"",end_time:"",notes:""});
+  const [form,setForm]=useState({court_id:"",customer:"",phone:"",email:"",date:"",start_time:"",end_time:"",notes:""});
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[refreshing,setRefreshing]=useState(true);
   const [drafts,setDrafts]=useState<Draft[]>([]),[options,setOptions]=useState<AddonOption[]|null>(null);
   useEffect(()=>{
@@ -92,7 +101,7 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
     <div className="ops-schedule"><b>Jadwal terisi · {form.date?formatShortDay(form.date):"…"}</b>{refreshing?<p>Memperbarui jadwal…</p>:schedule.length?schedule.map(s=><span key={s.id}>{s.start_time} – {s.end_time} · {s.label}</span>):<p>Belum ada booking atau perawatan.</p>}</div>
     <div className="field-grid"><label>Mulai<Select required value={form.start_time} onChange={e=>setForm({...form,start_time:e.target.value,end_time:timeSlots(minute(e.target.value)+30,minute(e.target.value)+30)[0]})}><option value="" disabled>Pilih jam</option>{starts.map(t=><option key={t} disabled={form.date===context?.date&&t<context.time}>{t}</option>)}</Select></label><label>Selesai<Select required value={form.end_time} onChange={e=>setForm({...form,end_time:e.target.value})}><option value="" disabled>Pilih jam</option>{ends.map(t=><option key={t} disabled={t<=form.start_time}>{t}</option>)}</Select></label></div>
     {conflict&&<ErrorBox message="Jam yang dipilih bertabrakan dengan jadwal terisi."/>}
-    <div className="field-grid"><label>Nama pelanggan<input required minLength={2} maxLength={80} value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})}/></label><label>Nomor telepon<input required minLength={9} maxLength={18} value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label></div><label>Catatan (opsional)<textarea maxLength={500} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></label>
+    <div className="field-grid"><label>Nama pelanggan<input required minLength={2} maxLength={80} value={form.customer} onChange={e=>setForm({...form,customer:e.target.value})}/></label><label>Nomor telepon<input required minLength={9} maxLength={18} value={form.phone} onChange={e=>setForm({...form,phone:e.target.value})}/></label></div><label>Email pelanggan (opsional)<input type="email" maxLength={120} value={form.email} placeholder="Untuk konfirmasi dan pengingat lewat email" onChange={e=>setForm({...form,email:e.target.value})}/></label><label>Catatan (opsional)<textarea maxLength={500} value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></label>
     <h3 className="modal-subhead">Sewa & tambahan <small>opsional</small></h3>
     {validTime?<AddonLinesEditor options={options} drafts={drafts} onChange={setDrafts} duration={duration}/>:<p className="ops-muted">Pilih jam main untuk melihat stok raket, bola, dan tambahan lain.</p>}
     <div className="ops-total"><span>Sewa lapangan</span><strong>{money(price)}</strong></div>
@@ -126,6 +135,48 @@ function BillAdjust({booking,busy,onSaved}:{booking:Booking;busy:boolean;onSaved
       {!closed&&<label>Alasan<input value={note} maxLength={120} required={amount>0} minLength={amount>0?3:undefined} placeholder="Mis. Member, kompensasi lampu mati" onChange={e=>setNote(e.target.value)}/></label>}
     </div>
     <Submit busy={busy||saving}>{closed?"Simpan denda":"Simpan potongan"}</Submit>
+  </form>;
+}
+
+/**
+ * Pindah jadwal booking aktif. Pembayaran dan tambahan ikut pindah; harga sewa memakai tarif slot
+ * baru dan harga tambahan per jam mengikuti durasi baru. Server yang memastikan slot dan stok raket.
+ */
+function Reschedule({booking,extras,busy,onSaved}:{booking:Booking;extras:BookingAddon[];busy:boolean;onSaved:(booking:Booking)=>void}){
+  const [open,setOpen]=useState(false),[context,setContext]=useState<Context|null>(null);
+  const [form,setForm]=useState({court_id:booking.court_id,date:booking.date,start_time:booking.start_time,end_time:booking.end_time});
+  const [error,setError]=useState(""),[saving,setSaving]=useState(false);
+  useEffect(()=>{
+    if(!open)return;
+    let active=true;
+    api<Context>(`/operations/context?date=${form.date}`).then(data=>{if(active){setContext(data);setError("")}}).catch(e=>{if(active)setError((e as Error).message)});
+    return()=>{active=false};
+  },[open,form.date]);
+  if(!open)return <div className="ops-card-head"><span className="ops-muted">Pelanggan minta ganti jam atau lapangan?</span><button type="button" className="ops-secondary" disabled={busy} onClick={()=>setOpen(true)}><CalendarClock size={14}/> Pindah jadwal</button></div>;
+  const court=context?.courts.find(c=>c.id===form.court_id);
+  const starts=court?timeSlots(minute(court.opens_at),minute(court.closes_at)-30):[];
+  const ends=court?timeSlots(minute(court.opens_at)+30,minute(court.closes_at)):[];
+  const taken=context?[...context.schedule.filter(b=>b.court_id===form.court_id&&b.id!==booking.id),...context.maintenance.filter(m=>m.court_id===form.court_id)]:[];
+  const conflict=taken.some(s=>s.start_time<form.end_time&&s.end_time>form.start_time);
+  const validTime=!!court&&form.start_time>=court.opens_at&&form.end_time<=court.closes_at&&form.start_time<form.end_time;
+  const duration=validTime?minute(form.end_time)-minute(form.start_time):0;
+  const courtPrice=court&&context&&validTime?quote(court,context.price_rules,form.date,form.start_time,form.end_time):0;
+  const extrasPrice=extras.reduce((sum,line)=>sum+(line.pricing==="per_hour"?Math.round(line.unit_price*line.quantity*duration/60):line.subtotal),0);
+  const total=billOf(courtPrice+extrasPrice,booking.discount,booking).total;
+  const same=form.court_id===booking.court_id&&form.date===booking.date&&form.start_time===booking.start_time&&form.end_time===booking.end_time;
+  async function save(e:React.FormEvent){
+    e.preventDefault();setSaving(true);setError("");
+    try{const result=await api<{booking:Booking}>(`/operations/bookings/${booking.id}/reschedule`,{method:"POST",body:JSON.stringify(form)});toast.success("Jadwal booking dipindah");setOpen(false);onSaved(result.booking)}
+    catch(e){setError((e as Error).message)}finally{setSaving(false)}
+  }
+  return <form className="ops-payment" onSubmit={save}><h3>Pindah jadwal</h3>
+    {error&&<ErrorBox message={error}/>}
+    <div className="field-grid"><label>Lapangan<Select required value={form.court_id} onChange={e=>setForm({...form,court_id:e.target.value})}>{context?.courts.filter(c=>c.active||c.id===booking.court_id).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</Select></label><label>Tanggal<DateInput required min={context?.date} value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label></div>
+    <div className="field-grid"><label>Mulai<Select required value={form.start_time} onChange={e=>{const start=e.target.value,end=minute(start)+(duration||60);setForm({...form,start_time:start,end_time:timeSlots(end,end)[0]})}}><option value="" disabled>Pilih jam</option>{starts.map(t=><option key={t} disabled={form.date===context?.date&&t<context.time}>{t}</option>)}</Select></label><label>Selesai<Select required value={form.end_time} onChange={e=>setForm({...form,end_time:e.target.value})}><option value="" disabled>Pilih jam</option>{ends.map(t=><option key={t} disabled={t<=form.start_time}>{t}</option>)}</Select></label></div>
+    {taken.length>0&&<div className="ops-schedule"><b>Jadwal terisi · {formatShortDay(form.date)}</b>{taken.map(s=><span key={s.id}>{s.start_time} – {s.end_time}</span>)}</div>}
+    {conflict&&<ErrorBox message="Jam yang dipilih bertabrakan dengan jadwal terisi."/>}
+    {validTime&&!same&&<p className="ops-muted">Tagihan di jadwal baru <b>{money(total)}</b>{total!==booking.total?` (sebelumnya ${money(booking.total)})`:""}. Pembayaran {money(booking.paid)} ikut pindah{total<booking.paid?`; kelebihan ${money(booking.paid-total)} perlu dikembalikan`:total>booking.paid?`; sisa ${money(total-booking.paid)}`:""}.{booking.email?" Pelanggan mendapat email jadwal baru.":""}</p>}
+    <div className="addon-edit-actions"><button type="button" className="ops-secondary" disabled={saving} onClick={()=>setOpen(false)}>Batal</button><button className="ops-primary" type="submit" disabled={saving||busy||!validTime||conflict||same}>{saving?"Menyimpan…":"Simpan jadwal baru"}</button></div>
   </form>;
 }
 
@@ -190,7 +241,8 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
   const draftSum=draftsTotal(drafts,duration);
   const extrasTotal=lines.reduce((sum,line)=>sum+line.subtotal,0);
   return <Modal title="Detail booking" close={close}><div className="modal-fields">{error&&<ErrorBox message={error} retry={!data?load:undefined}/>}
-    {!booking?<p>Memuat booking…</p>:<><div className="ops-detail-head"><div><h3>{booking.customer}</h3><p>{booking.phone}</p><small>{booking.id.slice(0,8).toUpperCase()}</small></div><span className={`status-pill ${statusTone[booking.status]}`}>{statusLabel[booking.status]}</span></div><p><b>{booking.court_name}</b><br/>{formatShortDay(booking.date)} · {booking.start_time} – {booking.end_time}</p>{booking.notes&&<p>Catatan: {booking.notes}</p>}
+    {!booking?<p>Memuat booking…</p>:<><div className="ops-detail-head"><div><h3>{booking.customer}</h3><p>{booking.phone}</p><small>{booking.id.slice(0,8).toUpperCase()}</small></div><span className={`status-pill ${statusTone[booking.status]}`}>{statusLabel[booking.status]}</span></div><p><b>{booking.court_name}</b><br/>{formatShortDay(booking.date)} · {booking.start_time} – {booking.end_time}{(booking.reschedule_count??0)>0&&<small className="table-description">Sudah dipindah {booking.reschedule_count}×</small>}</p>{booking.email&&<p className="ops-muted">Email: {booking.email}</p>}{booking.notes&&<p>Catatan: {booking.notes}</p>}
+    {booking.status==="confirmed"&&<Reschedule key={`${booking.id}-${booking.date}-${booking.start_time}-${booking.court_id}`} booking={booking} extras={lines} busy={busy} onSaved={next=>{merge({booking:next});void load();changed()}}/>}
     {(lines.length>0||booking.status==="confirmed")&&<section className="ops-addons" aria-label="Sewa dan tambahan">
       <div className="ops-card-head"><h3>Sewa & tambahan</h3>{booking.status==="confirmed"&&!editing&&<button type="button" className="ops-secondary" disabled={busy} onClick={()=>void editAddons()}><PackagePlus size={14}/> {lines.length?"Ubah tambahan":"Tambah"}</button>}</div>
       {editing?<>

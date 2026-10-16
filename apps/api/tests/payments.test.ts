@@ -70,6 +70,9 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(court.status, 201); courtId = court.data.court.id;
       const addon = await request("/operations/addons", "POST", { name: "Bola uji", category: "bola", type: "jual", pricing: "per_booking", price: 50000, stock: 6, low_stock: 0, max_per_booking: 4, description: "", active: true, online: true }, admin);
       assert.equal(addon.status, 201); addonId = addon.data.addon.id;
+      // Email dinyalakan tanpa proses pengirim: cukup memeriksa isi antrean.
+      const email = await request("/operations/notifications/settings", "PUT", { enabled: true, host: "127.0.0.1", port: 2525, from_email: "booking@venue.test", staff_recipients: ["kasir@venue.test"] }, admin);
+      assert.equal(email.status, 200);
     });
 
     await t.test("pengaturan Midtrans: hanya admin, kunci tervalidasi, dan server key tidak pernah dikirim balik", async () => {
@@ -179,6 +182,11 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(booking.data.booking.hold_expires_at, null);
       await request("/public/payments/midtrans/notification", "POST", notify(order.transaction_id, order.amount), "", "");
       assert.equal((await request(`/operations/bookings/${bookingId}`, "GET", undefined, admin)).data.payments.length, 1, "notifikasi ganda tidak menambah pembayaran");
+      const mails = db.prepare("SELECT kind,recipient,subject,text FROM email_outbox WHERE ref_id=? ORDER BY kind").all(order.order_id) as { kind: string; recipient: string; subject: string; text: string }[];
+      assert.deepEqual(mails.map(mail => [mail.kind, mail.recipient]), [["confirmed", "pelanggan@contoh.test"], ["staff_new", "kasir@venue.test"]], "satu email pelanggan dan satu untuk staf walau webhook datang dua kali");
+      assert.match(mails[0].subject, /terkonfirmasi/);
+      assert.match(mails[0].text, /Court Bayar/);
+      assert.match(mails[0].text, new RegExp(`https://padelix.contoh/pesanan/${order.order_id}`));
     });
 
     await t.test("keranjang dua sesi dibayar sekali dan dibukukan per sesi", async () => {

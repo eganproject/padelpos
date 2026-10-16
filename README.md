@@ -178,6 +178,37 @@ lain dan melihat jadwal mainnya. Booking masuk ke riwayat akun lewat tiga jalan:
 Menghapus akun tidak menghapus booking. Jadwal dan pembayarannya tetap milik venue; yang hilang
 hanya kaitannya ke akun dan data login Google.
 
+## Pindah jadwal
+
+Booking aktif dapat dipindah ke lapangan, tanggal, atau jam lain dari detail booking (tombol
+**Pindah jadwal**). Pembayaran, tambahan, dan potongan ikut pindah. Harga sewa memakai tarif slot
+baru, tambahan per jam mengikuti durasi baru, dan stok raket sewa diperiksa di jam baru. Bila
+jadwal baru lebih murah dari yang sudah dibayar, kelebihannya tampil sebagai "Perlu pengembalian".
+Jurnal pendapatan ikut pindah ke tanggal main yang baru, sehingga kedua tanggal harus berada di
+luar periode yang dikunci.
+
+Pelanggan yang masuk dengan Google dapat memindah booking miliknya sendiri dari **Akun → Pesanan**
+bila kebijakan venue (Info Venue → Kebijakan) mengizinkan pindah jadwal. Batasnya: sekali per
+booking, paling lambat sesuai "batas jam pindah jadwal", dengan durasi yang sama, dan tagihan baru
+tidak boleh lebih kecil dari yang sudah dibayar.
+
+## Notifikasi email
+
+Menu **Pengaturan → Notifikasi Email** menyambungkan server SMTP (Gmail atau Google Workspace dengan
+App Password, Zoho, Mailgun, SendGrid, dan sejenisnya). Email yang dikirim:
+
+- konfirmasi saat pembayaran online diterima,
+- pemberitahuan saat jadwal dipindah dan saat booking dibatalkan staf,
+- pengingat sebelum main (bawaan 24 jam sebelumnya),
+- pemberitahuan ke email staf untuk booking online baru dan pindah jadwal oleh pelanggan.
+
+Pelanggan menerima email bila alamatnya diketahui: isian kasir saat membuat booking, email saat
+checkout online, atau email akun Google. Email ditulis ke antrean (`email_outbox`) di transaksi
+yang sama dengan perubahannya, lalu dikirim proses latar API setiap 30 detik. Bila SMTP gagal,
+email dicoba ulang sampai 5 kali dan dapat dikirim ulang dari panel. Pengaturan SMTP juga dapat
+diisi lewat environment (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`,
+`MAIL_FROM`); nilai environment mengalahkan isian panel.
+
 ## Pembukuan & laporan keuangan
 
 Menu **Keuangan** mencatat pengeluaran operasional dan pemasukan di luar booking, lalu menyusunnya

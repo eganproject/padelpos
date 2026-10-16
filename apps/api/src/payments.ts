@@ -13,6 +13,7 @@ import {
   payableAmount, signatureFor, signatureMatches, type MidtransStatus, type Outcome,
 } from "./midtrans.js";
 import { publicUrl } from "./config.js";
+import { customerEmail, notifyOrderPaid } from "./notifications.js";
 
 /**
  * Pemesanan online lewat Midtrans Snap, dengan keranjang.
@@ -374,6 +375,16 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
       });
       for (const booking of bookings) syncBooking(booking.id);
       audit("midtrans", "payment.settled", intent.order_ref ?? intent.booking_id);
+      // Kuncinya id transaksi Midtrans: webhook dan tombol periksa status yang datang bersamaan tetap satu email.
+      const settled = bookings.map(booking => getBooking(booking.id));
+      const order = intent.order_ref ? db.prepare("SELECT id,code,customer,email FROM orders WHERE id=?").get(intent.order_ref) as { id: string; code: string; customer: string; email: string } | undefined : undefined;
+      notifyOrderPaid({
+        key: intent.order_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
+        customer: order?.customer ?? settled[0].customer, email: order?.email || customerEmail(intent.booking_id), amount: intent.amount,
+        total: settled.reduce((sum, booking) => sum + booking.total, 0), paid: settled.reduce((sum, booking) => sum + booking.paid, 0),
+        sessions: settled,
+        cancelled: settled.every(booking => booking.status === "cancelled"),
+      });
     } else if (outcome !== "pending" && intent.kind === "booking") {
       for (const booking of bookings) {
         if (booking.status !== "pending") continue;
