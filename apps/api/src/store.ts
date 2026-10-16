@@ -695,6 +695,37 @@ if (!db.prepare("SELECT 1 FROM migrations WHERE version = 15").get()) transactio
   saveCollection("roles", roles);
   db.prepare("INSERT INTO migrations VALUES (15, ?)").run(stamp);
 });
+/**
+ * Halaman Keuangan dipecah menjadi menu sendiri: Ringkasan, Kas & Transaksi, Jurnal Umum, dan
+ * Laporan dalam grup Keuangan, sedangkan daftar akun dan kas pindah ke grup Pengaturan. Role
+ * yang sebelumnya bisa membuka Keuangan mendapat semua menu barunya, jadi aksesnya tetap sama.
+ * Menu Keuangan yang grupnya sudah diubah admin tidak dipindahkan.
+ */
+if (!db.prepare("SELECT 1 FROM migrations WHERE version = 16").get()) transaction(() => {
+  const stamp = new Date().toISOString();
+  const menus = collection<AccessMenu>("menus");
+  const added: [id: string, name: string, path: string, icon: string, group: string, order: number][] = [
+    ["finance-records", "Kas & Transaksi", "/admin/keuangan/transaksi", "ArrowLeftRight", "Keuangan", 52],
+    ["finance-journal", "Jurnal Umum", "/admin/keuangan/jurnal", "BookOpenText", "Keuangan", 53],
+    ["finance-reports", "Laporan", "/admin/keuangan/laporan", "FileChartColumn", "Keuangan", 54],
+    ["finance-settings", "Pengaturan Keuangan", "/admin/keuangan/pengaturan", "SlidersHorizontal", "Pengaturan", 202],
+  ];
+  const finance = menus.find(menu => menu.id === "finance");
+  for (const [id, name, path, icon, group, order] of added) {
+    if (menus.some(menu => menu.id === id || menu.path === path)) continue;
+    const moved = finance && finance.group !== "Operasional";
+    menus.push({ id, name, path, icon, group: moved && group === "Keuangan" ? finance.group : group, order, active: finance?.active ?? true, createdAt: stamp });
+  }
+  if (finance?.group === "Operasional") Object.assign(finance, { name: finance.name === "Keuangan" ? "Ringkasan Keuangan" : finance.name, icon: finance.icon === "Wallet" ? "ChartPie" : finance.icon, group: "Keuangan", order: 51 });
+  /* Menu pengaturan lain bergeser satu agar Pengaturan Keuangan duduk tepat setelah Pembayaran Online. */
+  const settings: Record<string, number> = { "customer-login": 203, users: 204, roles: 205, menus: 206 };
+  for (const menu of menus) if (menu.group === "Pengaturan" && settings[menu.id] && menu.order === settings[menu.id] - 1) menu.order = settings[menu.id];
+  saveCollection("menus", menus);
+  const roles = collection<AccessRole>("roles");
+  for (const role of roles) if (role.menuIds.includes("finance")) for (const [id] of added) if (!role.menuIds.includes(id)) role.menuIds.push(id);
+  saveCollection("roles", roles);
+  db.prepare("INSERT INTO migrations VALUES (16, ?)").run(stamp);
+});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");

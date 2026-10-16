@@ -458,6 +458,10 @@ test("nama menu bawaan diterjemahkan tanpa menimpa nama yang sudah diubah admin"
     assert.equal(byId["customer-login"].group,"Pengaturan");
     assert.equal(byId.layout.group,"Venue & Layanan");
     assert.equal(byId.dashboard.group,"Operasional");
+    assert.equal(byId.finance.group,"Keuangan","Keuangan punya grup sendiri");
+    assert.equal(byId.finance.name,"Ringkasan Keuangan");
+    for(const id of ["finance-records","finance-journal","finance-reports"]) assert.equal(byId[id].group,"Keuangan",id);
+    assert.equal(byId["finance-settings"].group,"Pengaturan","pengaturan keuangan tidak dicampur dengan menu harian");
     assert.equal(byId.laporan.group,"Operasional","menu kustom tetap satu grup dengan menu bawaan");
   } finally {
     assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-menu-test-"));

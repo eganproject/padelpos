@@ -18,8 +18,10 @@ type Range = { from:string; to:string };
 const cashAccounts = (setup:Setup) => setup.accounts.filter(account => account.is_cash && account.active);
 const accountName = (setup:Setup, id:string|null|undefined) => setup.accounts.find(account => account.id===id)?.name ?? "—";
 
+export type RecordAction = RecordKind | "transfer" | "modal";
+
 /** Daftar pengeluaran dan pemasukan: satu tempat untuk seluruh pencatatan harian. */
-export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; range:Range; today:string; onChanged:()=>void }) {
+export function RecordsTab({ setup, range, today, initial=null, onChanged }: { setup:Setup; range:Range; today:string; initial?:RecordAction|null; onChanged:()=>void }) {
   const [data,setData] = useState<Data|null>(null);
   const [kind,setKind] = useState<""|RecordKind>("");
   const [status,setStatus] = useState<"semua"|"belum">("semua");
@@ -27,7 +29,7 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
   const [term,setTerm] = useState("");
   const [busy,setBusy] = useState("");
   const [editing,setEditing] = useState<FinanceRecord|null>(null);
-  const [creating,setCreating] = useState<RecordKind|null>(null);
+  const [creating,setCreating] = useState<RecordAction|null>(initial);
   const [settling,setSettling] = useState<FinanceRecord|null>(null);
   const [viewing,setViewing] = useState<FinanceRecord|null>(null);
 
@@ -58,6 +60,12 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
   const categories = setup.accounts.filter(account => isCategory(account,"pengeluaran") || isCategory(account,"pemasukan"));
   return (
     <div className="fin-records">
+      <div className="fin-quick">
+        <button type="button" className="ops-primary" onClick={()=>setCreating("pengeluaran")}><Plus size={14}/> Catat pengeluaran</button>
+        <button type="button" className="ops-secondary" onClick={()=>setCreating("pemasukan")}><Plus size={14}/> Catat pemasukan</button>
+        <button type="button" className="ops-secondary" onClick={()=>setCreating("transfer")}><ArrowLeftRight size={14}/> Pindah dana</button>
+        <button type="button" className="ops-secondary" onClick={()=>setCreating("modal")}><Landmark size={14}/> Modal pemilik</button>
+      </div>
       <div className="fin-toolbar">
         <div className="fin-chips" role="group" aria-label="Jenis catatan">
           <button type="button" aria-pressed={kind===""} onClick={()=>setKind("")}>Semua</button>
@@ -74,10 +82,6 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
           </Select>
         </label>
         <label className="fin-check"><input type="checkbox" checked={status==="belum"} onChange={e=>setStatus(e.target.checked?"belum":"semua")}/> Belum dibayar saja</label>
-        <div className="fin-toolbar-actions">
-          <button type="button" className="ops-secondary" onClick={()=>setCreating("pemasukan")}><Plus size={14}/> Pemasukan</button>
-          <button type="button" className="ops-primary" onClick={()=>setCreating("pengeluaran")}><Plus size={14}/> Catat pengeluaran</button>
-        </div>
       </div>
 
       <div className="fin-totals">
@@ -130,8 +134,10 @@ export function RecordsTab({ setup, range, today, onChanged }: { setup:Setup; ra
         )}
       </div>
 
-      {(creating||editing) && (
-        <RecordForm setup={setup} today={today} kind={editing?.kind ?? creating!} record={editing}
+      {creating==="transfer" && <TransferForm setup={setup} today={today} close={()=>setCreating(null)} saved={()=>{setCreating(null);refresh()}}/>}
+      {creating==="modal" && <EquityForm setup={setup} today={today} close={()=>setCreating(null)} saved={()=>{setCreating(null);refresh()}}/>}
+      {((creating && creating!=="transfer" && creating!=="modal")||editing) && (
+        <RecordForm setup={setup} today={today} kind={editing?.kind ?? creating as RecordKind} record={editing}
           close={()=>{setCreating(null);setEditing(null)}} saved={()=>{setCreating(null);setEditing(null);refresh()}}/>
       )}
       {settling && <SettleForm setup={setup} today={today} record={settling} close={()=>setSettling(null)} saved={()=>{setSettling(null);refresh()}}/>}

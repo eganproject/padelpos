@@ -1,71 +1,142 @@
 "use client";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeftRight, Landmark, Lock, Plus, RefreshCw } from "lucide-react";
+import { ArrowLeftRight, ArrowRight, Landmark, Lock, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
-  type Overview, type RecordKind, type Setup,
+  type Overview, type Setup,
   changeOf, formatDate, formatMonth, money, moneyShort, presetRange, rangeLabel, sourceLabel,
 } from "@/lib/finance";
 import { ErrorBox } from "./operation-ui";
 import { Empty, PeriodPicker, ShareBar, StatCard } from "./finance-ui";
-import { EquityForm, RecordForm, RecordsTab, TransferForm } from "./finance-records";
-import { ReportsTab } from "./finance-reports";
+import { RecordsTab, type RecordAction } from "./finance-records";
+import { JournalReport, ReportsTab } from "./finance-reports";
 import { SetupTab } from "./finance-setup";
+import { useAdminNavigation } from "./admin-navigation";
 
-type Tab = "ringkasan" | "catatan" | "laporan" | "pengaturan";
-const tabs: [Tab,string][] = [["ringkasan","Ringkasan"],["catatan","Catatan"],["laporan","Laporan"],["pengaturan","Pengaturan"]];
+type Range = { from:string; to:string };
+const RANGE_KEY = "padelix_fin_range";
 
-export function FinancePanel() {
+/**
+ * Data bersama semua halaman Keuangan: daftar akun dan pengaturan, serta periode yang dipilih.
+ * Periode disimpan selama tab browser terbuka, jadi pindah dari Ringkasan ke Laporan tetap
+ * memakai bulan yang sama.
+ */
+function useFinance() {
   const [setup,setSetup] = useState<Setup|null>(null);
   const [error,setError] = useState("");
-  const [tab,setTab] = useState<Tab>("ringkasan");
-  const [range,setRange] = useState({ from:"", to:"" });
-  const [stamp,setStamp] = useState(0);
-
-  const loadSetup = useCallback(async () => {
+  const [range,setRangeState] = useState<Range>({ from:"", to:"" });
+  const load = useCallback(async () => {
     try {
       const result = await api<Setup>("/operations/finance/setup");
       setSetup(result); setError("");
-      setRange(current => current.from ? current : presetRange("bulan-ini", result.date));
+      setRangeState(current => {
+        if (current.from) return current;
+        try {
+          const saved = JSON.parse(sessionStorage.getItem(RANGE_KEY) || "null") as Range|null;
+          if (saved?.from && saved.to && saved.from<=saved.to) return saved;
+        } catch { /* penyimpanan sesi tidak tersedia */ }
+        return presetRange("bulan-ini", result.date);
+      });
     } catch (caught) { setError((caught as Error).message) }
   }, []);
-  useEffect(() => { void loadSetup() }, [loadSetup]);
+  useEffect(() => { void load() }, [load]);
+  const setRange = useCallback((next:Range) => {
+    setRangeState(next);
+    try { sessionStorage.setItem(RANGE_KEY, JSON.stringify(next)) } catch { /* abaikan */ }
+  }, []);
+  return { setup, error, range, setRange, load };
+}
 
-  if (error && !setup) return <ErrorBox message={error} retry={loadSetup}/>;
-  if (!setup || !range.from) return <p className="empty-state">Memuat pembukuan…</p>;
-  const changed = () => setStamp(value => value+1);
+function LockBadge({ setup }: { setup:Setup }) {
+  if (!setup.settings.locked_until) return null;
   return (
-    <div className="fin">
-      <div className="fin-tabs" role="tablist" aria-label="Bagian keuangan">
-        {tabs.map(([key,label]) => (
-          <button key={key} type="button" role="tab" aria-selected={tab===key} onClick={()=>setTab(key)}>{label}</button>
-        ))}
-        {setup.settings.locked_until && (
-          <span className="fin-locked" title={`Catatan sampai ${formatDate(setup.settings.locked_until)} dibekukan`}>
-            <Lock size={13}/> Terkunci s.d. {formatDate(setup.settings.locked_until)}
-          </span>
-        )}
-      </div>
-      {tab==="ringkasan" && <OverviewTab setup={setup} range={range} onRange={setRange} stamp={stamp} onChanged={changed}/>}
-      {tab==="catatan" && <RecordsTab setup={setup} range={range} today={setup.date} onChanged={changed}/>}
-      {tab==="laporan" && <ReportsTab setup={setup} range={range} today={setup.date} onRange={setRange} onChanged={changed}/>}
-      {tab==="pengaturan" && <SetupTab setup={setup} reload={()=>{void loadSetup();changed()}}/>}
-    </div>
+    <span className="fin-locked" title={`Catatan sampai ${formatDate(setup.settings.locked_until)} dibekukan`}>
+      <Lock size={13}/> Terkunci s.d. {formatDate(setup.settings.locked_until)}
+    </span>
   );
 }
 
-function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup; range:{from:string;to:string}; onRange:(range:{from:string;to:string})=>void; stamp:number; onChanged:()=>void }) {
+/** Kerangka halaman: memuat data bersama, lalu menampilkan isinya. */
+function FinancePage({ children }: { children:(context:ReturnType<typeof useFinance> & { setup:Setup })=>React.ReactNode }) {
+  const finance = useFinance();
+  if (finance.error && !finance.setup) return <ErrorBox message={finance.error} retry={finance.load}/>;
+  if (!finance.setup || !finance.range.from) return <p className="empty-state">Memuat pembukuan…</p>;
+  return <div className="fin">{children({ ...finance, setup:finance.setup })}</div>;
+}
+
+export function FinanceOverviewPanel() {
+  const { menus } = useAdminNavigation();
+  const allowed = (id:string) => menus.some(menu => menu.id===id);
+  return (
+    <FinancePage>{({ setup, range, setRange }) => (
+      <OverviewTab setup={setup} range={range} onRange={setRange}
+        canRecord={allowed("finance-records")} canJournal={allowed("finance-journal")} canReport={allowed("finance-reports")}/>
+    )}</FinancePage>
+  );
+}
+
+const actions: RecordAction[] = ["pengeluaran","pemasukan","transfer","modal"];
+export function FinanceRecordsPanel() {
+  /* Tombol pintas di Ringkasan membuka halaman ini dengan ?catat=… agar formnya langsung terbuka. */
+  const params = useSearchParams();
+  const router = useRouter();
+  const asked = params.get("catat") as RecordAction|null;
+  const [initial] = useState<RecordAction|null>(() => asked && actions.includes(asked) ? asked : null);
+  useEffect(() => { if (asked) router.replace("/admin/keuangan/transaksi", { scroll:false }) }, [asked, router]);
+  return (
+    <FinancePage>{({ setup, range, setRange }) => (
+      <>
+        <div className="fin-head">
+          <PeriodPicker from={range.from} to={range.to} today={setup.date} onChange={setRange}/>
+          <LockBadge setup={setup}/>
+        </div>
+        <RecordsTab setup={setup} range={range} today={setup.date} initial={initial} onChanged={()=>{}}/>
+      </>
+    )}</FinancePage>
+  );
+}
+
+export function FinanceJournalPanel() {
+  return (
+    <FinancePage>{({ setup, range, setRange }) => (
+      <>
+        <div className="fin-head">
+          <PeriodPicker from={range.from} to={range.to} today={setup.date} onChange={setRange}/>
+          <LockBadge setup={setup}/>
+        </div>
+        <JournalReport setup={setup} range={range} today={setup.date} onChanged={()=>{}}/>
+      </>
+    )}</FinancePage>
+  );
+}
+
+export function FinanceReportsPanel() {
+  return (
+    <FinancePage>{({ setup, range, setRange }) => (
+      <ReportsTab setup={setup} range={range} today={setup.date} onRange={setRange}/>
+    )}</FinancePage>
+  );
+}
+
+export function FinanceSettingsPanel() {
+  return (
+    <FinancePage>{({ setup, load }) => <SetupTab setup={setup} reload={()=>void load()}/>}</FinancePage>
+  );
+}
+
+function OverviewTab({ setup, range, onRange, canRecord, canJournal, canReport }: { setup:Setup; range:Range; onRange:(range:Range)=>void; canRecord:boolean; canJournal:boolean; canReport:boolean }) {
   const [data,setData] = useState<Overview|null>(null);
   const [busy,setBusy] = useState(false);
-  const [form,setForm] = useState<RecordKind|"transfer"|"modal"|null>(null);
   const load = useCallback(async () => {
     setBusy(true);
     try { setData(await api<Overview>(`/operations/finance/overview?from=${range.from}&to=${range.to}`)) }
     catch (error) { toast.error((error as Error).message) }
     finally { setBusy(false) }
   }, [range.from, range.to]);
-  useEffect(() => { void load() }, [load, stamp]);
+  useEffect(() => { void load() }, [load]);
 
   if (!data) return <p className="empty-state">Menghitung ringkasan…</p>;
   const netChange = changeOf(data.net, data.previous.net);
@@ -82,7 +153,10 @@ function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup;
     <div className="fin-overview">
       <div className="fin-head">
         <PeriodPicker from={range.from} to={range.to} today={setup.date} onChange={onRange}/>
-        <button type="button" className="ops-secondary" disabled={busy} onClick={()=>void load()}><RefreshCw size={14}/> Muat ulang</button>
+        <div className="fin-head-actions">
+          <LockBadge setup={setup}/>
+          <button type="button" className="ops-secondary" disabled={busy} onClick={()=>void load()}><RefreshCw size={14}/> Muat ulang</button>
+        </div>
       </div>
 
       <div className="fin-stats">
@@ -94,16 +168,19 @@ function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup;
           change={chip(netChange)} hint="Pemasukan dikurangi pengeluaran"/>
       </div>
 
-      <div className="fin-quick">
-        <button type="button" className="ops-primary" onClick={()=>setForm("pengeluaran")}><Plus size={14}/> Catat pengeluaran</button>
-        <button type="button" className="ops-secondary" onClick={()=>setForm("pemasukan")}><Plus size={14}/> Catat pemasukan</button>
-        <button type="button" className="ops-secondary" onClick={()=>setForm("transfer")}><ArrowLeftRight size={14}/> Pindah dana</button>
-        <button type="button" className="ops-secondary" onClick={()=>setForm("modal")}><Landmark size={14}/> Modal pemilik</button>
-      </div>
+      {canRecord && (
+        <div className="fin-quick">
+          <Link className="ops-primary" href="/admin/keuangan/transaksi?catat=pengeluaran"><Plus size={14}/> Catat pengeluaran</Link>
+          <Link className="ops-secondary" href="/admin/keuangan/transaksi?catat=pemasukan"><Plus size={14}/> Catat pemasukan</Link>
+          <Link className="ops-secondary" href="/admin/keuangan/transaksi?catat=transfer"><ArrowLeftRight size={14}/> Pindah dana</Link>
+          <Link className="ops-secondary" href="/admin/keuangan/transaksi?catat=modal"><Landmark size={14}/> Modal pemilik</Link>
+        </div>
+      )}
 
       <div className="fin-grid">
         <section className="fin-card">
-          <header><h3>Enam bulan terakhir</h3><p>Batang hijau pemasukan, batang jingga pengeluaran.</p></header>
+          <header className="fin-card-head"><div><h3>Enam bulan terakhir</h3><p>Batang hijau pemasukan, batang jingga pengeluaran.</p></div>
+          {canReport && <Link className="ops-link" href="/admin/keuangan/laporan">Lihat laporan <ArrowRight size={14}/></Link>}</header>
           <div className="fin-chart">
             {data.series.map(month => {
               const quiet = month.income===0 && month.expense===0;
@@ -163,7 +240,8 @@ function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup;
       </div>
 
       <section className="fin-card">
-        <header><h3>Pencatatan terbaru</h3><p>Termasuk jurnal yang dibuat otomatis dari booking dan pembayaran.</p></header>
+        <header className="fin-card-head"><div><h3>Pencatatan terbaru</h3><p>Termasuk jurnal yang dibuat otomatis dari booking dan pembayaran.</p></div>
+          {canJournal && <Link className="ops-link" href="/admin/keuangan/jurnal">Lihat jurnal umum <ArrowRight size={14}/></Link>}</header>
         <div className="manage-table-card ops-table table-cards">
           <table>
             <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Sumber</th><th className="right">Nilai</th></tr></thead>
@@ -181,12 +259,6 @@ function OverviewTab({ setup, range, onRange, stamp, onChanged }: { setup:Setup;
           {!data.entries.length && <Empty title="Belum ada pencatatan" text={`Belum ada jurnal antara ${formatDate(range.from)} dan ${formatDate(range.to)}.`}/>}
         </div>
       </section>
-
-      {(form==="pengeluaran"||form==="pemasukan") && (
-        <RecordForm setup={setup} today={setup.date} kind={form} close={()=>setForm(null)} saved={()=>{setForm(null);onChanged()}}/>
-      )}
-      {form==="transfer" && <TransferForm setup={setup} today={setup.date} close={()=>setForm(null)} saved={()=>{setForm(null);onChanged()}}/>}
-      {form==="modal" && <EquityForm setup={setup} today={setup.date} close={()=>setForm(null)} saved={()=>{setForm(null);onChanged()}}/>}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, CalendarDays, ChevronDown, Circle, Contact, CreditCard, KeyRound, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards } from "lucide-react";
+import { Activity, ArrowLeftRight, BookOpenText, CalendarDays, ChartPie, ChevronDown, Circle, Contact, CreditCard, FileChartColumn, KeyRound, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, UserRound, UsersRound, Wallet, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, ApiError, forgetSession } from "@/lib/api";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 export type NavigationMenu = { id:string; name:string; path:string; icon:string; group:string; order:number; active:boolean };
 type NavigationResponse = { menus:NavigationMenu[]; role:{ name:string; slug:string } };
 
-const icons = { Activity, CalendarDays, Contact, CreditCard, KeyRound, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards };
+const icons = { Activity, ArrowLeftRight, BookOpenText, CalendarDays, ChartPie, Contact, CreditCard, FileChartColumn, KeyRound, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, UserRound, UsersRound, Wallet, WalletCards };
 /** Ikon yang benar-benar dapat tampil di sidebar; formulir menu hanya menawarkan nama-nama ini. */
 export const menuIconNames = Object.keys(icons);
 
@@ -32,6 +32,13 @@ export function useAdminNavigation() {
 
 /** Menu yang sedang dibuka: path sama persis, atau halaman turunannya. */
 export const isActiveMenu = (menu:NavigationMenu, pathname:string) => pathname === menu.path || (menu.path !== "/admin" && pathname.startsWith(`${menu.path}/`));
+/**
+ * Menu yang mewakili halaman ini. Bila beberapa menu cocok (Ringkasan di /admin/keuangan dan
+ * Kas & Transaksi di /admin/keuangan/transaksi), path terpanjang yang menang agar hanya satu
+ * menu yang tampak aktif.
+ */
+export const currentMenu = (menus:NavigationMenu[], pathname:string) =>
+  menus.filter(menu => isActiveMenu(menu, pathname)).sort((a, b) => b.path.length - a.path.length)[0];
 export const menuIcon = (name:string) => icons[name as keyof typeof icons] || Circle;
 
 const GROUPS_KEY = "padelix_nav_closed";
@@ -43,6 +50,7 @@ const GROUPS_KEY = "padelix_nav_closed";
  */
 export function AdminNavigation({ menus, onNavigate, compact = false }: { menus:NavigationMenu[]; onNavigate?:()=>void; compact?:boolean }) {
   const pathname = usePathname();
+  const activeId = currentMenu(menus, pathname)?.id;
   const [closed, setClosed] = useState<string[]>([]);
   const [tip, setTip] = useState<{ label:string; top:number; left:number } | null>(null);
   const groups = useMemo(() => {
@@ -71,7 +79,7 @@ export function AdminNavigation({ menus, onNavigate, compact = false }: { menus:
     <nav className={`desk-nav${compact ? " compact" : ""}`} aria-label="Menu admin" onMouseLeave={() => setTip(null)}>
       {groups.map(([group, items]) => {
         /* Grup yang memuat halaman aktif selalu terbuka agar posisi pengguna tidak hilang. */
-        const hasActive = items.some(menu => isActiveMenu(menu, pathname));
+        const hasActive = items.some(menu => menu.id === activeId);
         const open = compact || hasActive || !closed.includes(group);
         const id = `nav-${group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
         return (
@@ -84,7 +92,7 @@ export function AdminNavigation({ menus, onNavigate, compact = false }: { menus:
             {open && <div className="desk-nav-items" id={id} role="list">
               {items.map(menu => {
                 const Icon = menuIcon(menu.icon);
-                const active = isActiveMenu(menu, pathname);
+                const active = menu.id === activeId;
                 return (
                   <Link role="listitem" href={menu.path} key={menu.id} onClick={onNavigate}
                     className={`desk-nav-item${active ? " selected" : ""}`} aria-current={active ? "page" : undefined}

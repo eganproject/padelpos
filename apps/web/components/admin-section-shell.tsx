@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "./brand";
 import { api, ApiError, forgetSession, clearSession, type User } from "@/lib/api";
-import { AdminNavigation, isActiveMenu, menuIcon, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
+import { AdminNavigation, currentMenu, menuIcon, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
 
 type Theme = "dark" | "light";
 const initials = (name?: string) => (name || "Admin").split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase();
@@ -27,7 +27,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
   const [wide, setWide] = useState(true);
   const { menus, role, loading } = useAdminNavigation();
   usePermissionGuard(menus, loading);
-  const current = menus.find(menu => isActiveMenu(menu, pathname));
+  const current = currentMenu(menus, pathname);
 
   useEffect(() => {
     const saved: Theme = localStorage.getItem("padelix_theme") === "dark" ? "dark" : "light";

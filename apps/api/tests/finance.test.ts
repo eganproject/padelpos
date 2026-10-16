@@ -55,6 +55,19 @@ test("pembukuan: jurnal berpasangan, laba rugi, neraca, buku besar, dan buku bes
       assert.equal((await request("/operations/finance/records", "POST", {}, staff)).status, 403);
     });
 
+    await t.test("tiap menu Keuangan hanya membuka bagiannya sendiri", async () => {
+      const menus = (await request("/auth/navigation", "GET", undefined, admin)).data.menus.map((menu: { id: string }) => menu.id);
+      for (const id of ["finance", "finance-records", "finance-journal", "finance-reports", "finance-settings"]) assert.ok(menus.includes(id), id);
+      assert.equal((await request("/access/roles", "POST", { name: "Pembaca Laporan", slug: "pembaca-laporan", description: "", menuIds: ["finance-reports", "profile"] }, admin)).status, 201);
+      assert.equal((await request("/access/users", "POST", { name: "Pembaca", email: "laporan@buku.test", phone: "081234567892", role: "pembaca-laporan", password: "StrongPass123" }, admin)).status, 201);
+      const reader = (await request("/auth/login", "POST", { email: "laporan@buku.test", password: "StrongPass123" })).cookie;
+      assert.equal((await request("/operations/finance/setup", "GET", undefined, reader)).status, 200, "daftar akun dibutuhkan semua halaman keuangan");
+      assert.equal((await request(`/operations/finance/reports/laba-rugi?from=${today}&to=${today}`, "GET", undefined, reader)).status, 200);
+      for (const url of ["/operations/finance/overview", "/operations/finance/records", "/operations/finance/journal"])
+        assert.equal((await request(url, "GET", undefined, reader)).status, 403, url);
+      assert.equal((await request("/operations/finance/settings", "PUT", {}, reader)).status, 403);
+    });
+
     await t.test("booking otomatis menjadi pendapatan pada tanggal sesi, bukan tanggal pemesanan", async () => {
       const created = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Rina", phone: "081200000001", date: tomorrow, start_time: "09:00", end_time: "11:00", notes: "" }, admin);
       assert.equal(created.status, 201);
