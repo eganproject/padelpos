@@ -54,7 +54,7 @@ export default function AccountHome() {
         <article className="acct-next">
           <div className="acct-next-top">
             <span className="acct-next-label"><Timer size={15} aria-hidden="true" /> Jadwal berikutnya</span>
-            <span className={`shop-pill ${statusOf(next).tone}`}>{statusOf(next).label}</span>
+            <span className={`pill ${statusOf(next).tone}`}>{statusOf(next).label}</span>
           </div>
           <h2>{relativeDay(next.date)}, {next.start_time}</h2>
           <p className="acct-next-meta">{formatFull(next.date)} · {next.start_time}–{next.end_time}</p>
@@ -95,7 +95,7 @@ export default function AccountHome() {
         <div>
           <dt><MapPin size={18} aria-hidden="true" /> Lapangan favorit</dt>
           <dd className="text">{stats.favorite ? stats.favorite.name : "—"}</dd>
-          {stats.favorite && <Link className="shop-tlink" href={rebookHref({ court_id: stats.favorite.id })}>Pesan lagi <ArrowRight size={14} aria-hidden="true" /></Link>}
+          {stats.favorite && <Link className="text-link" href={rebookHref({ court_id: stats.favorite.id })}>Pesan lagi <ArrowRight size={14} aria-hidden="true" /></Link>}
         </div>
       </dl>
 
@@ -103,7 +103,7 @@ export default function AccountHome() {
         <section className="acct-section" aria-labelledby="judul-mendatang">
           <div className="acct-section-head">
             <h2 id="judul-mendatang">Jadwal lain yang akan datang</h2>
-            {data.upcoming_count > others.length + 1 && <Link className="shop-tlink" href="/akun/pesanan">Semua {data.upcoming_count} jadwal <ArrowRight size={14} aria-hidden="true" /></Link>}
+            {data.upcoming_count > others.length + 1 && <Link className="text-link" href="/akun/pesanan">Semua {data.upcoming_count} jadwal <ArrowRight size={14} aria-hidden="true" /></Link>}
           </div>
           <div className="acct-list">{others.map(item => <BookingCard key={item.id} item={item} venue={place} />)}</div>
         </section>
@@ -113,7 +113,7 @@ export default function AccountHome() {
         <section className="acct-section" aria-labelledby="judul-terakhir">
           <div className="acct-section-head">
             <h2 id="judul-terakhir">Terakhir dimainkan</h2>
-            <Link className="shop-tlink" href="/akun/pesanan?tab=past">Riwayat lengkap <ArrowRight size={14} aria-hidden="true" /></Link>
+            <Link className="text-link" href="/akun/pesanan?tab=past">Riwayat lengkap <ArrowRight size={14} aria-hidden="true" /></Link>
           </div>
           <ul className="acct-recent">
             {data.recent.map(item => (

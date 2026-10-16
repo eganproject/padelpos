@@ -62,7 +62,7 @@ export function BookingCard({ item, venue }: { item: HistoryItem; venue: { name:
             <h3>{item.court_name}</h3>
             <p><Clock3 size={14} aria-hidden="true" /> {relativeDay(item.date)} · {item.start_time}–{item.end_time}</p>
           </div>
-          <span className={`shop-pill ${status.tone}`}>{status.label}</span>
+          <span className={`pill ${status.tone}`}>{status.label}</span>
         </header>
         {item.addons.length > 0 && (
           <ul className="acct-lines">{item.addons.map((line, index) => <li key={index}>{line.quantity}× {line.name}</li>)}</ul>

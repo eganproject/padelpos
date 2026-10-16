@@ -3,23 +3,25 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRight, CalendarDays, CheckCircle2, Clock3, CreditCard, MessageCircle, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, Clock3, Copy, CreditCard, Hourglass, MessageCircle, PartyPopper, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import { toast } from "sonner";
 import { money } from "@/lib/api";
+import { ShopSteps } from "@/components/shop-steps";
 import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { whatsappLink } from "@/lib/venue-info";
 import { countdown, fetchOrder, intentLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
 
-const statusCopy: Record<string, { title: string; tone: string; note: string }> = {
-  pending: { title: "Menunggu pembayaran", tone: "wait", note: "Selesaikan pembayaran sebelum batas waktu agar slot tidak dilepas." },
-  confirmed: { title: "Pesanan dikonfirmasi", tone: "on", note: "Sampai jumpa di venue. Tunjukkan kode pesanan ini saat datang." },
-  completed: { title: "Sesi selesai", tone: "done", note: "Terima kasih sudah bermain di venue kami." },
-  expired: { title: "Waktu pembayaran habis", tone: "off", note: "Slot sudah dilepas. Silakan pilih jadwal lain." },
-  cancelled: { title: "Pesanan dibatalkan", tone: "off", note: "Hubungi venue bila ada dana yang perlu dikembalikan." },
+const statusCopy: Record<string, { title: string; tone: string; note: string; icon: typeof CheckCircle2 }> = {
+  pending: { title: "Menunggu pembayaran", tone: "wait", note: "Selesaikan pembayaran sebelum waktu habis agar slot tidak dilepas.", icon: Hourglass },
+  confirmed: { title: "Booking terkonfirmasi", tone: "on", note: "Sampai jumpa di lapangan. Tunjukkan kode ini saat datang.", icon: CheckCircle2 },
+  completed: { title: "Sesi selesai", tone: "done", note: "Terima kasih sudah bermain. Sampai jumpa lagi!", icon: PartyPopper },
+  expired: { title: "Waktu pembayaran habis", tone: "off", note: "Slot sudah dilepas. Silakan pilih jadwal lain.", icon: XCircle },
+  cancelled: { title: "Pesanan dibatalkan", tone: "off", note: "Hubungi venue bila ada dana yang perlu dikembalikan.", icon: XCircle },
 };
 const sessionTone: Record<string, string> = { pending: "wait", confirmed: "on", completed: "done", expired: "off", cancelled: "off" };
-const sessionLabel: Record<string, string> = { pending: "Menunggu bayar", confirmed: "Dikonfirmasi", completed: "Selesai", expired: "Kedaluwarsa", cancelled: "Dibatalkan" };
+const sessionLabel: Record<string, string> = { pending: "Menunggu bayar", confirmed: "Terkonfirmasi", completed: "Selesai", expired: "Kedaluwarsa", cancelled: "Dibatalkan" };
 
 export default function OrderPage() {
   const { id } = useParams<{ id: string }>();
@@ -64,89 +66,104 @@ export default function OrderPage() {
   const timeLeft = payment && waiting ? countdown(payment.expires_at, now) : "";
   const message = order ? `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin menanyakan pesanan ${order.code}.` : "";
 
-  return (
-    <section className="shop-band shop-wrap">
-      <div className="order">
-        {error && !order && <p className="shop-note error" role="alert">{error} <button type="button" onClick={() => void load()}>Coba lagi</button></p>}
-        {!order ? (
-          !error && <div className="skeleton" style={{ minHeight: 260 }} aria-busy="true" aria-label="Memuat pesanan" />
-        ) : (
-          <>
-            <header className="order-head">
-              <span className={`shop-pill ${copy!.tone}`}>{copy!.title}</span>
-              <h1>Pesanan {order.code}</h1>
-              <p>{copy!.note}</p>
-            </header>
+  async function copyCode() {
+    if (!order) return;
+    try { await navigator.clipboard.writeText(order.code); toast.success("Kode pesanan disalin"); }
+    catch { toast.info(`Kode pesanan: ${order.code}`); }
+  }
 
-            {waiting && payment && (
-              <div className="order-pay">
+  return (
+    <div className="order shop-wrap">
+      {error && !order && <p className="shop-note error" role="alert">{error} <button type="button" onClick={() => void load()}>Coba lagi</button></p>}
+      {!order || !copy ? (
+        !error && <div className="skeleton tall" aria-busy="true" aria-label="Memuat pesanan" />
+      ) : (
+        <>
+          {order.status === "pending" && <ShopSteps current={2} />}
+          <section className={`order-hero ${copy.tone}`}>
+            <span className="order-hero-icon"><copy.icon size={30} aria-hidden="true" /></span>
+            <h1>{copy.title}</h1>
+            <p>{copy.note}</p>
+            <button type="button" className="order-code" onClick={() => void copyCode()} aria-label={`Salin kode pesanan ${order.code}`}>
+              <small>Kode pesanan</small>
+              <b>{order.code}</b>
+              <Copy size={16} aria-hidden="true" />
+            </button>
+          </section>
+
+          {waiting && payment && (
+            <section className="card order-pay">
+              <div className="order-pay-top">
                 <div>
                   <small>Bayar sekarang</small>
                   <b>{money(payment.amount)}</b>
-                  {timeLeft ? <span><Clock3 size={14} aria-hidden="true" /> Sisa waktu {timeLeft}</span> : <span>Batas waktu hampir habis</span>}
                 </div>
-                <div className="actions">
-                  {payment.redirect_url && (
-                    <a className="shop-btn primary" href={payment.redirect_url}><CreditCard size={18} aria-hidden="true" /> Lanjutkan pembayaran</a>
-                  )}
-                  <button type="button" className="shop-btn outline" onClick={() => void check()} disabled={busy}>
-                    <RefreshCw size={16} className={busy ? "spin" : ""} aria-hidden="true" /> Saya sudah bayar
-                  </button>
-                </div>
+                <span className={`timer${timeLeft ? "" : " late"}`}><Clock3 size={16} aria-hidden="true" /> {timeLeft || "Hampir habis"}</span>
               </div>
-            )}
+              <div className="btn-col">
+                {payment.redirect_url && (
+                  <a className="shop-btn primary lg wide" href={payment.redirect_url}><CreditCard size={18} aria-hidden="true" /> Lanjutkan pembayaran</a>
+                )}
+                <button type="button" className="shop-btn outline wide" onClick={() => void check()} disabled={busy}>
+                  <RefreshCw size={16} className={busy ? "spin" : ""} aria-hidden="true" /> Saya sudah bayar, cek status
+                </button>
+              </div>
+            </section>
+          )}
 
-            {order.status === "confirmed" && (
-              <p className="order-ok"><CheckCircle2 size={18} aria-hidden="true" /> Pembayaran diterima{payment?.payment_type ? ` lewat ${payTypeLabel(payment.payment_type)}` : ""}.</p>
-            )}
+          {order.status === "confirmed" && (
+            <p className="shop-note ok"><CheckCircle2 size={18} aria-hidden="true" /> Pembayaran diterima{payment?.payment_type ? ` lewat ${payTypeLabel(payment.payment_type)}` : ""}.</p>
+          )}
 
-            <div className="order-card">
-              <h2>{order.sessions.length > 1 ? `${order.sessions.length} sesi dalam pesanan ini` : "Rincian"}</h2>
-              <ul className="order-sessions">
-                {order.sessions.map(session => (
-                  <li key={session.id}>
-                    <div className="when">
+          <section className="card receipt">
+            <h2 className="card-title">{order.sessions.length > 1 ? `${order.sessions.length} sesi` : "Rincian booking"}</h2>
+            <ul className="receipt-sessions">
+              {order.sessions.map(session => (
+                <li key={session.id}>
+                  <div className="row">
+                    <div>
                       <b>{session.court_name}</b>
                       <span><CalendarDays size={14} aria-hidden="true" /> {formatDay(session.date)}</span>
                       <span><Clock3 size={14} aria-hidden="true" /> {session.start_time} – {session.end_time}</span>
-                      {(session.addons.length > 0 || session.discount > 0 || session.tax > 0) && (
-                        <ul className="lines">
-                          {session.addons.map((line, index) => <li key={index}>{line.quantity}× {line.name} · {money(line.subtotal)}</li>)}
-                          {session.discount > 0 && <li>Potongan{session.discount_note ? ` ${session.discount_note}` : ""} · −{money(session.discount)}</li>}
-                          {session.tax > 0 && <li>{taxName(session)} · {money(session.tax)}</li>}
-                        </ul>
-                      )}
-                      {session.cancel_reason && <em className="warn"><TriangleAlert size={14} aria-hidden="true" /> {session.cancel_reason}</em>}
                     </div>
                     <div className="cost">
                       <b>{money(session.total)}</b>
-                      {order.sessions.length > 1 && <span className={`shop-pill ${sessionTone[session.status] ?? "wait"}`}>{sessionLabel[session.status] ?? session.status}</span>}
+                      {order.sessions.length > 1 && <span className={`pill ${sessionTone[session.status] ?? "wait"}`}>{sessionLabel[session.status] ?? session.status}</span>}
                     </div>
-                  </li>
-                ))}
-              </ul>
-              <dl className="order-bill">
-                <div className="total"><dt>Total{active.length && active.length < order.sessions.length ? " sesi aktif" : ""}</dt><dd>{money(billTotal)}</dd></div>
-                <div><dt>Sudah dibayar</dt><dd>{money(order.paid)}</dd></div>
-                {remaining > 0 && (
-                  <div className="due"><dt>{order.status === "pending" ? "Belum dibayar" : "Dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
-                )}
-              </dl>
-              <p className="order-meta">Atas nama {order.customer} · {order.phone}{payment ? ` · ${intentLabel[payment.status]}` : ""}</p>
-            </div>
-
-            <div className="order-actions">
-              {info?.whatsapp && (
-                <a className="shop-btn outline" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
-                  <MessageCircle size={17} aria-hidden="true" /> Tanya venue
-                </a>
+                  </div>
+                  {(session.addons.length > 0 || session.discount > 0 || session.tax > 0) && (
+                    <ul className="receipt-lines">
+                      <li><span>Sewa lapangan</span><span>{money(session.court_total)}</span></li>
+                      {session.addons.map((line, index) => <li key={index}><span>{line.quantity}× {line.name}</span><span>{money(line.subtotal)}</span></li>)}
+                      {session.discount > 0 && <li><span>Potongan{session.discount_note ? ` ${session.discount_note}` : ""}</span><span>−{money(session.discount)}</span></li>}
+                      {session.tax > 0 && <li><span>{taxName(session)}</span><span>{money(session.tax)}</span></li>}
+                    </ul>
+                  )}
+                  {session.cancel_reason && <p className="warn"><TriangleAlert size={14} aria-hidden="true" /> {session.cancel_reason}</p>}
+                </li>
+              ))}
+            </ul>
+            <dl className="bill">
+              <div className="total"><dt>Total{active.length && active.length < order.sessions.length ? " sesi aktif" : ""}</dt><dd>{money(billTotal)}</dd></div>
+              <div><dt>Sudah dibayar</dt><dd>{money(order.paid)}</dd></div>
+              {remaining > 0 && (
+                <div className={order.status === "pending" ? "due" : "now"}><dt>{order.status === "pending" ? "Belum dibayar" : "Dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
               )}
-              <Link className="shop-btn outline" href="/ketersediaan">Lihat jadwal lain <ArrowRight size={16} aria-hidden="true" /></Link>
-            </div>
-            {error && <p className="shop-note error" role="alert">{error}</p>}
-          </>
-        )}
-      </div>
-    </section>
+            </dl>
+            <p className="muted small">Atas nama {order.customer} · {order.phone}{payment ? ` · ${intentLabel[payment.status]}` : ""}</p>
+          </section>
+
+          <div className="btn-row">
+            {info?.whatsapp && (
+              <a className="shop-btn outline" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener">
+                <MessageCircle size={17} aria-hidden="true" /> Tanya venue
+              </a>
+            )}
+            <Link className="shop-btn ghost" href="/ketersediaan">Booking jadwal lain <ArrowRight size={16} aria-hidden="true" /></Link>
+          </div>
+          {error && <p className="shop-note error" role="alert">{error}</p>}
+        </>
+      )}
+    </div>
   );
 }

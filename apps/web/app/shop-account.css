@@ -1,214 +1,174 @@
-/* Akun pelanggan: tombol akun di kepala halaman, halaman masuk, ringkasan, riwayat, dan profil.
-   Memakai palet .shop dari shop.css. */
+/* Area akun pelanggan, halaman masuk, serta halaman FAQ dan kebijakan.
+   Dasar palet dan komponen ada di shop.css. */
 
-/* --- Kepala halaman ------------------------------------------------------ */
-.shop-avatar{
-  display:inline-grid;place-items:center;flex:none;overflow:hidden;border-radius:50%;
-  background:var(--brand);color:var(--brand-ink);font-weight:700;line-height:1;
-}
-.shop-avatar img{width:100%;height:100%;object-fit:cover}
-.shop-account-btn{
-  display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--tap);padding:0 var(--s3) 0 var(--s1);
-  border:1px solid #12171126;border-radius:var(--r-full);font-size:var(--fs-md);font-weight:600;color:inherit;
-}
-.shop-account-btn:hover,.shop-account-btn[aria-current=page]{background:#12171112}
-.shop-head.over .shop-account-btn{border-color:#ffffff3d}
-.shop-head.over .shop-account-btn:hover{background:#ffffff1f}
-.shop-link.login{gap:var(--s2)}
+/* --- Rangka akun --------------------------------------------------------- */
+.shop .acct{padding-block:20px 32px}
+.shop .acct-head{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.shop .acct-head>div{flex:1;min-width:0}
+.shop .acct-head h1{font-size:24px}
+.shop .acct-head p{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:13.5px;color:var(--ink-3)}
+.shop .acct-head p span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shop .acct-head .shop-btn{display:none}
+.shop .acct-tabs{display:flex;gap:4px;padding:4px;margin-bottom:18px;border-radius:14px;background:var(--sunk)}
+.shop .acct-tabs a{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:42px;border-radius:10px;font-size:14px;font-weight:700;color:var(--ink-2)}
+.shop .acct-tabs a[aria-current=page]{background:var(--card);color:var(--green);box-shadow:0 1px 3px #1118111f}
+
+.shop .acct-home,.shop .acct-history,.shop .acct-profile{display:flex;flex-direction:column;gap:14px}
+.shop .acct-alert{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px;border-radius:16px;background:var(--amber-wash);border:1px solid var(--amber-edge);color:var(--amber)}
+.shop .acct-alert span{flex:1;display:flex;flex-direction:column;font-size:13.5px}
+.shop .acct-alert b{color:var(--ink);font-size:14.5px}
+.shop .acct-alert em{flex-basis:100%;padding-left:32px;display:inline-flex;align-items:center;gap:4px;font-style:normal;font-weight:800;white-space:nowrap}
+
+.shop .acct-next{padding:20px;border-radius:22px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff;box-shadow:0 14px 34px #0f332640}
+.shop .acct-next h2{margin:10px 0 4px;font-size:26px;color:#fff}
+.shop .acct-next-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.shop .acct-next-label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--lime)}
+.shop .acct-next-meta{font-size:14px;color:#c9d7cd;text-transform:capitalize}
+.shop .acct-next-court{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:15px;font-weight:700}
+.shop .acct-next-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.shop .acct-next .shop-btn.primary{background:var(--lime);color:var(--lime-ink);box-shadow:none}
+.shop .acct-next .shop-btn.outline{background:#ffffff14;border-color:#ffffff33;color:#fff}
+.shop .acct-next-due{margin-top:12px;font-size:13.5px;color:#e6c98f}
+.shop .acct-next.empty{background:var(--card);color:var(--ink);border:1px solid var(--rule);box-shadow:var(--shadow)}
+.shop .acct-next.empty h2{color:var(--ink)}
+.shop .acct-next.empty .acct-next-label{color:var(--lime-deep)}
+.shop .acct-next.empty .acct-next-meta{color:var(--ink-3);text-transform:none}
+.shop .acct-next.empty .shop-btn.primary{background:var(--green);color:#fff}
+.shop .acct-next.empty .shop-btn.outline{background:var(--card);border-color:var(--rule-2);color:var(--ink)}
+
+.shop .acct-stats{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.shop .acct-stats>div{padding:14px;border-radius:16px;background:var(--card);border:1px solid var(--rule)}
+.shop .acct-stats dt{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--ink-3)}
+.shop .acct-stats dt svg{color:var(--lime-deep)}
+.shop .acct-stats dd{margin:6px 0 0;font-family:var(--font-display);font-size:22px;font-weight:700}
+.shop .acct-stats dd.text{font-size:16px}
+
+.shop .acct-section-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0 10px}
+.shop .acct-section-head h2{font-size:18px}
+.shop .acct-list{display:flex;flex-direction:column;gap:10px}
+.shop .acct-recent{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.shop .acct-recent li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;border-radius:16px;background:var(--card);border:1px solid var(--rule)}
+.shop .acct-recent li>div{display:flex;flex-direction:column;min-width:0}
+.shop .acct-recent span{font-size:13px;color:var(--ink-3)}
+
+.shop .acct-booking{display:flex;gap:12px;padding:14px;border-radius:18px;background:var(--card);border:1px solid var(--rule);box-shadow:var(--shadow)}
+.shop .acct-booking.cancelled{opacity:.8}
+.shop .acct-date{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;width:52px;height:56px;border-radius:14px;background:var(--green);color:#fff;line-height:1}
+.shop .acct-booking.past .acct-date,.shop .acct-booking.cancelled .acct-date{background:var(--sunk);color:var(--ink-2)}
+.shop .acct-date b{font-family:var(--font-display);font-size:21px}
+.shop .acct-date small{margin-top:3px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--lime)}
+.shop .acct-booking.past .acct-date small,.shop .acct-booking.cancelled .acct-date small{color:var(--ink-3)}
+.shop .acct-booking-body{flex:1;min-width:0}
+.shop .acct-booking header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px}
+.shop .acct-booking h3{font-size:16px}
+.shop .acct-booking header p{display:flex;align-items:center;gap:5px;font-size:13.5px;color:var(--ink-2)}
+.shop .acct-lines{list-style:none;margin:6px 0 0;padding:0;font-size:13px;color:var(--ink-3)}
+.shop .acct-warn{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;color:var(--red)}
+.shop .acct-booking footer{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px;margin-top:10px}
+.shop .acct-money{display:flex;flex-direction:column}
+.shop .acct-money b{font-size:15.5px}
+.shop .acct-money small{font-size:12.5px;color:var(--ink-3)}
+.shop .acct-actions{display:flex;flex-wrap:wrap;gap:6px}
+.shop .acct-actions .shop-btn{min-height:38px;padding:0 12px;font-size:13.5px}
+
+.shop .acct-filter{margin-bottom:2px}
+.shop .acct-filter .count{display:inline-grid;place-items:center;min-width:22px;height:20px;margin-left:6px;padding:0 6px;border-radius:999px;background:var(--rule);font-size:12px}
+.shop .acct-filter button[aria-pressed=true] .count{background:var(--lime-wash);color:var(--lime-deep)}
+.shop .acct-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:32px 16px;text-align:center;border-radius:18px;background:var(--card);border:1px dashed var(--rule-2);color:var(--ink-3)}
+.shop .acct-empty svg{color:var(--lime-deep)}
+
+.shop .acct-claim{padding:18px;border-radius:18px;background:var(--card);border:1px solid var(--rule)}
+.shop .acct-claim h2{display:flex;align-items:center;gap:8px;font-size:17px;margin-bottom:6px}
+.shop .acct-claim h2 svg{color:var(--lime-deep)}
+.shop .acct-claim p{font-size:13.5px;line-height:1.55;color:var(--ink-3);margin-bottom:12px}
+.shop .acct-claim form{display:grid;gap:10px}
+
+/* Isian di area akun memakai label pembungkus; tampilannya sama dengan .field. */
+.shop .acct-form,.shop .acct-claim form{display:flex;flex-direction:column;gap:12px}
+.shop .acct-form label,.shop .acct-claim label{display:flex;flex-direction:column;gap:6px;font-size:14px;font-weight:700}
+.shop .acct-form label small{font-size:13px;font-weight:500;color:var(--ink-3)}
+
+.shop .acct-card{padding:18px;border-radius:18px;background:var(--card);border:1px solid var(--rule)}
+.shop .acct-card h2{font-size:17px;margin-bottom:4px}
+.shop .acct-card>p{font-size:13.5px;line-height:1.55;color:var(--ink-3);margin-bottom:14px}
+.shop .acct-card.danger{border-color:var(--red-edge)}
+.shop .acct-google-row{display:flex;align-items:center;gap:12px;margin:10px 0}
+.shop .acct-google-row>div{display:flex;flex-direction:column;min-width:0}
+.shop .acct-google-row span{font-size:13px;color:var(--ink-3)}
+.shop .acct-confirm{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:14px;background:var(--red-wash)}
+.shop .acct-confirm>div{display:flex;flex-wrap:wrap;gap:8px}
 
 /* --- Halaman masuk ------------------------------------------------------- */
-.acct-login-page{display:grid;place-items:start center}
-.acct-login{
-  width:min(100%,480px);display:flex;flex-direction:column;gap:var(--s4);padding:var(--s7);
-  border:1px solid var(--edge);border-radius:var(--r-xl);background:var(--surface);box-shadow:var(--card-shadow);
+.shop .acct-login-page{display:flex;justify-content:center;padding-block:24px 40px}
+.shop .acct-login{width:100%;max-width:440px;padding:24px 20px;border-radius:24px;background:var(--card);border:1px solid var(--rule);box-shadow:var(--shadow)}
+.shop .acct-step{display:inline-flex;height:28px;align-items:center;padding:0 12px;border-radius:999px;background:var(--lime-wash);color:var(--lime-deep);font-size:12.5px;font-weight:800}
+.shop .acct-login h1{margin:12px 0 6px;font-size:25px;line-height:1.15}
+.shop .acct-login>p{font-size:14.5px;line-height:1.55;color:var(--ink-2);margin-bottom:16px}
+.shop .acct-login .acct-signed{padding:10px 12px;border-radius:12px;background:var(--sunk);font-size:13.5px}
+.shop .acct-perks{list-style:none;margin:0 0 18px;padding:0;display:flex;flex-direction:column;gap:12px}
+.shop .acct-perks li{display:flex;gap:12px}
+.shop .acct-perks svg{flex:none;width:40px;height:40px;padding:10px;border-radius:12px;background:var(--green);color:var(--lime)}
+.shop .acct-perks span{display:flex;flex-direction:column;font-size:13.5px;color:var(--ink-3)}
+.shop .acct-perks b{font-size:14.5px;color:var(--ink)}
+.shop .acct-google{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;min-height:54px;border:1px solid var(--rule-2);border-radius:14px;background:#fff;color:var(--ink);font-size:16px;font-weight:700;box-shadow:0 2px 6px #1118110f}
+.shop .acct-google:hover:not(:disabled){border-color:var(--ink-3)}
+.shop .acct-fine{display:flex;gap:8px;margin-top:14px;font-size:12.5px;line-height:1.5;color:var(--ink-3)}
+.shop .acct-fine svg{flex:none;margin-top:2px;color:var(--lime-deep)}
+.shop .acct-guest{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:14px;min-height:44px;border-radius:12px;font-size:14px;font-weight:700;color:var(--green)}
+.shop .acct-guest:hover{background:var(--sunk)}
+
+/* --- FAQ dan kebijakan --------------------------------------------------- */
+.shop .doc{max-width:760px}
+.shop .doc-head{margin:8px 0 20px}
+.shop .doc-head h1{margin:8px 0 6px;font-size:28px;line-height:1.15}
+.shop .doc-head p{font-size:14.5px;line-height:1.55;color:var(--ink-3)}
+.shop .doc-toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.shop .doc-toc a{display:inline-flex;align-items:center;min-height:38px;padding:0 14px;border-radius:999px;background:var(--card);border:1px solid var(--rule);font-size:14px;font-weight:600;color:var(--green)}
+.shop .doc-card{scroll-margin-top:calc(var(--head-h) + 12px);margin-bottom:14px;padding:18px;border-radius:18px;background:var(--card);border:1px solid var(--rule)}
+.shop .doc-card h2{font-size:19px;margin-bottom:14px}
+.shop .doc-card>p{color:var(--ink-2);margin-bottom:14px}
+.shop .doc-notes{margin:14px 0 0;padding-left:20px;font-size:14px;line-height:1.6;color:var(--ink-2)}
+.shop .doc-text{margin-top:14px;font-size:14.5px;color:var(--ink-2)}
+.shop .doc-more{margin:18px 0;font-size:14.5px;color:var(--ink-2)}
+.shop .doc-more a{color:var(--green);font-weight:700;text-decoration:underline}
+
+.shop .tiers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.shop .tiers li{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:var(--paper)}
+.shop .tiers strong{flex:none;display:grid;place-items:center;width:56px;height:42px;border-radius:10px;font-family:var(--font-display);font-size:16px}
+.shop .tiers .full strong{background:var(--lime-wash);color:var(--lime-deep)}
+.shop .tiers .part strong{background:var(--amber-wash);color:var(--amber)}
+.shop .tiers .none strong{background:var(--red-wash);color:var(--red)}
+.shop .tiers b{display:block;font-size:14.5px}
+.shop .tiers span{display:block;font-size:13px;line-height:1.45;color:var(--ink-3)}
+
+.shop .faq{display:flex;flex-direction:column;gap:8px}
+.shop .faq details{border-radius:16px;background:var(--card);border:1px solid var(--rule);padding:0 16px;transition:box-shadow .2s}
+.shop .faq details[open]{box-shadow:var(--shadow)}
+.shop .faq summary{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:56px;padding:12px 0;font-weight:700;font-size:15px;cursor:pointer;list-style:none}
+.shop .faq summary::-webkit-details-marker{display:none}
+.shop .faq summary svg{flex:none;width:28px;height:28px;padding:5px;border-radius:50%;background:var(--sunk);color:var(--green);transition:transform .2s}
+.shop .faq details[open] summary svg{transform:rotate(45deg);background:var(--green);color:var(--lime)}
+.shop .faq .rich-text{padding-bottom:16px;font-size:14.5px;color:var(--ink-2)}
+
+.shop .help-card{display:flex;flex-direction:column;gap:14px;margin-top:20px;padding:20px;border-radius:20px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff}
+.shop .help-card h2{color:#fff;font-size:20px}
+.shop .help-card p{margin-top:4px;font-size:14px;color:#c9d7cd}
+.shop .help-card .actions{display:flex;flex-wrap:wrap;gap:8px}
+.shop .help-card .shop-btn.primary{background:var(--lime);color:var(--lime-ink);box-shadow:none}
+.shop .help-card .shop-btn.outline{background:#ffffff14;border-color:#ffffff33;color:#fff}
+
+@media (min-width:720px){
+  .shop .acct{padding-top:28px}
+  .shop .acct-alert{flex-wrap:nowrap}
+  .shop .acct-alert em{flex-basis:auto;padding-left:0}
+  .shop .acct-head h1{font-size:28px}
+  .shop .acct-head .shop-btn{display:inline-flex}
+  .shop .acct-tabs{display:inline-flex}
+  .shop .acct-tabs a{flex:none;padding:0 18px}
+  .shop .acct-stats{grid-template-columns:repeat(4,1fr)}
+  .shop .acct-claim form{display:grid;grid-template-columns:1fr 1fr auto;align-items:end}
+  .shop .acct-login{padding:32px}
+  .shop .doc-head h1{font-size:34px}
+  .shop .help-card{flex-direction:row;align-items:center;justify-content:space-between}
 }
-.acct-login h1{font-size:clamp(26px,3.4vw,32px);line-height:1.15}
-.acct-login>p{font-size:var(--fs-lg);line-height:var(--lh-normal);color:var(--ink-soft)}
-.acct-step{align-self:flex-start;font-size:var(--fs-xs);font-weight:700;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--brand-deep)}
-.acct-login .shop-eyebrow{align-self:flex-start}
-.acct-perks{list-style:none;margin:var(--s2) 0;padding:0;display:flex;flex-direction:column;gap:var(--s4)}
-.acct-perks li{display:flex;align-items:flex-start;gap:var(--s3)}
-.acct-perks svg{flex:none;width:38px;height:38px;padding:9px;border-radius:var(--r-sm);background:var(--brand-wash);color:var(--brand-deep)}
-.acct-perks span{display:flex;flex-direction:column;gap:2px;font-size:var(--fs-md);line-height:var(--lh-snug);color:var(--ink-soft)}
-.acct-perks b{font-size:var(--fs-md);color:var(--ink)}
-/* Tombol Google mengikuti pedoman merek: putih, logo empat warna, teks gelap. */
-.acct-google{
-  display:flex;align-items:center;justify-content:center;gap:var(--s3);min-height:52px;padding:0 var(--s5);
-  border:1px solid #747775;border-radius:var(--r-full);background:#fff;color:#1f1f1f;
-  font-size:var(--fs-lg);font-weight:600;transition:background var(--fast) var(--ease),box-shadow var(--fast) var(--ease);
-}
-.acct-google:hover:not(:disabled){background:#f7f8f8;box-shadow:0 1px 3px #3c40434d}
-.acct-google:disabled{opacity:.7}
-.acct-login>.acct-fine{display:flex;gap:var(--s2);align-items:flex-start;font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--ink-faint)}
-.acct-login>.acct-fine svg{flex:none;margin-top:2px}
-.acct-guest{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);min-height:var(--tap);font-size:var(--fs-md);font-weight:600;color:var(--ink-soft)}
-.acct-guest:hover{color:var(--ink);text-decoration:underline}
-.acct-login>.acct-signed{font-size:var(--fs-md);padding:var(--s3) var(--s4);border-radius:var(--r-md);background:var(--sunken)}
-
-/* --- Formulir profil ----------------------------------------------------- */
-.acct-form{display:flex;flex-direction:column;gap:var(--s4)}
-.acct-form label,.acct-claim label{display:flex;flex-direction:column;gap:var(--s2);font-size:var(--fs-sm);font-weight:600;color:var(--ink-soft)}
-.acct-form input,.acct-claim input{
-  min-height:var(--control-lg);padding:0 var(--s3);border:1px solid var(--edge);border-radius:var(--r-sm);
-  background:var(--surface);color:var(--ink);font-size:var(--fs-lg);font-weight:400;
-}
-.acct-form input:focus,.acct-claim input:focus{outline:2px solid var(--brand-deep);outline-offset:1px;border-color:var(--brand-deep)}
-.acct-form small{font-size:var(--fs-xs);font-weight:400;color:var(--ink-faint)}
-.acct-form input[aria-invalid=true]{border-color:var(--danger)}
-.acct-form small.field-error{font-weight:500;color:var(--danger)}
-
-/* --- Kerangka area akun -------------------------------------------------- */
-.acct{display:flex;flex-direction:column;gap:var(--s5)}
-.acct-head{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap}
-.acct-head>div{flex:1;min-width:0}
-.acct-head h1{font-size:clamp(26px,3.6vw,34px);line-height:1.1}
-.acct-head p{display:flex;flex-wrap:wrap;column-gap:var(--s2);margin-top:var(--s1);font-size:var(--fs-md);color:var(--ink-faint)}
-.acct-head p .email{overflow-wrap:anywhere;min-width:0}
-/* Nomor HP tidak boleh terpotong di tengah; pindah baris utuh bila tidak muat. */
-.acct-head p .phone{white-space:nowrap}
-.acct-head p .email+.phone:before{content:"·";margin-right:var(--s2)}
-.acct-tabs{display:flex;gap:var(--s1);border-bottom:1px solid var(--edge);overflow-x:auto}
-.acct-tabs a{
-  display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--control-lg);padding:0 var(--s4);
-  border-bottom:2px solid transparent;margin-bottom:-1px;
-  font-size:var(--fs-md);font-weight:600;color:var(--ink-soft);white-space:nowrap;
-}
-.acct-tabs a:hover{color:var(--ink)}
-.acct-tabs a[aria-current=page]{color:var(--ink);border-bottom-color:var(--brand-deep)}
-
-/* --- Ringkasan ----------------------------------------------------------- */
-.acct-home{display:flex;flex-direction:column;gap:var(--s5)}
-.acct-alert{
-  display:flex;align-items:center;gap:var(--s3);padding:var(--s4) var(--s5);
-  border:1px solid var(--care-edge);border-radius:var(--card-radius);background:var(--care-wash);color:var(--ink);
-}
-.acct-alert>svg{flex:none;color:var(--care)}
-.acct-alert span{flex:1;display:flex;flex-direction:column;gap:2px;font-size:var(--fs-md);color:var(--ink-soft)}
-.acct-alert b{color:var(--ink)}
-.acct-alert em{display:inline-flex;align-items:center;gap:var(--s1);font-style:normal;font-weight:700;color:var(--care);white-space:nowrap}
-
-/* Jadwal berikutnya: kartu malam, sama suasananya dengan hero beranda. */
-.acct-next{
-  position:relative;overflow:hidden;display:flex;flex-direction:column;gap:var(--s2);padding:var(--s7);
-  border-radius:var(--r-xl);background:var(--night);color:var(--night-text);
-}
-.acct-next:after{content:"";position:absolute;right:-60px;top:-60px;width:260px;height:260px;border-radius:50%;background:radial-gradient(circle,#c8ff3d2e,transparent 65%);pointer-events:none}
-.acct-next-top{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap}
-.acct-next-label{display:inline-flex;align-items:center;gap:var(--s2);font-size:var(--fs-xs);font-weight:700;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--brand)}
-.acct-next h2{margin-top:var(--s2);font-size:clamp(28px,4.4vw,44px);line-height:1.05;color:var(--night-text)}
-.acct-next-meta{font-size:var(--fs-md);color:var(--night-soft)}
-.acct-next-court{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-lg);font-weight:600}
-.acct-next-court svg{color:var(--brand)}
-.acct-next-actions{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:var(--s3);margin-top:var(--s4)}
-.acct-next .shop-btn.outline{background:transparent;border-color:#ffffff33;color:var(--night-text)}
-.acct-next .shop-btn.outline:hover{background:#ffffff14;border-color:#ffffff66}
-.acct-next-due{font-size:var(--fs-sm);color:var(--night-faint)}
-.acct-next .shop-pill.on{background:#c8ff3d24;color:var(--brand)}
-.acct-next .shop-pill.wait{background:#ffb4591f;color:#ffc47d}
-
-.acct-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s3);margin:0}
-.acct-stats>div{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s5);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
-.acct-stats dt{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-sm);color:var(--ink-faint)}
-.acct-stats dt svg{color:var(--brand-deep)}
-.acct-stats dd{margin:0;font-family:var(--font-display);font-size:var(--fs-3xl);font-weight:700;letter-spacing:-.02em}
-.acct-stats dd.text{font-size:var(--fs-xl);line-height:var(--lh-tight)}
-.acct-stats .shop-tlink{align-self:flex-start;margin-top:auto}
-
-.acct-section{display:flex;flex-direction:column;gap:var(--s4)}
-.acct-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s3);flex-wrap:wrap}
-.acct-section-head h2{font-size:var(--fs-2xl)}
-.acct-recent{list-style:none;margin:0;padding:0;border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
-.acct-recent li{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s4) var(--s5)}
-.acct-recent li+li{border-top:1px solid var(--edge-soft)}
-.acct-recent div{display:flex;flex-direction:column;gap:2px;min-width:0}
-.acct-recent span{font-size:var(--fs-sm);color:var(--ink-faint)}
-
-/* --- Kartu booking ------------------------------------------------------- */
-.acct-list{display:flex;flex-direction:column;gap:var(--s3)}
-.acct-booking{display:flex;gap:var(--s4);padding:var(--s5);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
-.acct-booking.cancelled{background:var(--paper)}
-.acct-date{
-  flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;width:60px;height:64px;
-  border-radius:var(--r-md);background:var(--brand-wash);color:var(--brand-deep);
-}
-.acct-booking.past .acct-date,.acct-booking.cancelled .acct-date{background:var(--sunken);color:var(--ink-soft)}
-.acct-date b{font-family:var(--font-display);font-size:var(--fs-3xl);line-height:1}
-.acct-date small{font-weight:700;text-transform:uppercase}
-.acct-booking-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:var(--s3)}
-.acct-booking-body>header{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s3)}
-.acct-booking h3{font-size:var(--fs-xl)}
-.acct-booking header p{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s1);font-size:var(--fs-md);color:var(--ink-soft)}
-.acct-booking .shop-pill{flex:none}
-.acct-lines{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:var(--s2)}
-.acct-lines li{padding:2px var(--s3);border-radius:var(--r-full);background:var(--sunken);font-size:var(--fs-sm);color:var(--ink-soft)}
-.acct-warn{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-sm);color:var(--busy)}
-.acct-booking footer{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;padding-top:var(--s3);border-top:1px solid var(--edge-soft)}
-.acct-money{display:flex;flex-direction:column}
-.acct-money b{font-family:var(--font-display);font-size:var(--fs-xl)}
-.acct-money small{color:var(--ink-faint)}
-.acct-actions{display:flex;flex-wrap:wrap;gap:var(--s2)}
-
-/* --- Riwayat ------------------------------------------------------------- */
-.acct-history{display:flex;flex-direction:column;gap:var(--s4)}
-.acct-filter{align-self:flex-start}
-.acct-filter .count{display:inline-grid;place-items:center;min-width:22px;height:20px;margin-left:var(--s2);padding:0 6px;border-radius:var(--r-full);background:var(--edge);font-size:var(--fs-xs);font-weight:700;color:var(--ink-soft)}
-.acct-filter button[aria-pressed=true] .count{background:var(--brand);color:var(--brand-ink)}
-.acct-empty{display:flex;flex-direction:column;align-items:center;gap:var(--s3);padding:var(--s9) var(--s5);border:1px dashed var(--edge);border-radius:var(--card-radius);text-align:center;color:var(--ink-faint)}
-.acct-empty p{font-size:var(--fs-lg)}
-.acct-claim{display:flex;flex-direction:column;gap:var(--s4);margin-top:var(--s4);padding:var(--s6);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface);scroll-margin-top:calc(var(--head-h) + var(--s4))}
-.acct-claim h2{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-xl)}
-.acct-claim h2 svg{color:var(--brand-deep)}
-.acct-claim>div p{margin-top:var(--s2);font-size:var(--fs-md);line-height:var(--lh-normal);color:var(--ink-soft)}
-.acct-claim form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;align-items:end;gap:var(--s3)}
-
-/* --- Profil -------------------------------------------------------------- */
-.acct-profile{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:var(--s5);align-items:start}
-.acct-card{display:flex;flex-direction:column;gap:var(--s4);padding:var(--s6);border:1px solid var(--edge);border-radius:var(--card-radius);background:var(--surface)}
-.acct-card:first-child{grid-row:span 2}
-.acct-card h2{font-size:var(--fs-xl)}
-.acct-card>p{font-size:var(--fs-md);line-height:var(--lh-normal);color:var(--ink-soft)}
-.acct-card>.shop-btn{align-self:flex-start}
-.acct-card.danger{border-color:var(--busy-edge)}
-.acct-google-row{display:flex;align-items:center;gap:var(--s3)}
-.acct-google-row div{display:flex;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere}
-.acct-google-row span{font-size:var(--fs-sm);color:var(--ink-faint)}
-.acct-confirm{display:flex;flex-direction:column;gap:var(--s3);padding:var(--s4);border-radius:var(--r-md);background:var(--busy-wash)}
-.acct-confirm>div{display:flex;flex-wrap:wrap;gap:var(--s2)}
-.shop-btn.danger{background:var(--busy);color:#fff}
-.shop-btn.danger:hover:not(:disabled){filter:brightness(1.08)}
-.shop-btn.danger-text{color:var(--busy)}
-
-/* --- Keranjang ----------------------------------------------------------- */
-.cart-account{display:flex;align-items:flex-start;gap:var(--s2);padding:var(--s3);border-radius:var(--r-sm);background:var(--sunken);font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--ink-soft);overflow-wrap:anywhere}
-.cart-account svg{flex:none;margin-top:1px;color:var(--brand-deep)}
-.cart-account b{color:var(--ink)}
-.cart-account.invite{border:1px dashed var(--brand-edge);background:var(--brand-wash)}
-.cart-account.invite:hover{border-style:solid}
-
-@media(max-width:900px){
-  .acct-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .acct-profile{grid-template-columns:minmax(0,1fr)}
-  .acct-card:first-child{grid-row:auto}
-}
-@media(max-width:760px){
-  .shop-account-btn span{display:none}
-  .shop-account-btn{padding:0 var(--s1)}
-  .acct-login{padding:var(--s5)}
-  .acct-next{padding:var(--s5)}
-  .acct-head .shop-btn{width:100%}
-  .acct-claim{padding:var(--s5)}
-  .acct-claim form{grid-template-columns:minmax(0,1fr)}
-  .acct-filter{align-self:stretch}
-  .acct-filter button{padding:0 var(--s2);white-space:nowrap}
-  .acct-booking{padding:var(--s4);gap:var(--s3)}
-  .acct-date{width:52px;height:58px}
-  .acct-booking-body>header{flex-direction:column;gap:var(--s2)}
-  .acct-alert{flex-wrap:wrap}
-  .acct-recent li{flex-wrap:wrap}
-}
-/* Layar sangat sempit: akun tetap terjangkau dari menu, kepala halaman tidak meluber. */
-@media(max-width:560px){.shop-account-btn{display:none}}
-@media(max-width:420px){
-  .acct-stats{grid-template-columns:minmax(0,1fr)}
-  .acct-actions,.acct-actions .shop-btn{width:100%}
-}
+.shop .acct-filter button{padding:0 8px}
