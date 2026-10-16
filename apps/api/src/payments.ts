@@ -5,7 +5,7 @@ import { check } from "./errors.js";
 import { localClock, minutes } from "./clock.js";
 import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
 import { syncBooking } from "./finance.js";
-import { closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, timeSchema, type Booking } from "./operations.js";
+import { closeSchema, contactPhoneSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, timeSchema, type Booking } from "./operations.js";
 import {
   createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod,
   payableAmount, signatureFor, signatureMatches, type MidtransStatus, type Outcome,
@@ -77,7 +77,7 @@ export const maxCartItems = 6;
 export const checkoutSchema = z.object({
   items: z.array(cartItemSchema).min(1, "Keranjang masih kosong.").max(maxCartItems, `Maksimal ${maxCartItems} sesi dalam satu pesanan.`),
   customer: z.string().trim().min(2, "Isi nama pemesan.").max(80),
-  phone: z.string().trim().min(9, "Nomor telepon tidak valid.").max(18),
+  phone: contactPhoneSchema,
   email: z.union([z.email("Email tidak valid."), z.literal("")]).default(""),
   notes: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
 });
@@ -331,6 +331,12 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
               .run("Slot keburu terisi setelah pembayaran masuk. Dana perlu dikembalikan.", booking.id);
             releaseAddons(booking.id, "midtrans");
           }
+        } else if (booking.status === "expired") {
+          // Dana masuk setelah batas bayar lewat (Midtrans menghitung batasnya sedikit lebih lambat).
+          // Slot dan stoknya sudah dilepas, jadi booking dibatalkan agar dananya tampil sebagai
+          // pengembalian yang harus diproses, bukan menggantung di booking kedaluwarsa.
+          db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=?")
+            .run("Pembayaran masuk setelah batas waktu bayar. Dana perlu dikembalikan.", booking.id);
         }
       });
       for (const booking of bookings) syncBooking(booking.id);

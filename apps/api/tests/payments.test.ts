@@ -234,6 +234,27 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal((await request("/public/checkout", "POST", checkout([item("16:00", "17:00")]))).status, 201, "slot yang sudah dilepas bisa dipesan lagi");
     });
 
+    await t.test("hold kedaluwarsa tidak dianggap terisi di panel, dan bayar telat menjadi pengembalian", async () => {
+      const created = await request("/public/checkout", "POST", checkout([item("17:00", "18:00")]));
+      assert.equal(created.status, 201);
+      db.prepare("UPDATE bookings SET hold_expires_at=unixepoch()-60 WHERE order_id=?").run(created.data.order_id);
+      const context = await request(`/operations/context?date=${tomorrow}`, "GET", undefined, admin);
+      assert.equal(context.status, 200);
+      assert.ok(!context.data.schedule.some((entry: { start_time: string }) => entry.start_time === "17:00"), "formulir booking staf tidak lagi melihat slot itu terisi");
+      const before = (await request("/dashboard/summary", "GET", undefined, admin)).data;
+      // Midtrans menghitung batas bayarnya sedikit lebih lambat, jadi dana bisa masuk setelah booking kedaluwarsa.
+      const late = await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount), "", "");
+      assert.equal(late.status, 200);
+      const { id } = db.prepare("SELECT id FROM bookings WHERE order_id=?").get(created.data.order_id) as { id: string };
+      const booking = (await request(`/operations/bookings/${id}`, "GET", undefined, admin)).data.booking;
+      assert.equal(booking.status, "cancelled", "booking kedaluwarsa yang terlanjur dibayar dibatalkan agar dananya dikembalikan");
+      assert.equal(booking.paid, created.data.amount);
+      assert.match(booking.cancel_reason, /dikembalikan/);
+      const after = (await request("/dashboard/summary", "GET", undefined, admin)).data;
+      assert.equal(after.refundsDue - before.refundsDue, created.data.amount, "dana tampil sebagai pengembalian yang harus diproses");
+      assert.equal(after.receivable, before.receivable, "booking kedaluwarsa tidak pernah dihitung sebagai piutang");
+    });
+
     await t.test("mode DP menagih sebagian dan menyisakan tagihan di venue", async () => {
       assert.equal((await request("/operations/payments/settings", "PUT", settings({ mode: "dp", dp_percent: 40, server_key: "" }), admin)).status, 200, "server key kosong berarti dipertahankan");
       const created = await request("/public/checkout", "POST", checkout([item("19:00", "20:00")]));
@@ -277,6 +298,14 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(after.data.booking.paid, 300000);
       assert.equal(after.data.payments[0].method, "va");
       assert.equal((await request(`/operations/bookings/${id}/payment-link`, "POST", {}, staff)).status, 409, "booking lunas tidak perlu link baru");
+    });
+
+    await t.test("PUBLIC_URL diterima sebagai asal permintaan, asal lain tetap ditolak", async () => {
+      const quote = { items: [item("18:00", "19:00")] };
+      assert.equal((await request("/public/cart/quote", "POST", quote, "", "https://padelix.contoh")).status, 200, "pelanggan yang membuka alamat publik dapat memesan");
+      const foreign = await request("/public/cart/quote", "POST", quote, "", "https://situs-lain.contoh");
+      assert.equal(foreign.status, 403);
+      assert.match(foreign.data.message, /Asal permintaan/);
     });
 
     await t.test("checkout ditolak saat pembayaran online dimatikan", async () => {
