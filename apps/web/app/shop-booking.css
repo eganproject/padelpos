@@ -66,11 +66,6 @@
 .shop .slot.picked{border-color:var(--green);background:var(--green);color:#fff}
 .shop .slot.picked small{color:var(--lime)}
 .shop .slot.picked:after{display:none}
-.shop .slot.picked .until{font-size:12px;font-weight:600;color:#fff;font-variant-numeric:tabular-nums}
-.shop .slot.picked small{display:inline-flex;align-items:center;gap:3px}
-.shop .slot.picked{box-shadow:0 6px 16px #0f332640}
-.shop .book-hint{display:flex;align-items:flex-start;gap:6px;margin:10px 0 0;font-size:13.5px;color:var(--ink-2)}
-.shop .book-hint svg{flex:none;margin-top:2px;color:var(--lime-deep)}
 
 /* --- Lembar pilihan ------------------------------------------------------ */
 .shop .sheet{position:fixed;left:0;right:0;bottom:calc(var(--tab-h) + var(--safe-b));z-index:44;display:flex;justify-content:center;pointer-events:none;animation:sheet-in .22s cubic-bezier(.2,.8,.3,1)}
@@ -185,5 +180,5 @@
   .shop .sheet{bottom:24px}
   .shop .cart-bar{bottom:24px}
   .shop .book.has-sheet{padding-bottom:24px}
-  .shop .book.has-sheet .book-controls,.shop .book.has-sheet>.court-block,.shop .book.has-sheet>.page-head,.shop .book.has-sheet>.book-legend,.shop .book.has-sheet>.book-hint,.shop .book.has-sheet>.floor-head{margin-right:440px}
+  .shop .book.has-sheet .book-controls,.shop .book.has-sheet>.court-block,.shop .book.has-sheet>.page-head,.shop .book.has-sheet>.book-legend,.shop .book.has-sheet>.floor-head{margin-right:440px}
 }
