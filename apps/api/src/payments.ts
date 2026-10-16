@@ -331,6 +331,11 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
               .run("Slot keburu terisi setelah pembayaran masuk. Dana perlu dikembalikan.", booking.id);
             releaseAddons(booking.id, "midtrans");
           }
+        } else if (booking.status === "expired") {
+          // Dibayar setelah batas waktu: slot dan stoknya sudah dilepas, jadi booking tidak dihidupkan
+          // lagi. Dibatalkan dengan alasan yang jelas agar staf mengembalikan dananya.
+          db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=? AND status='expired'")
+            .run("Pembayaran masuk setelah batas waktu bayar. Dana perlu dikembalikan.", booking.id);
         }
       });
       for (const booking of bookings) syncBooking(booking.id);

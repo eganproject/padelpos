@@ -80,7 +80,7 @@ export function AddonsPanel(){
         <td data-label="Jenis"><span className={`addon-type ${a.type}`}>{typeLabel[a.type]}</span></td>
         <td data-label="Harga">{money(a.price)}<small className="table-description">{unitLabel(a.type,a.pricing)}</small><small className="table-description">Maks {a.max_per_booking} per booking</small></td>
         <td data-label="Stok"><span className={`addon-stock${a.stock===null?" unlimited":low?" low":""}`}>{low&&<TriangleAlert size={13} aria-hidden="true"/>}{stockLabel(a)}</span>{a.type==="jual"&&a.stock!==null&&a.low_stock>0&&<small className="table-description">Ingatkan di ≤ {a.low_stock}</small>}</td>
-        <td data-label="Status"><span className={`status-pill ${a.active?"on":"off"}`}>{a.active?"Aktif":"Nonaktif"}</span><small className="table-description">{a.online?"Tampil online":"Khusus kasir"}</small></td>
+        <td data-label="Status"><span className={`status-pill ${a.active?"on":"off"}`}>{a.active?"Aktif":"Nonaktif"}</span><small className="table-description">{!a.active?"Tidak dapat dipilih":a.online?"Tampil online":"Khusus kasir"}</small></td>
         <td className="actions"><div className="row-actions">
           <button onClick={()=>void move(a,-1)} disabled={filtering||!!busy||index===0} aria-label={`Naikkan ${a.name}`} title={filtering?"Kosongkan pencarian untuk mengubah urutan":"Naikkan"}><ArrowUp/></button>
           <button onClick={()=>void move(a,1)} disabled={filtering||!!busy||index===list.length-1} aria-label={`Turunkan ${a.name}`} title={filtering?"Kosongkan pencarian untuk mengubah urutan":"Turunkan"}><ArrowDown/></button>
@@ -126,7 +126,8 @@ function AddonFormModal({addon,close,done}:{addon:Addon|null;close:()=>void;done
   async function submit(e:React.FormEvent){
     e.preventDefault();setBusy(true);setError("");
     try{
-      const {addon:saved}=await api<{addon:Addon}>(`/operations/addons${addon?"/"+addon.id:""}`,{method:addon?"PUT":"POST",body:JSON.stringify(form)});
+      // Item nonaktif tidak pernah tampil online; kirim apa yang terlihat di formulir.
+      const {addon:saved}=await api<{addon:Addon}>(`/operations/addons${addon?"/"+addon.id:""}`,{method:addon?"PUT":"POST",body:JSON.stringify({...form,online:form.active&&form.online})});
       try{
         if(photo)await api(`/operations/addons/${saved.id}/photo`,{method:"POST",headers:{"Content-Type":photo.file.type},body:photo.file});
         else if(dropPhoto&&saved.photo_id)await api(`/operations/addons/${saved.id}/photo`,{method:"DELETE"});

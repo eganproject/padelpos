@@ -5,12 +5,12 @@ import { z } from "zod";
 import { requireAdmin,revokeSessions,type AuthRequest } from "../auth.js";
 import { audit,getMenus,getRoles,getUsers,saveMenus,saveRoles,saveUsers,transaction } from "../store.js";
 import { check } from "../errors.js";
-import { passwordSchema,publicUser } from "./auth.js";
+import { passwordSchema,publicUser,staffName,staffPhone } from "./auth.js";
 import type { AccessMenu,AccessRole,User } from "../types.js";
 const router=Router();
 router.use(requireAdmin);
 router.get("/overview",(_req,res)=>res.json({users:getUsers().map(publicUser),roles:getRoles(),menus:getMenus()}));
-const userSchema=z.object({name:z.string().trim().min(3).max(60),email:z.email().toLowerCase(),phone:z.string().trim().min(9).max(18),role:z.string().min(1),password:passwordSchema.optional()});
+const userSchema=z.object({name:staffName,email:z.email("Format email tidak valid.").toLowerCase(),phone:staffPhone,role:z.string().min(1,"Pilih role."),password:passwordSchema.optional()});
 router.post("/users",async(req:AuthRequest,res)=>{
   const data=userSchema.parse(req.body);check(data.password,400,"Password wajib diisi.");
   const passwordHash=await bcrypt.hash(data.password,12);
@@ -47,7 +47,7 @@ router.delete("/users/:id",(req:AuthRequest,res)=>{transaction(()=>{
   check(!(target.role==="admin"&&users.filter(u=>u.role==="admin").length===1),400,"Admin terakhir tidak dapat dihapus.");
   saveUsers(users.filter(u=>u.id!==target.id));revokeSessions(target.id);audit(req.auth!.sub,"user.delete",target.id);
 });res.status(204).send()});
-const roleSchema=z.object({name:z.string().trim().min(3).max(40),slug:z.string().min(2).max(30).regex(/^[a-z0-9-]+$/),description:z.string().max(160),menuIds:z.array(z.string())});
+const roleSchema=z.object({name:z.string().trim().min(3,"Nama role minimal 3 karakter.").max(40,"Nama role maksimal 40 karakter."),slug:z.string().trim().min(2,"Slug minimal 2 karakter.").max(30,"Slug maksimal 30 karakter.").regex(/^[a-z0-9-]+$/,"Slug hanya boleh huruf kecil, angka, dan tanda hubung (-)."),description:z.string().trim().max(160,"Deskripsi maksimal 160 karakter."),menuIds:z.array(z.string())});
 function validateMenus(ids:string[]){check(ids.every(id=>getMenus().some(m=>m.id===id)),400,"Menu tidak tersedia.");}
 router.post("/roles",(req:AuthRequest,res)=>{
   const data=roleSchema.parse(req.body);
@@ -78,8 +78,9 @@ router.delete("/roles/:id",(req:AuthRequest,res)=>{transaction(()=>{
   check(!getUsers().some(u=>u.role===role.slug),400,"Role masih digunakan.");
   saveRoles(roles.filter(r=>r.id!==role.id));audit(req.auth!.sub,"role.delete",role.id);
 });res.status(204).send()});
-const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",payments:"/admin/payments",courts:"/admin/courts",addons:"/admin/addons",layout:"/admin/layout",info:"/admin/info",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
-const menuSchema=z.object({name:z.string().trim().min(2).max(40),path:z.string().regex(/^\/admin(?:\/[a-z0-9-]+)*$/),icon:z.string().min(2).max(40),group:z.string().min(2).max(40),order:z.number().int().min(0),active:z.boolean()});
+// Modul bawaan: path-nya dipakai halaman admin, jadi tidak boleh diubah atau dihapus.
+const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",payments:"/admin/payments",finance:"/admin/keuangan",customers:"/admin/customers",courts:"/admin/courts",addons:"/admin/addons",layout:"/admin/layout",info:"/admin/info",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
+const menuSchema=z.object({name:z.string().trim().min(2,"Nama menu minimal 2 karakter.").max(40,"Nama menu maksimal 40 karakter."),path:z.string().trim().regex(/^\/admin(?:\/[a-z0-9-]+)*$/,"Path harus diawali /admin/ dan hanya memuat huruf kecil, angka, atau tanda hubung."),icon:z.string().min(2).max(40),group:z.string().trim().min(2,"Nama grup minimal 2 karakter.").max(40,"Nama grup maksimal 40 karakter."),order:z.number("Urutan harus berupa angka.").int("Urutan harus bilangan bulat.").min(0,"Urutan tidak boleh negatif."),active:z.boolean()});
 router.post("/menus",(req:AuthRequest,res)=>{
   const data=menuSchema.parse(req.body);
   const menu=transaction(()=>{

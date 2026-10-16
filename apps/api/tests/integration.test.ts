@@ -136,6 +136,11 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/operations/context","GET",undefined,staff)).status,200);
       assert.equal((await request("/access/roles/admin","PUT",{name:"Admin",slug:"admin",description:"test",menuIds:[]},admin)).status,400);
       assert.equal((await request("/access/menus/users","DELETE",undefined,admin)).status,400);
+      // Modul Keuangan dan Pelanggan sama-sama halaman bawaan: path-nya tidak boleh diubah atau menunya dihapus.
+      assert.equal((await request("/access/menus/finance","DELETE",undefined,admin)).status,400);
+      assert.equal((await request("/access/menus/customers","PUT",{name:"Pelanggan",path:"/admin/pelanggan",icon:"Contact",group:"Operasional",order:3,active:true},admin)).status,400);
+      const invalid=await request("/access/roles","POST",{name:"Kasir Malam",slug:"Kasir Malam",description:"",menuIds:[]},admin);
+      assert.equal(invalid.status,400);assert.match(invalid.data.message,/huruf kecil/);
     });
     await t.test("layout venue: hanya peran berhak, tolak tumpang tindih dan yang keluar area",async()=>{
       assert.equal((await request("/operations/layout","GET",undefined,staff)).status,403,"peran tanpa menu layout harus ditolak");

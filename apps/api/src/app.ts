@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { ZodError } from "zod";
+import { z,ZodError } from "zod";
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import accessRoutes from "./routes/access.js";
@@ -12,6 +12,9 @@ import operationsRoutes from "./routes/operations.js";
 import publicRoutes from "./routes/public.js";
 import customerRoutes from "./routes/customer.js";
 import { HttpError } from "./errors.js";
+
+// Pesan validasi bawaan Zod ikut berbahasa Indonesia; skema yang punya pesan sendiri tetap memakainya.
+z.config(z.locales.id());
 
 export const app=express();
 app.disable("x-powered-by");

@@ -259,6 +259,8 @@
 }
 .modal-fields input:disabled,.settings-card input:disabled{opacity:.55;cursor:not-allowed}
 .modal-fields input::placeholder{color:var(--muted)}
+/* Petunjuk di bawah isian: huruf biasa, bukan gaya label kapital. */
+.field-hint{font-size:var(--fs-xs);font-weight:400;letter-spacing:normal;text-transform:none;line-height:var(--lh-normal);color:var(--muted)}
 .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
 .menu-access-label{margin-top:var(--s1)}
 .menu-checks{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2)}

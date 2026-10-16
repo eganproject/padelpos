@@ -39,7 +39,13 @@ export const intentLabel: Record<IntentStatus, string> = {
 /** Kelas warna untuk `.status-pill`. */
 export const intentTone: Record<IntentStatus, string> = { pending: "wait", paid: "on", expired: "off", cancelled: "off", failed: "off", refunded: "done" };
 export const methodLabel: Record<string, string> = { qris: "QRIS", va: "Virtual account", ewallet: "E-wallet", card: "Kartu", transfer: "Transfer", cash: "Tunai" };
-export const payTypeLabel = (type: string | null) => (type ? type.replace(/_/g, " ") : "belum dipilih");
+/** Nama `payment_type` Midtrans yang dikenal pelanggan dan kasir. */
+const payTypes: Record<string, string> = {
+  qris: "QRIS", gopay: "GoPay", shopeepay: "ShopeePay", dana: "DANA", credit_card: "Kartu kredit",
+  bank_transfer: "Transfer bank (VA)", echannel: "Mandiri Bill", permata: "VA Permata", bca_va: "VA BCA", bni_va: "VA BNI", bri_va: "VA BRI", other_va: "Virtual account",
+  cstore: "Gerai retail", akulaku: "Akulaku", kredivo: "Kredivo",
+};
+export const payTypeLabel = (type: string | null) => (type ? payTypes[type] ?? type.replace(/_/g, " ") : "belum dipilih");
 
 /** Nominal yang ditagih sekarang; hitungannya sama dengan server. */
 export const amountDue = (payment: Pick<PaymentPublic, "mode" | "dp_percent">, total: number) =>

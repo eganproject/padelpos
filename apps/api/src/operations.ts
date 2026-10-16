@@ -15,14 +15,14 @@ export interface Booking {id:string;court_id:string;court_name:string;customer_i
   court_total:number;addon_count:number}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
 export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
-export const dateSchema=z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
+export const dateSchema=z.string("Pilih tanggal.").regex(/^\d{4}-\d{2}-\d{2}$/,"Tanggal tidak valid.").refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
 export const timeSchema=z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/,"Jam harus menggunakan interval 30 menit.");
 export const closeSchema=z.union([timeSchema,z.literal("24:00")]);
 // Detail untuk pelanggan bersifat opsional: bila tidak dikirim, nilai tersimpan dipertahankan.
-export const courtSchema=z.object({name:z.string().trim().min(2).max(60),hourly_rate:z.number().int().min(1000).max(10000000),opens_at:timeSchema,closes_at:closeSchema,active:z.boolean(),description:z.string().trim().max(600,"Deskripsi maksimal 600 karakter.").optional(),environment:z.enum(["","indoor","outdoor"]).optional(),surface:z.string().trim().max(40,"Jenis permukaan maksimal 40 karakter.").optional()}).refine(v=>v.opens_at<v.closes_at,"Jam tutup harus setelah jam buka.");
-export const bookingSchema=z.object({court_id:z.string().min(1),customer:z.string().trim().min(2).max(80),phone:z.string().trim().min(9).max(18),date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500).default(""),addons:linesSchema.default([])});
-export const maintenanceSchema=z.object({court_id:z.string().min(1),date:dateSchema,start_time:timeSchema,end_time:closeSchema,reason:z.string().trim().min(3).max(200)});
-export const paymentSchema=z.object({id:z.uuid(),amount:z.number().int().positive().max(240000000),kind:z.enum(["payment","refund"]),method:z.enum(["cash","transfer","qris"]),note:z.string().trim().max(200).default("")});
+export const courtSchema=z.object({name:z.string().trim().min(2,"Nama lapangan minimal 2 karakter.").max(60,"Nama lapangan maksimal 60 karakter."),hourly_rate:z.number("Isi tarif per jam.").int("Tarif harus bilangan bulat.").min(1000,"Tarif minimal Rp1.000 per jam.").max(10000000,"Tarif maksimal Rp10.000.000 per jam."),opens_at:timeSchema,closes_at:closeSchema,active:z.boolean(),description:z.string().trim().max(600,"Deskripsi maksimal 600 karakter.").optional(),environment:z.enum(["","indoor","outdoor"]).optional(),surface:z.string().trim().max(40,"Jenis permukaan maksimal 40 karakter.").optional()}).refine(v=>v.opens_at<v.closes_at,"Jam tutup harus setelah jam buka.");
+export const bookingSchema=z.object({court_id:z.string().min(1,"Pilih lapangan."),customer:z.string().trim().min(2,"Nama pelanggan minimal 2 karakter.").max(80,"Nama pelanggan maksimal 80 karakter."),phone:z.string().trim().min(9,"Nomor telepon minimal 9 digit.").max(18,"Nomor telepon maksimal 18 karakter."),date:dateSchema,start_time:timeSchema,end_time:closeSchema,notes:z.string().trim().max(500,"Catatan maksimal 500 karakter.").default(""),addons:linesSchema.default([])});
+export const maintenanceSchema=z.object({court_id:z.string().min(1,"Pilih lapangan."),date:dateSchema,start_time:timeSchema,end_time:closeSchema,reason:z.string().trim().min(3,"Alasan perawatan minimal 3 karakter.").max(200,"Alasan perawatan maksimal 200 karakter.")});
+export const paymentSchema=z.object({id:z.uuid(),amount:z.number("Isi nominal.").int("Nominal harus bilangan bulat.").positive("Nominal harus lebih dari 0.").max(240000000),kind:z.enum(["payment","refund"]),method:z.enum(["cash","transfer","qris"],"Pilih metode pembayaran."),note:z.string().trim().max(200,"Catatan maksimal 200 karakter.").default("")});
 export function courts(){return db.prepare("SELECT * FROM courts ORDER BY name").all() as unknown as Court[]}
 export function maintenances(date?:string){return db.prepare("SELECT m.*,c.name court_name FROM maintenance m JOIN courts c ON c.id=m.court_id WHERE (? IS NULL OR m.date=?) ORDER BY m.date,m.start_time").all(date||null,date||null) as unknown as Maintenance[]}
 const bookingSelect="SELECT b.*,c.name court_name,COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid,(SELECT count(*) FROM booking_addons WHERE booking_id=b.id) addon_count FROM bookings b JOIN courts c ON c.id=b.court_id";
@@ -31,6 +31,11 @@ export function getBooking(id:string){
   const booking=db.prepare(bookingSelect+" WHERE b.id=?").get(id) as unknown as Booking|undefined;
   check(booking,404,"Booking tidak ditemukan.");return booking;
 }
+/**
+ * Booking yang benar-benar menempati jadwal: aktif, selesai, atau hold online yang belum lewat batas
+ * bayarnya. Sama dengan trigger jadwal di store.ts; booking batal dan kedaluwarsa tidak dihitung.
+ */
+export const holdsSlot=(b:Pick<Booking,"status"|"hold_expires_at">)=>b.status==="confirmed"||b.status==="completed"||(b.status==="pending"&&(b.hold_expires_at??0)*1000>Date.now());
 export function payments(id:string){return db.prepare("SELECT * FROM payments WHERE booking_id=? ORDER BY created_at,id").all(id) as unknown as Payment[]}
 function future(date:string,start:string){const now=localClock();check(date>now.date||(date===now.date&&start>=now.time),400,"Jadwal tidak boleh berada di masa lalu.");}
 /** Validasi slot: lapangan aktif, di dalam jam operasional, dan bukan masa lalu. */
@@ -48,7 +53,7 @@ export function saveCourt(input:unknown,actor:string,id?:string){
     check(!courts().some(c=>c.id!==id&&c.name.toLowerCase()===data.name.toLowerCase()),409,"Nama lapangan sudah digunakan.");
     if(id){
       const now=localClock();
-      const upcoming=bookings().filter(b=>b.court_id===id&&b.status==="confirmed"&&(b.date>now.date||(b.date===now.date&&b.end_time>now.time)));
+      const upcoming=bookings().filter(b=>b.court_id===id&&(b.status==="confirmed"||(b.status==="pending"&&holdsSlot(b)))&&(b.date>now.date||(b.date===now.date&&b.end_time>now.time)));
       check(!upcoming.some(b=>!data.active||b.start_time<data.opens_at||b.end_time>data.closes_at),409,"Perubahan bertentangan dengan booking aktif. Batalkan booking terkait terlebih dahulu.");
       check(!maintenances().some(m=>m.court_id===id&&m.date>=now.date&&(m.start_time<data.opens_at||m.end_time>data.closes_at)),409,"Jam operasional bertentangan dengan maintenance.");
       db.prepare("UPDATE courts SET name=?,hourly_rate=?,opens_at=?,closes_at=?,active=?,description=?,environment=?,surface=? WHERE id=?").run(data.name,data.hourly_rate,data.opens_at,data.closes_at,Number(data.active),data.description??existing!.description,data.environment??existing!.environment,data.surface??existing!.surface,id);
@@ -83,7 +88,7 @@ export function removeMaintenance(id:string,actor:string){transaction(()=>{
   audit(actor,"maintenance.delete",id);
 })}
 export function changeBookingStatus(id:string,input:unknown,actor:string){
-  const data=z.object({status:z.enum(["completed","cancelled"]),reason:z.string().trim().max(200).default("")}).parse(input);
+  const data=z.object({status:z.enum(["completed","cancelled"]),reason:z.string().trim().max(200,"Alasan maksimal 200 karakter.").default("")}).parse(input);
   return transaction(()=>{
     const booking=getBooking(id);check(booking.status==="confirmed",409,"Status booking ini tidak dapat diubah lagi.");
     if(data.status==="cancelled")check(data.reason.length>=3,400,"Isi alasan pembatalan.");
@@ -110,7 +115,8 @@ export function recordPayment(id:string,input:unknown,actor:string){
       check(booking.status==="confirmed",409,"Pembayaran hanya untuk booking aktif.");
       check(data.amount<=booking.total-booking.paid,400,"Pembayaran melebihi sisa tagihan.");
     }else{
-      check(booking.status==="cancelled",409,"Batalkan booking sebelum mencatat pengembalian.");
+      // Booking kedaluwarsa bisa punya saldo bila pembayaran online masuk setelah batas waktunya.
+      check(booking.status==="cancelled"||booking.status==="expired",409,"Batalkan booking sebelum mencatat pengembalian.");
       check(data.amount<=booking.paid,400,"Pengembalian melebihi pembayaran yang diterima.");
       check(data.note.length>=3,400,"Isi catatan pengembalian.");
     }
@@ -262,7 +268,7 @@ export const priceRuleSchema=z.object({
   court_ids:z.array(z.string().min(1)).min(1,"Pilih minimal satu lapangan.").max(60),
   days:z.array(z.number().int().min(0).max(6)).min(1,"Pilih minimal satu hari.").max(7),
   start_time:timeSchema,end_time:closeSchema,
-  hourly_rate:z.number().int().min(1000).max(10000000),
+  hourly_rate:z.number("Isi tarif per jam.").int("Tarif harus bilangan bulat.").min(1000,"Tarif minimal Rp1.000 per jam.").max(10000000,"Tarif maksimal Rp10.000.000 per jam."),
 }).refine(v=>v.start_time<v.end_time,"Jam selesai harus setelah jam mulai.");
 const dayNames=["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"];
 /** 0 = Minggu … 6 = Sabtu, sama dengan Date#getDay. */
@@ -340,7 +346,7 @@ export type PublicSlot={start:string;end:string;state:"available"|"booked"|"main
 export function publicAvailability(date:string){
   const now=localClock();
   const active=courts().filter(c=>c.active);
-  const taken=bookings(date).filter(b=>b.status==="confirmed"||b.status==="completed"||(b.status==="pending"&&(b.hold_expires_at??0)*1000>Date.now()));
+  const taken=bookings(date).filter(holdsSlot);
   const care=maintenances(date);
   const rules=priceRules(),photos=photoIndex(),first=floors()[0]?.id??null;
   const courtsOut=active.map(court=>{

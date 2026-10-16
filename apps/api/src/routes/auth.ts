@@ -7,7 +7,10 @@ import { production } from "../config.js";
 import { getMenus,getRoles,getUsers,saveUsers,transaction } from "../store.js";
 import type { User } from "../types.js";
 export const publicUser=({passwordHash:_,...user}:User)=>user;
-export const passwordSchema=z.string().min(8).max(72).regex(/[A-Z]/).regex(/[0-9]/);
+export const passwordSchema=z.string().min(8,"Password minimal 8 karakter.").max(72,"Password maksimal 72 karakter.").regex(/[A-Z]/,"Password harus memuat huruf kapital.").regex(/[0-9]/,"Password harus memuat angka.");
+/** Nama dan telepon staf; pesan galat dibaca langsung di formulir admin. */
+export const staffName=z.string().trim().min(3,"Nama minimal 3 karakter.").max(60,"Nama maksimal 60 karakter.");
+export const staffPhone=z.string().trim().min(9,"Nomor telepon minimal 9 digit.").max(18,"Nomor telepon maksimal 18 karakter.");
 const router=Router();
 router.get("/setup",(_req,res)=>res.json({available:getUsers().length===0,requiresToken:production||!!process.env.BOOTSTRAP_TOKEN}));
 router.post("/register",async(req,res)=>{

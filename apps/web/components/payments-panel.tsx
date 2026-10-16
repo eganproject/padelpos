@@ -4,7 +4,7 @@ import { Check,Copy,ExternalLink,Loader2,RefreshCw,ShieldCheck,TriangleAlert } f
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { formatShortDay } from "@/lib/shop";
-import { type AdminIntent,type PaymentSettings,intentLabel,intentTone,methodLabel,payTypeLabel } from "@/lib/payments";
+import { type AdminIntent,type PaymentSettings,amountDue,intentLabel,intentTone,payTypeLabel } from "@/lib/payments";
 import { ErrorBox } from "./operation-ui";
 
 type Data={settings:PaymentSettings;intents:AdminIntent[];date:string;time:string;timezone:string};
@@ -111,7 +111,7 @@ export function PaymentsPanel(){
           {form.mode==="dp"&&(
             <label className="cms-field"><span className="cms-label">Besar DP (%)</span>
               <input type="number" min={10} max={90} step={1} value={form.dp_percent} onChange={e=>set("dp_percent",Number(e.target.value))}/>
-              <small className="cms-hint">Contoh: tagihan {money(300000)} menjadi {money(Math.min(300000,Math.max(1000,Math.ceil(300000*form.dp_percent/100/1000)*1000)))} dibayar online, sisanya di venue.</small>
+              <small className="cms-hint">Contoh: tagihan {money(300000)} menjadi {money(amountDue(form,300000))} dibayar online, sisanya di venue.</small>
             </label>
           )}
           <label className="cms-field"><span className="cms-label">Batas waktu bayar (menit)</span>
@@ -150,11 +150,13 @@ export function PaymentsPanel(){
         <td className="wide" data-label="Pesanan"><b>{intent.customer}</b><small className="table-description">{intent.order_id} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</small></td>
         <td data-label="Jadwal">{intent.court_name}<small className="table-description">{formatShortDay(intent.date)} · {intent.start_time} – {intent.end_time}</small></td>
         <td data-label="Nominal">{money(intent.amount)}</td>
-        <td data-label="Metode">{intent.payment_type?(methodLabel[intent.payment_type]??payTypeLabel(intent.payment_type)):"—"}</td>
+        <td data-label="Metode">{intent.payment_type?payTypeLabel(intent.payment_type):"—"}</td>
         <td data-label="Status"><span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span></td>
         <td className="actions"><div className="row-actions">
           <button onClick={()=>void recheck(intent.order_id)} disabled={!!busy} aria-label={`Periksa status ${intent.order_id}`} title="Tanya status ke Midtrans"><RefreshCw/></button>
-          <a href={`/pesanan/${intent.booking_id}`} target="_blank" rel="noopener" aria-label={`Buka halaman pesanan ${intent.order_id}`} title="Buka halaman pesanan pelanggan"><ExternalLink/></a>
+          {/* Halaman pesanan hanya ada untuk checkout online; link kasir dibuka lewat halaman Midtrans-nya. */}
+          {intent.kind==="booking"?<a href={`/pesanan/${intent.booking_id}`} target="_blank" rel="noopener" aria-label={`Buka halaman pesanan ${intent.order_id}`} title="Buka halaman pesanan pelanggan"><ExternalLink/></a>
+            :intent.status==="pending"&&intent.redirect_url?<a href={intent.redirect_url} target="_blank" rel="noopener" aria-label={`Buka link pembayaran ${intent.order_id}`} title="Buka link pembayaran Midtrans"><ExternalLink/></a>:null}
         </div></td>
       </tr>)}</tbody>
     </table>{!data.intents.length&&<p className="empty-state">Belum ada transaksi online.</p>}</div>
