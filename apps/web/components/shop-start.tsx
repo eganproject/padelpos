@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowRight, CalendarDays } from "lucide-react";
 import { addDays, formatShortDay } from "@/lib/shop";
+import { DateInput } from "./form-controls";
 
 /**
  * Langkah pertama pemesanan, di dalam hero. Tanggalnya datang dari server
@@ -33,7 +34,7 @@ export function ShopStart({ today, horizon }: { today: string; horizon: number }
         <label className={`date-chip other${custom ? " on" : ""}`}>
           <CalendarDays size={18} aria-hidden="true" />
           <small>{custom ? formatShortDay(date) : "Lainnya"}</small>
-          <input type="date" aria-label="Pilih tanggal lain" value={date} min={today} max={last} onChange={event => event.target.value && setDate(event.target.value)} />
+          <DateInput theme="shop" bare aria-label="Pilih tanggal lain" value={date} min={today} max={last} onChange={event => event.target.value && setDate(event.target.value)} />
         </label>
       </div>
       <button className="shop-btn primary lg wide" type="submit" disabled={!date}>

@@ -103,7 +103,7 @@ html[data-theme="dark"] .fin-subtabs>button[aria-selected="true"]{background:var
 .fin-search input{flex:1;width:100%;padding-left:28px}
 .fin-inline-field{display:flex;align-items:center;gap:var(--s2);font-size:var(--fs-sm);color:var(--label)}
 .fin-inline-field.wide{display:flex;max-width:520px;margin-bottom:var(--s3)}
-.fin-inline-field.wide select{flex:1}
+.fin-inline-field.wide .rs{flex:1}
 .fin-check{display:inline-flex;align-items:center;gap:var(--s2);min-height:var(--control);font-size:var(--fs-sm);color:var(--text-soft);cursor:pointer}
 .fin-toolbar-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:var(--s2)}
 .fin-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:var(--s3);margin-bottom:var(--s3)}
@@ -124,10 +124,6 @@ html[data-theme="dark"] .fin-subtabs>button[aria-selected="true"]{background:var
 .fin-label{font-size:var(--fs-sm);font-weight:420;color:var(--label)}
 .fin-label em{font-style:normal;color:var(--muted)}
 .fin-field input,.fin-field select,.fin-field textarea{width:100%}
-.fin-amount{display:flex;align-items:center;gap:6px;height:var(--control);padding:0 var(--s2);border:1px solid transparent;border-radius:var(--r-sm);background:var(--panel2)}
-.fin-amount:focus-within{background:var(--panel);border-color:var(--gray-400);box-shadow:var(--focus-ring)}
-.fin-amount>span{font-size:var(--fs-sm);color:var(--muted)}
-.desk .fin-amount input{flex:1;min-width:0;height:auto;border:0;background:transparent;box-shadow:none;outline:0;color:var(--text);font-size:var(--fs-md);font-weight:500;padding:0;font-variant-numeric:tabular-nums}
 .fin-hint{font-size:var(--fs-xs);color:var(--muted);line-height:var(--lh-normal)}
 .fin-fieldset{border:1px solid var(--line);border-radius:var(--r-sm);padding:var(--s3);margin:0;display:flex;flex-direction:column;gap:var(--s3)}
 .fin-fieldset legend{padding:0 6px;font-size:var(--fs-sm);font-weight:500;color:var(--text)}
@@ -213,7 +209,7 @@ html[data-theme="dark"] .fin-subtabs>button[aria-selected="true"]{background:var
 /* Baris jurnal manual */
 .fin-lines{display:flex;flex-direction:column;gap:var(--s2)}
 .fin-line{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) minmax(0,1fr) auto;gap:var(--s2);align-items:end}
-.fin-line>select{width:100%;min-width:0}
+.fin-line>.rs{width:100%;min-width:0}
 .fin-line>button{height:var(--control);width:var(--control);display:grid;place-items:center;padding:0}
 .fin-lines-foot{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s3)}
 
@@ -224,7 +220,7 @@ html[data-theme="dark"] .fin-subtabs>button[aria-selected="true"]{background:var
 @media(max-width:900px){
   .fin-sheet-grid{grid-template-columns:1fr}
   .fin-line{grid-template-columns:1fr 1fr;grid-template-areas:"account account" "debit credit" "remove remove"}
-  .fin-line>select{grid-area:account}
+  .fin-line>.rs{grid-area:account}
   .fin-line>button{grid-area:remove;width:100%}
 }
 @media(max-width:640px){

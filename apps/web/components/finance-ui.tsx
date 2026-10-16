@@ -1,5 +1,6 @@
 "use client";
 import { presetRange } from "@/lib/finance";
+import { DateInput, MoneyInput } from "./form-controls";
 
 /** Pemilih periode: pilihan cepat untuk sehari-hari, dua kolom tanggal untuk rentang bebas. */
 export function PeriodPicker({ from, to, today, onChange }: { from:string; to:string; today:string; onChange:(range:{from:string;to:string})=>void }) {
@@ -13,24 +14,19 @@ export function PeriodPicker({ from, to, today, onChange }: { from:string; to:st
         ))}
       </div>
       <div className="fin-dates">
-        <label>Dari<input type="date" value={from} max={to} onChange={e=>e.target.value&&onChange({from:e.target.value,to})}/></label>
-        <label>Sampai<input type="date" value={to} min={from} onChange={e=>e.target.value&&onChange({from,to:e.target.value})}/></label>
+        <label>Dari<DateInput value={from} max={to} onChange={e=>e.target.value&&onChange({from:e.target.value,to})}/></label>
+        <label>Sampai<DateInput value={to} min={from} onChange={e=>e.target.value&&onChange({from,to:e.target.value})}/></label>
       </div>
     </div>
   );
 }
 
-/** Isian rupiah: pengguna mengetik angka, titik ribuan muncul sendiri. */
+/** Isian rupiah dengan label keuangan: titik ribuan muncul sendiri saat mengetik. */
 export function AmountField({ label, value, onChange, hint, autoFocus=false }: { label:string; value:number; onChange:(value:number)=>void; hint?:string; autoFocus?:boolean }) {
   return (
     <label className="fin-field">
       <span className="fin-label">{label}</span>
-      <span className="fin-amount">
-        <span aria-hidden="true">Rp</span>
-        <input inputMode="numeric" autoComplete="off" autoFocus={autoFocus} placeholder="0" aria-label={label}
-          value={value ? value.toLocaleString("id-ID") : ""}
-          onChange={e=>{ const digits=e.target.value.replace(/\D/g,"").slice(0,12); onChange(digits?Number(digits):0) }}/>
-      </span>
+      <MoneyInput value={value || ""} autoFocus={autoFocus} aria-label={label} max={999_999_999_999} onChange={e=>onChange(Number(e.target.value)||0)}/>
       {hint && <small className="fin-hint">{hint}</small>}
     </label>
   );

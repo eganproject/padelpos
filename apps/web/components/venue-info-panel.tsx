@@ -12,6 +12,7 @@ import {
 import { FacilityIcon } from "./facility-icon";
 import { RichText } from "./rich-text";
 import { ErrorBox } from "./operation-ui";
+import { Select } from "./form-controls";
 
 type ContentResponse = {
   info: VenueInfo;
@@ -350,11 +351,11 @@ function PoliciesForm({ policies, saved, onDirty }: { policies: Policies; saved:
 
               <div className="cms-row">
                 <Field label="Ubah jadwal">
-                  <select value={form.reschedule} onChange={event => set("reschedule", event.target.value as PolicyFields["reschedule"])}>
+                  <Select value={form.reschedule} onChange={event => set("reschedule", event.target.value as PolicyFields["reschedule"])}>
                     <option value="unset">Tidak ditampilkan</option>
                     <option value="yes">Boleh ubah jadwal</option>
                     <option value="no">Tidak boleh ubah jadwal</option>
-                  </select>
+                  </Select>
                 </Field>
                 {form.reschedule === "yes" && (
                   <Field label="Batas ubah jadwal (jam)" hint="0 berarti boleh kapan pun sebelum jam main.">

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api, money } from "@/lib/api";
 import { featureInfo, featureKinds, featureName, type FeatureKind, type Floor, type Venue, type VenueFeature } from "@/lib/venue";
 import { ErrorBox, Modal, Submit } from "./operation-ui";
+import { Select, DateInput, MoneyInput } from "./form-controls";
 
 /** Satuan kanvas: 1 unit = 0,1 meter. Nilai ditampilkan dalam meter. */
 type Court = {
@@ -499,11 +500,11 @@ export function VenueLayoutPanel() {
           </button>
         </div>
         <label className="venue-gridpick">Kisi
-          <select value={grid} onChange={event => { remember(); setGrid(Number(event.target.value)); }}>
+          <Select value={grid} onChange={event => { remember(); setGrid(Number(event.target.value)); }}>
             <option value={5}>0,5 m</option>
             <option value={10}>1 m</option>
             <option value={25}>2,5 m</option>
-          </select>
+          </Select>
         </label>
         <div className="venue-history">
           <button type="button" className="venue-tool icon" onClick={undo} disabled={!history.current.past.length} aria-label="Batalkan langkah" title="Batalkan langkah (Ctrl+Z)"><Undo2 size={16} /></button>
@@ -637,9 +638,9 @@ export function VenueLayoutPanel() {
               {feature && (
                 <div className="venue-grid2">
                   <label className="venue-field">Jenis
-                    <select className="venue-input" value={feature.kind} onFocus={remember} onChange={event => setFeatures(list => list.map(item => item.id === feature.id ? { ...item, kind: event.target.value as FeatureKind } : item))}>
+                    <Select className="venue-input" value={feature.kind} onFocus={remember} onChange={event => setFeatures(list => list.map(item => item.id === feature.id ? { ...item, kind: event.target.value as FeatureKind } : item))}>
                       {featureKinds.map(kind => <option key={kind} value={kind}>{featureInfo[kind].label}</option>)}
-                    </select>
+                    </Select>
                   </label>
                   <label className="venue-field">Nama tampil
                     <input className="venue-input" maxLength={40} placeholder={featureInfo[feature.kind].label} value={feature.label} onFocus={remember}
@@ -649,9 +650,9 @@ export function VenueLayoutPanel() {
               )}
               {multiFloor && (
                 <label className="venue-field">Lantai
-                  <select className="venue-input" value={area.id} onChange={event => moveToFloor(event.target.value)}>
+                  <Select className="venue-input" value={area.id} onChange={event => moveToFloor(event.target.value)}>
                     {floors.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                  </select>
+                  </Select>
                 </label>
               )}
               <div className="venue-grid2">
@@ -837,12 +838,12 @@ function NewCourtForm({ state, floor, close, done }: { state: Snapshot; floor: F
           <label>Nama lapangan
             <input autoFocus required minLength={2} maxLength={60} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} />
           </label>
-          <label>Tarif per jam (Rp)
-            <input type="number" min={1000} max={10000000} required value={form.hourly_rate} onChange={event => setForm({ ...form, hourly_rate: Number(event.target.value) })} />
+          <label>Tarif per jam
+            <MoneyInput min={1000} max={10000000} required value={form.hourly_rate} onChange={event => setForm({ ...form, hourly_rate: Number(event.target.value) })} />
           </label>
           <div className="field-grid">
-            <label>Jam buka<input type="time" step={1800} required value={form.opens_at} onChange={event => setForm({ ...form, opens_at: event.target.value })} /></label>
-            <label>Jam tutup<input type="time" step={1800} required value={form.closes_at} onChange={event => setForm({ ...form, closes_at: event.target.value })} /></label>
+            <label>Jam buka<DateInput type="time" step={1800} required value={form.opens_at} onChange={event => setForm({ ...form, opens_at: event.target.value })} /></label>
+            <label>Jam tutup<DateInput type="time" step={1800} required value={form.closes_at} onChange={event => setForm({ ...form, closes_at: event.target.value })} /></label>
           </div>
           <p className="ops-muted">Lapangan baru diletakkan otomatis di ruang kosong pertama {floor.name} dengan ukuran standar 10 × 20 m. Perubahan denah yang belum disimpan ikut tersimpan.</p>
         </div>

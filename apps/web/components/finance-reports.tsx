@@ -9,6 +9,7 @@ import {
 } from "@/lib/finance";
 import { Modal } from "./operation-ui";
 import { AmountField, Empty, PeriodPicker, ShareBar } from "./finance-ui";
+import { Select, DateInput } from "./form-controls";
 
 type Range = { from:string; to:string };
 export type ReportView = "laba-rugi" | "neraca" | "buku-besar" | "pembantu" | "jurnal";
@@ -113,7 +114,7 @@ function BalanceReport({ today }: { today:string }) {
   }, [asOf]);
   if (!data) return (
     <>
-      <label className="fin-inline-field"><span>Posisi tanggal</span><input type="date" value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
+      <label className="fin-inline-field"><span>Posisi tanggal</span><DateInput value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
       <p className="empty-state">Menyusun neraca…</p>
     </>
   );
@@ -136,7 +137,7 @@ function BalanceReport({ today }: { today:string }) {
           ["","Total modal","",data.total_equity],
         ])}/>
       <div className="fin-balance-toolbar">
-        <label className="fin-inline-field"><span>Posisi tanggal</span><input type="date" value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
+        <label className="fin-inline-field"><span>Posisi tanggal</span><DateInput value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
         <span className={`fin-tag ${data.difference===0?"ok":"warn"}`}>
           {data.difference===0 ? <><Check size={13}/> Seimbang</> : <><TriangleAlert size={13}/> Selisih {money(data.difference)}</>}
         </span>
@@ -188,9 +189,9 @@ function LedgerReport({ setup, range }: { setup:Setup; range:Range }) {
           ["","","Saldo akhir","",data.debit,data.credit,data.closing],
         ])}/>
       <label className="fin-inline-field wide"><span>Akun</span>
-        <select value={accountId} onChange={e=>setAccountId(e.target.value)}>
+        <Select value={accountId} onChange={e=>setAccountId(e.target.value)}>
           {setup.accounts.map(account => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
-        </select>
+        </Select>
       </label>
       {!data ? <p className="empty-state">Memuat buku besar…</p> : (
         <>
@@ -328,10 +329,10 @@ function JournalReport({ setup, range, today, onChanged }: { setup:Setup; range:
           <input value={term} onChange={e=>setTerm(e.target.value)} placeholder="Cari keterangan atau nomor jurnal…" aria-label="Cari jurnal"/>
         </label>
         <label className="fin-inline-field"><span>Sumber</span>
-          <select value={source} onChange={e=>setSource(e.target.value)}>
+          <Select value={source} onChange={e=>setSource(e.target.value)}>
             <option value="">Semua sumber</option>
             {Object.entries(sourceLabel).map(([key,label]) => <option key={key} value={key}>{label}</option>)}
-          </select>
+          </Select>
         </label>
         <div className="fin-toolbar-actions">
           <button type="button" className="ops-primary" onClick={()=>setCreating(true)}><Plus size={14}/> Jurnal manual</button>
@@ -405,16 +406,16 @@ function JournalForm({ setup, today, entry, close, saved }: { setup:Setup; today
       <form className="fin-form" onSubmit={submit}>
         <p className="fin-note">Untuk pencatatan yang tidak punya formulir sendiri, misalnya penyusutan peralatan atau koreksi saldo awal.</p>
         <div className="fin-form-grid">
-          <label className="fin-field"><span className="fin-label">Tanggal</span><input type="date" value={date} onChange={e=>e.target.value&&setDate(e.target.value)} required/></label>
+          <label className="fin-field"><span className="fin-label">Tanggal</span><DateInput value={date} onChange={e=>e.target.value&&setDate(e.target.value)} required/></label>
           <label className="fin-field"><span className="fin-label">Keterangan</span><input value={memo} minLength={3} maxLength={200} required placeholder="Mis. Penyusutan peralatan Agustus" onChange={e=>setMemo(e.target.value)}/></label>
         </div>
         <div className="fin-lines">
           {lines.map((line,index) => (
             <div className="fin-line" key={index}>
-              <select value={line.account_id} onChange={e=>update(index,{account_id:e.target.value})} aria-label={`Akun baris ${index+1}`}>
+              <Select value={line.account_id} onChange={e=>update(index,{account_id:e.target.value})} aria-label={`Akun baris ${index+1}`}>
                 <option value="">Pilih akun…</option>
                 {setup.accounts.filter(account=>account.active||account.id===line.account_id).map(account => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
-              </select>
+              </Select>
               <AmountField label="Debit" value={line.debit} onChange={value=>update(index,{debit:value,credit:value?0:line.credit})}/>
               <AmountField label="Kredit" value={line.credit} onChange={value=>update(index,{credit:value,debit:value?0:line.debit})}/>
               <button type="button" className="ops-danger" disabled={lines.length<=2} aria-label={`Hapus baris ${index+1}`}

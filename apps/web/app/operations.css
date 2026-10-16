@@ -33,7 +33,7 @@
 .ops-filters+.manage-table-card thead th{border-top-width:4px}
 .ops-filters label{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm);font-weight:420;color:var(--label)}
 .ops-filters label:first-child{flex:1;min-width:200px;max-width:420px}
-.ops-filters input,.ops-filters select{width:100%;min-width:140px}
+.ops-filters input,.ops-filters .rs,.ops-filters .dp-field{width:100%;min-width:140px}
 
 /* --- Dialog operasional -------------------------------------------------- */
 .ops-modal{width:min(760px,100%)}
@@ -93,7 +93,7 @@
   .ops-actions>.ops-primary{width:100%}
   .ops-filters label,.ops-filters label:first-child{flex:1 1 140px;min-width:0;max-width:none}
   .ops-filters label:first-child{flex-basis:100%}
-  .ops-filters input,.ops-filters select{min-width:0}
+  .ops-filters input,.ops-filters .rs,.ops-filters .dp-field{min-width:0}
   .ops-filters>.ops-secondary{flex:1}
   .ops-modal .field-grid{grid-template-columns:1fr}
   .ops-chart{gap:2px}

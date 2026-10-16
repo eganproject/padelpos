@@ -9,7 +9,7 @@ html[data-theme="dark"]{--venue-grid-line:#ffffff0d;--venue-stage:#1f1f1f;--venu
 .venue-area-label{align-self:center;margin-right:4px;font-size:var(--fs-md);font-weight:600;color:var(--text)}
 .venue-times{align-self:flex-end;height:var(--control);display:grid;place-items:center;color:var(--muted);font-size:14px}
 .venue-gridpick{display:flex;flex-direction:column;gap:6px;font-size:var(--fs-sm);color:var(--label)}
-.venue-gridpick select{min-width:96px}
+.venue-gridpick .rs{width:auto;min-width:96px}
 .venue-history{display:flex;gap:6px}
 .venue-toolbar .grow{margin-left:auto;display:flex;align-items:center;flex-wrap:wrap;gap:9px}
 .venue-dirty{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--orange-text)}

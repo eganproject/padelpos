@@ -9,6 +9,7 @@ import { shrink } from "@/lib/image";
 import { photoUrl } from "@/lib/venue-info";
 import { AddonThumb } from "./addon-icon";
 import { ErrorBox,Modal,Submit } from "./operation-ui";
+import { Select, MoneyInput } from "./form-controls";
 
 type AddonsData={addons:Addon[];summary:AddonSummary;date:string;time:string;timezone:string};
 type AddonForm={name:string;category:AddonCategory;type:AddonType;pricing:AddonPricing;price:number;stock:number|null;low_stock:number;max_per_booking:number;description:string;active:boolean;online:boolean};
@@ -72,7 +73,7 @@ export function AddonsPanel(){
     <div className="metric-grid addon-metrics">{metrics.map(({label,value,hint,Icon,tone})=><article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon/></span></div><p>{label}</p><h2>{value}</h2><small>{hint}</small></article>)}</div>
 
     <div className="ops-section-title"><div><h2>Katalog</h2><p>Urutan di sini sama dengan urutan yang dilihat kasir dan pelanggan.</p></div></div>
-    {data.addons.length>0&&<div className="ops-filters"><label>Cari item<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nama, kategori, atau deskripsi"/></label><label>Jenis<select value={type} onChange={e=>setType(e.target.value as AddonType|"")}><option value="">Semua jenis</option>{types.map(t=><option key={t} value={t}>{typeLabel[t]}</option>)}</select></label></div>}
+    {data.addons.length>0&&<div className="ops-filters"><label>Cari item<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nama, kategori, atau deskripsi"/></label><label>Jenis<Select value={type} onChange={e=>setType(e.target.value as AddonType|"")}><option value="">Semua jenis</option>{types.map(t=><option key={t} value={t}>{typeLabel[t]}</option>)}</Select></label></div>}
     <div className="manage-table-card ops-table table-cards addon-table"><table><thead><tr><th>Item</th><th>Jenis</th><th>Harga</th><th>Stok</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{list.map((a,index)=>{
       const low=a.active&&isLowStock(a);
       return <tr key={a.id} className={a.active?"":"inactive"}>
@@ -141,8 +142,8 @@ function AddonFormModal({addon,close,done}:{addon:Addon|null;close:()=>void;done
       <div className="addon-type-picker">{types.map(t=><button type="button" key={t} aria-pressed={form.type===t} disabled={locked&&addon?.type!==t} onClick={()=>setForm(f=>({...f,type:t,pricing:t==="jual"?"per_booking":f.pricing}))}><b>{typeLabel[t]}</b><small>{typeHint[t]}</small></button>)}</div>
       {locked&&<p className="ops-muted">Jenis terkunci karena item ini sudah tercatat di booking.</p>}
     </fieldset>
-    <div className="field-grid"><label>Kategori<select value={form.category} onChange={e=>set("category",e.target.value as AddonCategory)}>{addonCategories.map(c=><option key={c} value={c}>{categoryLabel[c]}</option>)}</select></label><label>Cara hitung<select value={form.pricing} disabled={form.type==="jual"} onChange={e=>set("pricing",e.target.value as AddonPricing)}><option value="per_booking">{form.type==="jual"?"Per pcs":"Per booking (sekali bayar)"}</option><option value="per_hour">Per jam main</option></select></label></div>
-    <div className="field-grid"><label>Harga (Rp)<input type="number" required min={0} max={10000000} step={1} value={form.price} onChange={e=>set("price",Number(e.target.value))}/></label><label>Maksimal per booking<input type="number" required min={1} max={99} step={1} value={form.max_per_booking} onChange={e=>set("max_per_booking",Number(e.target.value))}/></label></div>
+    <div className="field-grid"><label>Kategori<Select value={form.category} onChange={e=>set("category",e.target.value as AddonCategory)}>{addonCategories.map(c=><option key={c} value={c}>{categoryLabel[c]}</option>)}</Select></label><label>Cara hitung<Select value={form.pricing} disabled={form.type==="jual"} onChange={e=>set("pricing",e.target.value as AddonPricing)}><option value="per_booking">{form.type==="jual"?"Per pcs":"Per booking (sekali bayar)"}</option><option value="per_hour">Per jam main</option></Select></label></div>
+    <div className="field-grid"><label>Harga<MoneyInput required min={0} max={10000000} value={form.price} onChange={e=>set("price",Number(e.target.value))}/></label><label>Maksimal per booking<input type="number" required min={1} max={99} step={1} value={form.max_per_booking} onChange={e=>set("max_per_booking",Number(e.target.value))}/></label></div>
     <p className="ops-muted">Contoh: 2 × {money(form.price)} {unitLabel(form.type,form.pricing)}{form.pricing==="per_hour"?", main 1,5 jam":""} = <b>{money(lineTotal(form.price,2,form.pricing,90))}</b></p>
     <label className="switch-field"><input type="checkbox" checked={limited} onChange={e=>set("stock",e.target.checked?(addon?.stock??10):null)}/> {form.type==="layanan"?"Batasi kapasitas pada jam yang sama":"Batasi jumlah stok"}</label>
     {limited&&<div className="field-grid"><label>{form.type==="jual"?"Stok tersedia":form.type==="sewa"?"Jumlah unit dimiliki":"Kapasitas (mis. jumlah pelatih)"}<input type="number" required min={0} max={100000} step={1} value={form.stock??0} onChange={e=>set("stock",Number(e.target.value))}/></label>{form.type==="jual"&&<label>Ingatkan bila stok ≤<input type="number" min={0} max={100000} step={1} value={form.low_stock} onChange={e=>set("low_stock",Number(e.target.value))}/></label>}</div>}

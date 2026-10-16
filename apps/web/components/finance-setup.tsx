@@ -9,6 +9,7 @@ import {
 } from "@/lib/finance";
 import { Modal } from "./operation-ui";
 import { Empty } from "./finance-ui";
+import { Select, DateInput, MoneyInput } from "./form-controls";
 
 const typeOrder: AccountType[] = ["aset","liabilitas","ekuitas","pendapatan","beban"];
 const subtypesFor: Record<AccountType,AccountSubtype[]> = {
@@ -98,14 +99,14 @@ function AccountForm({ account, close, saved }: { account?:Account|null; close:(
         </div>
         <div className="fin-form-grid">
           <label className="fin-field"><span className="fin-label">Jenis</span>
-            <select value={form.type} disabled={locked} onChange={e=>{ const type=e.target.value as AccountType; setForm({...form,type,subtype:subtypesFor[type][0]}) }}>
+            <Select value={form.type} disabled={locked} onChange={e=>{ const type=e.target.value as AccountType; setForm({...form,type,subtype:subtypesFor[type][0]}) }}>
               {typeOrder.map(type => <option key={type} value={type}>{typeLabel[type]}</option>)}
-            </select>
+            </Select>
           </label>
           <label className="fin-field"><span className="fin-label">Kelompok</span>
-            <select value={form.subtype} disabled={locked} onChange={e=>setForm({...form,subtype:e.target.value as AccountSubtype})}>
+            <Select value={form.subtype} disabled={locked} onChange={e=>setForm({...form,subtype:e.target.value as AccountSubtype})}>
               {subtypesFor[form.type].map(subtype => <option key={subtype} value={subtype}>{subtypeLabel[subtype]}</option>)}
-            </select>
+            </Select>
           </label>
         </div>
         {form.subtype==="kas_bank" && <p className="fin-note">Akun kas &amp; bank otomatis muncul sebagai pilihan sumber dana pada formulir catatan.</p>}
@@ -176,9 +177,9 @@ function PartnerForm({ partner, close, saved }: { partner?:Partner|null; close:(
         <div className="fin-form-grid">
           <label className="fin-field"><span className="fin-label">Nama</span><input value={form.name} required minLength={2} maxLength={60} onChange={e=>setForm({...form,name:e.target.value})}/></label>
           <label className="fin-field"><span className="fin-label">Jenis</span>
-            <select value={form.kind} onChange={e=>setForm({...form,kind:e.target.value as Partner["kind"]})}>
+            <Select value={form.kind} onChange={e=>setForm({...form,kind:e.target.value as Partner["kind"]})}>
               {(Object.keys(partnerKindLabel) as Partner["kind"][]).map(kind => <option key={kind} value={kind}>{partnerKindLabel[kind]}</option>)}
-            </select>
+            </Select>
           </label>
         </div>
         <div className="fin-form-grid">
@@ -231,17 +232,17 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
         <div className="fin-method-grid">
           {methodLabels.map(method => (
             <label className="fin-field" key={method.key}><span className="fin-label">{method.label}</span>
-              <select value={form.cash_accounts[method.key]}
+              <Select value={form.cash_accounts[method.key]}
                 onChange={e=>setForm({...form,cash_accounts:{...form.cash_accounts,[method.key]:e.target.value}})}>
                 {cash.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-              </select>
+              </Select>
             </label>
           ))}
         </div>
         <label className="fin-field"><span className="fin-label">Akun bawaan formulir</span>
-          <select value={form.default_cash_account} onChange={e=>setForm({...form,default_cash_account:e.target.value})}>
+          <Select value={form.default_cash_account} onChange={e=>setForm({...form,default_cash_account:e.target.value})}>
             {cash.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
-          </select>
+          </Select>
           <small className="fin-hint">Dipakai sebagai pilihan awal saat mencatat pengeluaran atau pemasukan.</small>
         </label>
       </section>
@@ -281,8 +282,8 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
                 <label className="fin-field"><span className="fin-hint">Persen</span>
                   <input type="number" min={0} max={20} step={0.01} value={fee(form.gateway_fees,method.key).percent||""} placeholder="0" onChange={e=>setFee(method.key,{percent:Number(e.target.value)||0})}/>
                 </label>
-                <label className="fin-field"><span className="fin-hint">Tetap (Rp)</span>
-                  <input type="number" min={0} max={100000} step={1} value={fee(form.gateway_fees,method.key).flat||""} placeholder="0" onChange={e=>setFee(method.key,{flat:Math.round(Number(e.target.value))||0})}/>
+                <label className="fin-field"><span className="fin-hint">Tetap</span>
+                  <MoneyInput min={0} max={100000} value={fee(form.gateway_fees,method.key).flat||""} placeholder="0" onChange={e=>setFee(method.key,{flat:Math.round(Number(e.target.value))||0})}/>
                 </label>
               </div>
             </div>
@@ -292,7 +293,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
       <section className="fin-sheet">
         <header><h4><Lock size={15}/> Kunci pembukuan</h4></header>
         <label className="fin-field"><span className="fin-label">Bekukan catatan sampai tanggal</span>
-          <input type="date" value={form.locked_until} onChange={e=>setForm({...form,locked_until:e.target.value})}/>
+          <DateInput value={form.locked_until} onChange={e=>setForm({...form,locked_until:e.target.value})}/>
           <small className="fin-hint">
             {form.locked_until
               ? `Catatan manual bertanggal ${formatDate(form.locked_until)} ke belakang tidak dapat diubah lagi.`
