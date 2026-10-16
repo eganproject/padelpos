@@ -82,6 +82,8 @@ test("akun pelanggan: login Google lewat Firebase, profil, riwayat, klaim, dan p
 
     await t.test("pengaturan Firebase: hanya admin, isian tervalidasi, dan config sampai ke browser", async () => {
       assert.equal((await request("/operations/customers", "GET", undefined, staff)).status, 403, "operator tanpa menu Pelanggan ditolak");
+      assert.equal((await request("/operations/customers/login", "GET", undefined, staff)).status, 403, "operator tanpa menu Login Pelanggan ditolak");
+      assert.equal((await request("/operations/customers/login", "GET", undefined, admin)).status, 200, "admin memegang menu Login Pelanggan setelah migrasi");
       assert.equal((await request("/operations/customers/login", "PUT", login({ api_key: "bukan-kunci" }), admin)).status, 400);
       assert.equal((await request("/operations/customers/login", "PUT", login({ app_id: "" }), admin)).status, 409, "tidak bisa aktif bila konfigurasi belum lengkap");
       const saved = await request("/operations/customers/login", "PUT", login(), admin);

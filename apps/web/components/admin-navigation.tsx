@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, CalendarDays, ChevronDown, Circle, Contact, CreditCard, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards } from "lucide-react";
+import { Activity, CalendarDays, ChevronDown, Circle, Contact, CreditCard, KeyRound, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, ApiError, forgetSession } from "@/lib/api";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 export type NavigationMenu = { id:string; name:string; path:string; icon:string; group:string; order:number; active:boolean };
 type NavigationResponse = { menus:NavigationMenu[]; role:{ name:string; slug:string } };
 
-const icons = { Activity, CalendarDays, Contact, CreditCard, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards };
+const icons = { Activity, CalendarDays, Contact, CreditCard, KeyRound, LayoutDashboard, LayoutGrid, MenuSquare, ShieldCheck, ShoppingBag, Store, UserRound, UsersRound, Wallet, WalletCards };
 /** Ikon yang benar-benar dapat tampil di sidebar; formulir menu hanya menawarkan nama-nama ini. */
 export const menuIconNames = Object.keys(icons);
 
