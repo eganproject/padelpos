@@ -40,6 +40,8 @@ export const infoSchema = z.object({
     .transform(value => value.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, ""))
     .refine(value => /^[A-Za-z0-9._]{0,30}$/.test(value), "Nama pengguna Instagram tidak valid.").default(""),
   hours_note: text(120, "Keterangan jam buka"),
+  // Batas lama satu booking online, dalam jam. 0 berarti boleh sampai jam tutup lapangan.
+  max_booking_hours: z.number().int().min(0).max(24, "Batas durasi maksimal 24 jam.").default(0),
   facilities: z.array(z.enum(facilityKinds)).max(facilityKinds.length).transform(list => [...new Set(list)]).default([]),
   extra_facilities: z.array(z.string().trim().min(2, "Nama fasilitas minimal 2 karakter.").max(40, "Nama fasilitas maksimal 40 karakter.")).max(10, "Maksimal 10 fasilitas tambahan.").default([]),
 });
@@ -90,6 +92,16 @@ function write<T extends object>(key: string, schema: z.ZodType<T>, input: unkno
 }
 
 export const getInfo = () => read("info", infoSchema);
+/** Batas durasi satu sesi booking online dalam menit; null bila hanya dibatasi jam tutup. */
+export const maxBookingMinutes = () => { const hours = getInfo().max_booking_hours; return hours > 0 ? hours * 60 : null; };
+/** Pesan galat bila durasi di luar batas, atau string kosong bila sah. */
+export function durationProblem(duration: number) {
+  const max = maxBookingMinutes();
+  if (duration < 60) return "Durasi main minimal 1 jam.";
+  if (duration % 30 !== 0) return "Durasi main harus kelipatan 30 menit.";
+  if (max !== null && duration > max) return `Durasi main maksimal ${(max / 60).toLocaleString("id-ID")} jam per booking.`;
+  return "";
+}
 export const getPolicies = () => read("policies", policiesSchema);
 export const getFaqs = () => read("faqs", faqsSchema);
 export const saveInfo = (input: unknown, actor: string) => write("info", infoSchema, input, actor);

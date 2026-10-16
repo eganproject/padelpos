@@ -15,6 +15,8 @@ export const facilityLabels: Record<FacilityKind, string> = {
 export type VenueInfo = {
   name: string; tagline: string; about: string; address: string; maps_url: string; show_map: boolean;
   whatsapp: string; phone: string; email: string; instagram: string; hours_note: string;
+  /** Batas lama satu booking online dalam jam; 0 berarti sampai jam tutup lapangan. */
+  max_booking_hours: number;
   facilities: FacilityKind[]; extra_facilities: string[]; updated_at: string | null;
 };
 export type RefundTier = { hours: number; percent: number };

@@ -110,6 +110,23 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal((await request("/public/cart/quote", "POST", { items: [] })).data.items.length, 0);
     });
 
+    await t.test("durasi booking online: bawaan sampai jam tutup, bisa dibatasi admin", async () => {
+      const lama = await request("/public/cart/quote", "POST", { items: [item("12:00", "17:00")] });
+      assert.equal(lama.data.items[0].ok, true, "5 jam diterima selama masih di jam operasional");
+      assert.equal(lama.data.items[0].court_total, 1500000);
+      assert.equal((await request("/public/cart/quote", "POST", { items: [item("20:00", "23:30")] })).data.items[0].ok, false, "lewat jam tutup ditolak");
+      const info = (await request("/public/info", "GET")).data.info;
+      assert.equal(info.max_booking_hours, 0);
+      assert.equal((await request("/operations/content/info", "PUT", { ...info, max_booking_hours: 3 }, admin)).status, 200);
+      const dibatasi = await request("/public/cart/quote", "POST", { items: [item("12:00", "16:00")] });
+      assert.equal(dibatasi.data.items[0].ok, false);
+      assert.match(dibatasi.data.items[0].reason, /maksimal 3 jam/);
+      const ditolak = await request("/public/checkout", "POST", checkout([item("12:00", "16:00")]));
+      assert.equal(ditolak.status, 400);
+      assert.equal((await request("/public/cart/quote", "POST", { items: [item("12:00", "15:00")] })).data.items[0].ok, true);
+      assert.equal((await request("/operations/content/info", "PUT", { ...info, max_booking_hours: 0 }, admin)).status, 200);
+    });
+
     await t.test("checkout mengunci slot, memanggil Snap, dan menolak slot yang sama", async () => {
       const before = calls.length;
       const created = await request("/public/checkout", "POST", checkout([item("12:00", "13:00", [{ addon_id: addonId, quantity: 2 }])]));

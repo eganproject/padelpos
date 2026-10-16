@@ -5,6 +5,7 @@ import { check } from "./errors.js";
 import { localClock, minutes } from "./clock.js";
 import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
 import { gatewayFee, syncBooking } from "./finance.js";
+import { durationProblem } from "./content.js";
 import { allocate, billOf, taxSnapshot } from "./bill.js";
 import { closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, timeSchema, type Booking } from "./operations.js";
 import {
@@ -120,7 +121,8 @@ export function quoteCart(input: unknown) {
     // jadwal publik: slot yang dimulai tepat pada menit ini masih boleh dipesan.
     if (item.date < now.date || (item.date === now.date && item.start_time < now.time))
       return { ...base, ok: false, reason: "Jam main ini sudah lewat.", court_total: 0, total: 0, addons: [] };
-    if (duration < 60 || duration > 180) return { ...base, ok: false, reason: "Durasi main antara 1 sampai 3 jam.", court_total: 0, total: 0, addons: [] };
+    const problem = durationProblem(duration);
+    if (problem) return { ...base, ok: false, reason: problem, court_total: 0, total: 0, addons: [] };
     if (item.start_time < court.opens_at || item.end_time > court.closes_at)
       return { ...base, ok: false, reason: "Jam itu di luar jam operasional lapangan.", court_total: 0, total: 0, addons: [] };
     const clash = items.findIndex((other, position) => position !== index && overlapping(item, other));
@@ -241,7 +243,8 @@ export async function createCheckout(input: unknown, accountId: string | null = 
   check(config.enabled && config.serverKey, 409, "Pembayaran online belum aktif. Silakan hubungi venue lewat WhatsApp.");
   for (const [index, item] of data.items.entries()) {
     const duration = minutes(item.end_time) - minutes(item.start_time);
-    check(duration >= 60 && duration <= 180, 400, "Durasi main antara 1 sampai 3 jam.");
+    const problem = durationProblem(duration);
+    check(!problem, 400, problem);
     const clash = data.items.findIndex((other, position) => position !== index && overlapping(item, other));
     check(clash < 0, 400, "Ada dua sesi yang bertabrakan di keranjang. Hapus salah satunya.");
   }
