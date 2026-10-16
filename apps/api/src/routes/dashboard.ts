@@ -3,13 +3,10 @@ import { requireMenu,type AuthRequest } from "../auth.js";
 import { db,getMenus,getRoles } from "../store.js";
 import { overview as financeOverview } from "../finance.js";
 import { addonSummary } from "../addons.js";
-import { bookings,courts,holdsSlot,localClock,maintenances,minutes,type Payment } from "../operations.js";
-import { expireHolds } from "../payments.js";
+import { bookings,courts,localClock,maintenances,minutes,occupies,type Payment } from "../operations.js";
 const router=Router();
 router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
-  expireHolds();
-  // Hanya booking yang menempati jadwal; booking batal dan hold online yang kedaluwarsa tidak dihitung.
-  const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&holdsSlot(b));
+  const now=localClock(),allBookings=bookings(),allCourts=courts(),today=allBookings.filter(b=>b.date===now.date&&occupies(b));
   const allPayments=db.prepare("SELECT * FROM payments").all() as unknown as Payment[];
   const daily=Array.from({length:7},(_,index)=>{
     const day=new Date(now.date+"T12:00:00Z");day.setUTCDate(day.getUTCDate()-6+index);const date=day.toISOString().slice(0,10);
@@ -20,8 +17,8 @@ router.get("/summary",requireMenu("dashboard"),(req:AuthRequest,res)=>{
   const maintenance=maintenances(now.date);
   const availableMinutes=active.reduce((sum,c)=>sum+minutes(c.closes_at)-minutes(c.opens_at)-maintenance.filter(m=>m.court_id===c.id).reduce((n,m)=>n+minutes(m.end_time)-minutes(m.start_time),0),0);
   const occupiedMinutes=today.filter(b=>active.some(c=>c.id===b.court_id)).reduce((sum,b)=>sum+minutes(b.end_time)-minutes(b.start_time),0);
-  // Hold online yang belum dibayar bukan piutang: slotnya lepas sendiri bila tidak dibayar.
-  const receivable=allBookings.filter(b=>b.status==="confirmed").reduce((sum,b)=>sum+Math.max(0,b.total-b.paid),0);
+  // Piutang hanya dari booking yang benar-benar berjalan; hold online yang kedaluwarsa bukan tagihan.
+  const receivable=allBookings.filter(b=>b.status==="confirmed"||b.status==="completed").reduce((sum,b)=>sum+b.total-b.paid,0);
   const refundsDue=allBookings.filter(b=>b.status==="cancelled"||b.status==="expired").reduce((sum,b)=>sum+Math.max(0,b.paid),0);
   const extras=addonSummary();
   // Angka pembukuan hanya untuk staf yang memang boleh membuka menu Keuangan.

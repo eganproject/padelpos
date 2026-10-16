@@ -5,12 +5,13 @@ import { z } from "zod";
 import { requireAdmin,revokeSessions,type AuthRequest } from "../auth.js";
 import { audit,getMenus,getRoles,getUsers,saveMenus,saveRoles,saveUsers,transaction } from "../store.js";
 import { check } from "../errors.js";
-import { passwordSchema,publicUser,staffName,staffPhone } from "./auth.js";
+import { passwordSchema,publicUser,staffName } from "./auth.js";
+import { contactPhoneSchema } from "../operations.js";
 import type { AccessMenu,AccessRole,User } from "../types.js";
 const router=Router();
 router.use(requireAdmin);
 router.get("/overview",(_req,res)=>res.json({users:getUsers().map(publicUser),roles:getRoles(),menus:getMenus()}));
-const userSchema=z.object({name:staffName,email:z.email("Format email tidak valid.").toLowerCase(),phone:staffPhone,role:z.string().min(1,"Pilih role."),password:passwordSchema.optional()});
+const userSchema=z.object({name:staffName,email:z.email("Format email tidak valid.").toLowerCase(),phone:contactPhoneSchema,role:z.string().min(1,"Pilih role."),password:passwordSchema.optional()});
 router.post("/users",async(req:AuthRequest,res)=>{
   const data=userSchema.parse(req.body);check(data.password,400,"Password wajib diisi.");
   const passwordHash=await bcrypt.hash(data.password,12);
@@ -78,8 +79,8 @@ router.delete("/roles/:id",(req:AuthRequest,res)=>{transaction(()=>{
   check(!getUsers().some(u=>u.role===role.slug),400,"Role masih digunakan.");
   saveRoles(roles.filter(r=>r.id!==role.id));audit(req.auth!.sub,"role.delete",role.id);
 });res.status(204).send()});
-// Modul bawaan: path-nya dipakai halaman admin, jadi tidak boleh diubah atau dihapus.
-const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",payments:"/admin/payments",finance:"/admin/keuangan",customers:"/admin/customers",courts:"/admin/courts",addons:"/admin/addons",layout:"/admin/layout",info:"/admin/info",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
+// Path modul bawaan dipetakan langsung oleh halaman admin; mengubah atau menghapusnya membuat menunya mati.
+const corePaths:Record<string,string>={dashboard:"/admin",bookings:"/admin/bookings",customers:"/admin/customers",payments:"/admin/payments",finance:"/admin/keuangan",courts:"/admin/courts",addons:"/admin/addons",layout:"/admin/layout",info:"/admin/info",users:"/admin/users",roles:"/admin/roles",menus:"/admin/menus",profile:"/admin/profile"};
 const menuSchema=z.object({name:z.string().trim().min(2,"Nama menu minimal 2 karakter.").max(40,"Nama menu maksimal 40 karakter."),path:z.string().trim().regex(/^\/admin(?:\/[a-z0-9-]+)*$/,"Path harus diawali /admin/ dan hanya memuat huruf kecil, angka, atau tanda hubung."),icon:z.string().min(2).max(40),group:z.string().trim().min(2,"Nama grup minimal 2 karakter.").max(40,"Nama grup maksimal 40 karakter."),order:z.number("Urutan harus berupa angka.").int("Urutan harus bilangan bulat.").min(0,"Urutan tidak boleh negatif."),active:z.boolean()});
 router.post("/menus",(req:AuthRequest,res)=>{
   const data=menuSchema.parse(req.body);

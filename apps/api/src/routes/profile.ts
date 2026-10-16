@@ -4,10 +4,11 @@ import { z } from "zod";
 import { createSession,requireAuth,revokeSessions,type AuthRequest } from "../auth.js";
 import { getUsers,saveUsers,transaction,audit } from "../store.js";
 import { check } from "../errors.js";
-import { passwordSchema,publicUser,staffName,staffPhone } from "./auth.js";
+import { passwordSchema,publicUser,staffName } from "./auth.js";
+import { contactPhoneSchema } from "../operations.js";
 const router=Router();router.use(requireAuth);
 router.put("/",(req:AuthRequest,res)=>{
-  const data=z.object({name:staffName,phone:staffPhone}).parse(req.body);
+  const data=z.object({name:staffName,phone:contactPhoneSchema}).parse(req.body);
   const user=transaction(()=>{
     const users=getUsers(),index=users.findIndex(u=>u.id===req.auth!.sub);check(index>=0,404,"Pengguna tidak ditemukan.");
     users[index]={...users[index],...data};saveUsers(users);return users[index];
