@@ -110,8 +110,11 @@ export function recordPayment(id:string,input:unknown,actor:string){
       check(booking.status==="confirmed",409,"Pembayaran hanya untuk booking aktif.");
       check(data.amount<=booking.total-booking.paid,400,"Pembayaran melebihi sisa tagihan.");
     }else{
-      check(booking.status==="cancelled",409,"Batalkan booking sebelum mencatat pengembalian.");
-      check(data.amount<=booking.paid,400,"Pengembalian melebihi pembayaran yang diterima.");
+      // Booking batal/kedaluwarsa: seluruh pembayaran boleh dikembalikan. Booking aktif hanya kelebihan
+      // bayarnya, mis. link tagihan dan pembayaran tunai yang masuk bersamaan.
+      const closed=booking.status==="cancelled"||booking.status==="expired";
+      check(closed||booking.paid>booking.total,409,"Batalkan booking sebelum mencatat pengembalian.");
+      check(data.amount<=(closed?booking.paid:booking.paid-booking.total),400,closed?"Pengembalian melebihi pembayaran yang diterima.":"Pengembalian melebihi kelebihan bayar booking ini.");
       check(data.note.length>=3,400,"Isi catatan pengembalian.");
     }
     db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());

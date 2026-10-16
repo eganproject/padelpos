@@ -13,7 +13,9 @@ import { ErrorBox,Modal,Submit } from "./operation-ui";
 const optionsUrl=(date:string,start:string,end:string,booking?:string)=>`/operations/addons/options?date=${date}&start=${start}&end=${end}${booking?`&booking=${booking}`:""}`;
 const hoursLabel=(value:number)=>`${(value/60).toLocaleString("id-ID")} jam`;
 /** Nominal bawaan formulir: sisa tagihan, atau dana yang perlu dikembalikan bila batal. */
-const due=(booking:Booking)=>booking.status==="cancelled"?booking.paid:booking.total-booking.paid;
+/** Uang yang harus dikembalikan: seluruh pembayaran booking batal/kedaluwarsa, atau kelebihan bayar booking aktif. */
+const refundDue=(booking:Booking)=>booking.status==="cancelled"||booking.status==="expired"?booking.paid:Math.max(0,booking.paid-booking.total);
+const due=(booking:Booking)=>refundDue(booking)>0?refundDue(booking):Math.max(0,booking.total-booking.paid);
 
 export function BookingsPanel(){
   const [data,setData]=useState<{bookings:Booking[];date:string;timezone:string}|null>(null);
@@ -90,7 +92,7 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[reason,setReason]=useState("");
   const [form,setForm]=useState({id:crypto.randomUUID(),amount:0,kind:"payment" as "payment"|"refund",method:"cash",note:""});
   const [editing,setEditing]=useState(false),[drafts,setDrafts]=useState<Draft[]>([]),[options,setOptions]=useState<AddonOption[]|null>(null);
-  const load=useCallback(async()=>{try{const data=await api<Detail>(`/operations/bookings/${id}`);setData(data);setForm(p=>({...p,kind:data.booking.status==="cancelled"?"refund":"payment",amount:due(data.booking)}));setError("")}catch(e){setError((e as Error).message)}},[id]);
+  const load=useCallback(async()=>{try{const data=await api<Detail>(`/operations/bookings/${id}`);setData(data);setForm(p=>({...p,kind:refundDue(data.booking)>0?"refund":"payment",amount:due(data.booking)}));setError("")}catch(e){setError((e as Error).message)}},[id]);
   useEffect(()=>{void load()},[load]);
   const booking=data?.booking,lines=data?.addons??[];
   const duration=booking?minute(booking.end_time)-minute(booking.start_time):0;
@@ -137,7 +139,7 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     try{await navigator.clipboard.writeText(url);toast.success("Link disalin, siap dikirim ke pelanggan")}
     catch{toast.message("Salin link ini: "+url)}
   }
-  const refundable=booking?.status==="cancelled"&&(booking.paid>0),payable=booking?.status==="confirmed"&&booking.total>booking.paid;
+  const refundable=!!booking&&refundDue(booking)>0,payable=booking?.status==="confirmed"&&booking.total>booking.paid;
   const canReturn=booking?.status==="confirmed"||booking?.status==="completed";
   const unreturned=lines.filter(l=>l.type==="sewa"&&!l.returned_at);
   const draftSum=draftsTotal(drafts,duration);
@@ -158,7 +160,7 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     </section>}
     <div className="ops-total"><span>Sewa lapangan</span><strong>{money(booking.court_total)}</strong></div>{booking.total!==booking.court_total&&<div className="ops-total"><span>Tambahan</span><strong>{money(booking.total-booking.court_total)}</strong></div>}<div className="ops-total"><span>Total tagihan</span><strong>{money(booking.total)}</strong></div><div className="ops-total"><span>Pembayaran neto</span><strong>{money(booking.paid)}</strong></div><div className="ops-total"><span>{booking.status==="cancelled"?"Perlu dikembalikan":"Sisa tagihan"}</span><strong>{money(due(booking))}</strong></div>
     {booking.cancel_reason&&<p>Alasan pembatalan: {booking.cancel_reason}</p>}
-    {(payable||refundable)&&<form onSubmit={pay} className="ops-payment"><h3>{refundable?"Catat pengembalian dana":"Catat DP / pelunasan"}</h3><p className="ops-muted">Pastikan uang sudah {refundable?"dikembalikan":"diterima"}. Formulir ini mencatat transaksi manual.</p><div className="field-grid"><label>Nominal (Rp)<input required type="number" min={1} max={refundable?booking.paid:booking.total-booking.paid} step={1} value={form.amount} onChange={e=>setForm({...form,id:crypto.randomUUID(),amount:Number(e.target.value)})}/></label><label>Metode<select value={form.method} onChange={e=>setForm({...form,id:crypto.randomUUID(),method:e.target.value})}><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="qris">QRIS</option></select></label></div><label>Catatan / referensi{refundable?" (wajib)":" (opsional)"}<input required={!!refundable} minLength={refundable?3:undefined} maxLength={200} value={form.note} onChange={e=>setForm({...form,id:crypto.randomUUID(),note:e.target.value})}/></label><Submit busy={busy}>{refundable?"Catat pengembalian":"Catat pembayaran"}</Submit></form>}
+    {(payable||refundable)&&<form onSubmit={pay} className="ops-payment"><h3>{refundable?"Catat pengembalian dana":"Catat DP / pelunasan"}</h3><p className="ops-muted">Pastikan uang sudah {refundable?"dikembalikan":"diterima"}. Formulir ini mencatat transaksi manual.</p><div className="field-grid"><label>Nominal (Rp)<input required type="number" min={1} max={refundable?refundDue(booking):booking.total-booking.paid} step={1} value={form.amount} onChange={e=>setForm({...form,id:crypto.randomUUID(),amount:Number(e.target.value)})}/></label><label>Metode<select value={form.method} onChange={e=>setForm({...form,id:crypto.randomUUID(),method:e.target.value})}><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="qris">QRIS</option></select></label></div><label>Catatan / referensi{refundable?" (wajib)":" (opsional)"}<input required={!!refundable} minLength={refundable?3:undefined} maxLength={200} value={form.note} onChange={e=>setForm({...form,id:crypto.randomUUID(),note:e.target.value})}/></label><Submit busy={busy}>{refundable?"Catat pengembalian":"Catat pembayaran"}</Submit></form>}
     {(payable||(data!.intents.length>0))&&<section className="ops-addons" aria-label="Tagihan online">
       <div className="ops-card-head"><h3>Tagihan online</h3>{payable&&<button type="button" className="ops-secondary" disabled={busy} onClick={()=>void makeLink()}><CreditCard size={14}/> Buat link pembayaran</button>}</div>
       {data!.intents.length?<ul className="pay-links">{data!.intents.map(intent=><li key={intent.order_id}>

@@ -299,6 +299,49 @@ test("pembukuan: jurnal berpasangan, laba rugi, neraca, buku besar, dan buku bes
       assert.equal(overview.payable, 0, "utang pemasok sudah lunas");
     });
 
+    await t.test("piutang dan uang muka dipisah per booking, tidak saling menutupi", async () => {
+      const unpaid = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Budi", phone: "081200000002", date: tomorrow, start_time: "13:00", end_time: "14:00", notes: "" }, admin);
+      const ahead = await request("/operations/bookings", "POST", { court_id: courtId, customer: "Budi", phone: "081200000002", date: shift(2), start_time: "13:00", end_time: "14:00", notes: "" }, admin);
+      assert.equal(unpaid.status, 201); assert.equal(ahead.status, 201);
+      assert.equal((await request(`/operations/bookings/${ahead.data.booking.id}/payments`, "POST", payment(300000, "payment", "transfer"), admin)).status, 201);
+      const before = await balance(tomorrow);
+      assert.equal(before.difference, 0);
+      assert.equal(before.receivable, 300000, "sesi besok belum dibayar tetap piutang");
+      assert.equal(before.advances, 100000 + 300000, "uang muka sesi lusa ditambah dana Rina yang belum dikembalikan");
+      assert.equal(before.assets.find((row: { code: string }) => row.code === "1-300").amount, 300000);
+
+      const ledger = (await request(`/operations/finance/reports/pembantu?kind=piutang&from=${tomorrow}&to=${tomorrow}`, "GET", undefined, admin)).data;
+      const budi = ledger.rows.find((row: { name: string }) => row.name === "Budi");
+      assert.equal(budi.balance, 0, "per pelanggan saldonya memang nol");
+      assert.equal(budi.detail.length, 2, "tetapi rinciannya menunjukkan kedua booking");
+      assert.equal(budi.detail.reduce((sum: number, row: { amount: number }) => sum + row.amount, 0), budi.balance, "rincian selalu sama dengan saldo");
+      for (const row of ledger.rows) assert.equal(row.detail.reduce((sum: number, item: { amount: number }) => sum + item.amount, 0), row.balance, row.name);
+      bookingId = unpaid.data.booking.id;
+    });
+
+    await t.test("mengganti rekening tujuan pembayaran tidak memindahkan uang yang sudah diterima", async () => {
+      const mapping = (cash: string) => ({ cash_accounts: { cash, transfer: account("1-200"), qris: account("1-200"), va: account("1-200"), ewallet: account("1-200"), card: account("1-200") }, default_cash_account: account("1-100"), locked_until: "" });
+      const at = (sheet: { assets: { code: string; amount: number }[] }, code: string) => sheet.assets.find(row => row.code === code)?.amount ?? 0;
+      const start = await balance(shift(2));
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`, "POST", payment(100000, "payment", "cash"), admin)).status, 201);
+      assert.equal((await request("/operations/finance/settings", "PUT", mapping(account("1-200")), admin)).status, 200);
+      assert.equal((await request(`/operations/bookings/${bookingId}/payments`, "POST", payment(50000, "payment", "cash"), admin)).status, 201);
+      const end = await balance(shift(2));
+      assert.equal(end.difference, 0);
+      assert.equal(at(end, "1-100") - at(start, "1-100"), 100000, "tunai pertama tetap di Kas");
+      assert.equal(at(end, "1-200") - at(start, "1-200"), 50000, "tunai berikutnya mengikuti pemetaan baru");
+      assert.equal((await request("/operations/finance/settings", "PUT", mapping(account("1-100")), admin)).status, 200);
+    });
+
+    await t.test("daftar jurnal dan catatan menyebut jumlah lengkapnya walau dibatasi", async () => {
+      const journal = (await request("/operations/finance/journal?limit=1", "GET", undefined, admin)).data;
+      assert.equal(journal.entries.length, 1);
+      assert.equal(journal.total, (db.prepare("SELECT count(*) n FROM journal_entries").get() as { n: number }).n);
+      const records = (await request("/operations/finance/records", "GET", undefined, admin)).data;
+      assert.equal(records.count, records.records.length);
+      assert.equal(records.expense, (db.prepare("SELECT SUM(amount) n FROM finance_records WHERE kind='pengeluaran'").get() as { n: number }).n);
+    });
+
     await t.test("seluruh jurnal seimbang: total debit sama dengan total kredit", async () => {
       const totals = db.prepare("SELECT SUM(debit) debit,SUM(credit) credit FROM journal_lines").get() as { debit: number; credit: number };
       assert.equal(totals.debit, totals.credit);

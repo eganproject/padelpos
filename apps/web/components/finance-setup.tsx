@@ -194,13 +194,22 @@ function PartnerForm({ partner, close, saved }: { partner?:Partner|null; close:(
 
 function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
   const cash = setup.accounts.filter(account => account.is_cash && account.active);
-  const [form,setForm] = useState({
-    cash_accounts: { ...setup.settings.cash_accounts },
-    default_cash_account: setup.settings.default_cash_account || cash[0]?.id || "",
-    locked_until: setup.settings.locked_until,
+  // Rekening yang sudah dinonaktifkan tidak ada di pilihan. Nilai awal disamakan dengan yang tampil di
+  // layar supaya yang tersimpan sama dengan yang dilihat admin.
+  const [form,setForm] = useState(() => {
+    const valid = (id?:string) => cash.some(account => account.id===id);
+    const fallback = valid(setup.settings.default_cash_account) ? setup.settings.default_cash_account : cash[0]?.id ?? "";
+    return {
+      cash_accounts: Object.fromEntries(methodLabels.map(method => [method.key, valid(setup.settings.cash_accounts[method.key]) ? setup.settings.cash_accounts[method.key] : fallback])) as Record<string,string>,
+      default_cash_account: fallback,
+      locked_until: setup.settings.locked_until,
+    };
   });
   const [saving,setSaving] = useState(false);
-  const dirty = JSON.stringify(form) !== JSON.stringify({ cash_accounts:setup.settings.cash_accounts, default_cash_account:setup.settings.default_cash_account, locked_until:setup.settings.locked_until });
+  const stored = { cash_accounts:setup.settings.cash_accounts, default_cash_account:setup.settings.default_cash_account, locked_until:setup.settings.locked_until };
+  const same = (a:typeof stored) => methodLabels.every(method => a.cash_accounts[method.key]===form.cash_accounts[method.key])
+    && a.default_cash_account===form.default_cash_account && a.locked_until===form.locked_until;
+  const dirty = !same(stored);
   async function submit(event:React.FormEvent) {
     event.preventDefault(); setSaving(true);
     try { await api("/operations/finance/settings",{method:"PUT",body:JSON.stringify(form)}); toast.success("Pengaturan disimpan"); reload() }
@@ -215,7 +224,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
         <div className="fin-method-grid">
           {methodLabels.map(method => (
             <label className="fin-field" key={method.key}><span className="fin-label">{method.label}</span>
-              <select value={form.cash_accounts[method.key] ?? form.default_cash_account}
+              <select value={form.cash_accounts[method.key]}
                 onChange={e=>setForm({...form,cash_accounts:{...form.cash_accounts,[method.key]:e.target.value}})}>
                 {cash.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
               </select>

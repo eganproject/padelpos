@@ -23,7 +23,7 @@ export type BalanceSheet = {
   total_assets:number; total_liabilities:number; total_equity:number; difference:number; receivable:number; advances:number;
 };
 export type LedgerRow = { entry_id:string; number:string; date:string; memo:string; source:EntrySource; debit:number; credit:number; line_memo:string; counter:string; balance:number };
-export type GeneralLedger = { from:string; to:string; account:Account; opening:number; closing:number; rows:LedgerRow[]; debit:number; credit:number };
+export type GeneralLedger = { from:string; to:string; account:Account; opening:number; closing:number; rows:LedgerRow[]; debit:number; credit:number; truncated:boolean };
 export type SubsidiaryRow = { key:string; name:string; subtitle:string; opening:number; debit:number; credit:number; balance:number; detail:{label:string;amount:number}[] };
 export type SubsidiaryLedger = { kind:"piutang"|"utang"|"kas"; from:string; to:string; rows:SubsidiaryRow[]; total:number };
 export type Overview = {
@@ -51,6 +51,11 @@ export const methodLabels:{key:string;label:string}[] = [
   { key:"cash", label:"Tunai di kasir" }, { key:"transfer", label:"Transfer bank" }, { key:"qris", label:"QRIS" },
   { key:"va", label:"Virtual account" }, { key:"ewallet", label:"Dompet digital" }, { key:"card", label:"Kartu kredit/debit" },
 ];
+/** Akun kas pilihan awal: yang diminta bila masih aktif, kalau tidak akun kas aktif pertama. */
+export const usableCash = (setup:Setup, preferred?:string|null) => {
+  const cash = setup.accounts.filter(account => account.is_cash && account.active);
+  return cash.some(account => account.id===preferred) ? preferred! : cash[0]?.id ?? "";
+};
 /** Kelompok akun yang boleh dipakai sebagai kategori pada formulir catatan. */
 export const categoryTypes:Record<RecordKind,AccountType[]> = { pengeluaran:["beban","aset","liabilitas"], pemasukan:["pendapatan","aset","liabilitas"] };
 export const categoryGroupLabel:Record<RecordKind,Record<string,string>> = {

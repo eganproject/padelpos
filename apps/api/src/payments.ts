@@ -301,6 +301,24 @@ const notificationSchema = z.object({
   payment_type: z.string().max(40).optional(),
 });
 
+/**
+ * Bagi `amount` mengikuti perbandingan `weights` dengan hasil bulat yang jumlahnya persis `amount`.
+ * Nominal yang ditagih Midtrans adalah sumber kebenaran; pengaturan DP yang berubah setelah checkout
+ * tidak boleh membuat pembayaran yang tercatat berbeda dari uang yang benar-benar diterima.
+ */
+export function splitAmount(amount: number, weights: number[]) {
+  if (weights.length <= 1) return [amount];
+  const total = weights.reduce((sum, value) => sum + value, 0);
+  if (total === amount) return weights;
+  const base = total > 0 ? weights : weights.map(() => 1);
+  const sum = base.reduce((value, weight) => value + weight, 0);
+  const shares = base.map(weight => Math.floor(amount * weight / sum));
+  // Sisa pembulatan diberikan ke porsi dengan pecahan terbesar.
+  const order = base.map((weight, index) => ({ index, rest: amount * weight / sum - shares[index] })).sort((a, b) => b.rest - a.rest);
+  for (let left = amount - shares.reduce((value, share) => value + share, 0), i = 0; left > 0; left--, i++) shares[order[i % order.length].index]++;
+  return shares;
+}
+
 /** Terapkan status dari Midtrans ke intent dan seluruh sesi pesanannya. Idempoten. */
 function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
   const outcome = outcomeOf(status);
@@ -313,16 +331,19 @@ function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
     if (outcome === "paid") {
       const reference = status.transaction_id ?? intent.order_id;
       // Satu pembayaran Midtrans dibagi ke tiap sesi agar pembukuan per booking tetap utuh.
-      const shares = bookings.length === 1
-        ? [intent.amount]
-        : bookings.map(booking => payableAmount(booking.total, config));
+      const shares = splitAmount(intent.amount, bookings.map(booking => payableAmount(booking.total, config)));
       bookings.forEach((booking, index) => {
         const key = `${reference}:${booking.id.slice(0, 8)}`;
-        if (!db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(key)) {
+        if (shares[index] > 0 && !db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(key)) {
           db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,'payment',?,'gateway',?,?,?)")
             .run(randomUUID(), booking.id, shares[index], paymentMethod(status.payment_type), key, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
         }
-        if (booking.status === "pending") {
+        if (booking.status === "expired") {
+          // Uang masuk setelah batas bayar lewat: slotnya sudah dilepas, jadi booking ditutup sebagai batal
+          // supaya staf dapat mencatat pengembaliannya dan dana tidak menggantung sebagai uang muka.
+          db.prepare("UPDATE bookings SET status='cancelled',cancel_reason=? WHERE id=?")
+            .run("Pembayaran masuk setelah batas waktu bayar. Dana perlu dikembalikan.", booking.id);
+        } else if (booking.status === "pending") {
           try {
             db.prepare("UPDATE bookings SET status='confirmed',hold_expires_at=NULL WHERE id=?").run(booking.id);
           } catch {

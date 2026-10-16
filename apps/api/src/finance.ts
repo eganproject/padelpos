@@ -74,7 +74,7 @@ export function settings(): FinanceSettings {
 function cashAccountFor(method: string) {
   const config = settings();
   for (const candidate of [config.cash_accounts[method], config.default_cash_account]) {
-    if (candidate && db.prepare("SELECT 1 FROM accounts WHERE id=? AND is_cash=1").get(candidate)) return candidate;
+    if (candidate && db.prepare("SELECT 1 FROM accounts WHERE id=? AND is_cash=1 AND active=1").get(candidate)) return candidate;
   }
   return systemAccount("kas").id;
 }
@@ -166,7 +166,12 @@ export function syncBooking(bookingId: string) {
       ],
     });
   } else dropEntry("booking", booking.id);
-  const payments = db.prepare("SELECT id,amount,kind,method,created_at FROM payments WHERE booking_id=? ORDER BY created_at").all(bookingId) as unknown as
+  // Pembayaran tidak pernah berubah setelah dicatat, jadi jurnalnya cukup dibuat sekali. Menulis ulang
+  // jurnal lama akan memindahkan uang yang sudah diterima ke rekening lain begitu pemetaan kas di
+  // Pengaturan diganti, dan saldo kas periode yang sudah ditutup ikut bergeser diam-diam.
+  const payments = db.prepare(`SELECT p.id,p.amount,p.kind,p.method,p.created_at FROM payments p
+    WHERE p.booking_id=? AND NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.source='pembayaran' AND e.ref_id=p.id)
+    ORDER BY p.created_at`).all(bookingId) as unknown as
     { id: string; amount: number; kind: "payment" | "refund"; method: string; created_at: string }[];
   for (const payment of payments) {
     const cash = { account_id: cashAccountFor(payment.method), memo: `${payment.kind === "refund" ? "Pengembalian" : "Pembayaran"} ${payment.method}` };
@@ -220,6 +225,18 @@ function receivableByCustomer(to: string) {
   }
   return [...merged.values()];
 }
+/**
+ * Saldo piutang tiap booking. Piutang dan uang muka dipisah per booking, bukan dinetokan per
+ * pelanggan: sesi yang sudah main tapi belum dibayar tetap piutang walau pelanggan yang sama sudah
+ * membayar di muka untuk sesi minggu depan.
+ */
+function receivableByBooking(to: string) {
+  return db.prepare(`SELECT COALESCE(b.customer_id,b.phone) key,b.id,b.date,b.start_time,SUM(l.debit-l.credit) balance
+    FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN bookings b ON b.id=l.booking_id
+    JOIN accounts a ON a.id=l.account_id
+    WHERE a.system_key='piutang' AND e.date<=? GROUP BY b.id HAVING balance<>0 ORDER BY b.date,b.start_time`).all(to) as unknown as
+    { key: string; id: string; date: string; start_time: string; balance: number }[];
+}
 
 export function profitLoss(input: unknown) {
   const { from, to } = periodOf(input);
@@ -245,9 +262,9 @@ export function balanceSheet(input: unknown) {
   const index = movements(null, as_of);
   const all = accounts();
   const line = (account: Account) => ({ id: account.id, code: account.code, name: account.name, amount: balanceOf(account, index) });
-  const customers = receivableByCustomer(as_of);
-  const outstanding = customers.filter(row => row.balance > 0).reduce((sum, row) => sum + row.balance, 0);
-  const advances = customers.filter(row => row.balance < 0).reduce((sum, row) => sum - row.balance, 0);
+  const perBooking = receivableByBooking(as_of);
+  const outstanding = perBooking.filter(row => row.balance > 0).reduce((sum, row) => sum + row.balance, 0);
+  const advances = perBooking.filter(row => row.balance < 0).reduce((sum, row) => sum - row.balance, 0);
   const assets = all.filter(account => account.type === "aset").map(account => {
     // Saldo piutang yang negatif berarti pelanggan sudah membayar sesi yang belum main:
     // itu kewajiban venue, bukan aset, jadi dipindahkan ke sisi kanan neraca.
@@ -277,6 +294,7 @@ export function balanceSheet(input: unknown) {
   };
 }
 
+const ledgerRowLimit = 5000;
 export function generalLedger(input: unknown) {
   const { from, to } = periodOf(input);
   const { account_id } = z.object({ account_id: idSchema }).parse(input);
@@ -286,17 +304,22 @@ export function generalLedger(input: unknown) {
   const rows = db.prepare(`SELECT e.id entry_id,e.number,e.date,e.memo,e.source,l.debit,l.credit,l.memo line_memo,
       (SELECT group_concat(DISTINCT a2.name) FROM journal_lines l2 JOIN accounts a2 ON a2.id=l2.account_id WHERE l2.entry_id=e.id AND l2.account_id<>l.account_id) counter
     FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id
-    WHERE l.account_id=? AND e.date BETWEEN ? AND ? ORDER BY e.date,e.number,l.position LIMIT 2000`).all(account_id, from, to) as unknown as
+    WHERE l.account_id=? AND e.date BETWEEN ? AND ? ORDER BY e.date,e.number,l.position LIMIT ?`).all(account_id, from, to, ledgerRowLimit + 1) as unknown as
     { entry_id: string; number: string; date: string; memo: string; source: EntrySource; debit: number; credit: number; line_memo: string; counter: string | null }[];
+  // Total periode dihitung dari seluruh mutasi, bukan dari baris yang ditampilkan, agar saldo akhir
+  // tetap benar walau rinciannya dipotong.
+  const period = db.prepare(`SELECT COALESCE(SUM(l.debit),0) debit,COALESCE(SUM(l.credit),0) credit FROM journal_lines l
+    JOIN journal_entries e ON e.id=l.entry_id WHERE l.account_id=? AND e.date BETWEEN ? AND ?`).get(account_id, from, to) as unknown as { debit: number; credit: number };
+  const truncated = rows.length > ledgerRowLimit;
   let running = signed(account.type, before.debit, before.credit);
   const opening = running;
-  const ledger = rows.map(row => {
+  const ledger = rows.slice(0, ledgerRowLimit).map(row => {
     running += signed(account.type, row.debit, row.credit);
     return { ...row, counter: row.counter ?? "", balance: running };
   });
   return {
-    from, to, account, opening, closing: running, rows: ledger,
-    debit: rows.reduce((sum, row) => sum + row.debit, 0), credit: rows.reduce((sum, row) => sum + row.credit, 0),
+    from, to, account, opening, closing: opening + signed(account.type, period.debit, period.credit), rows: ledger,
+    debit: period.debit, credit: period.credit, truncated,
   };
 }
 
@@ -324,15 +347,14 @@ export function subsidiaryLedger(input: unknown) {
       FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN bookings b ON b.id=l.booking_id JOIN accounts a ON a.id=l.account_id
       WHERE a.system_key='piutang' AND e.date BETWEEN ? AND ? GROUP BY key`).all(from, to) as unknown as { key: string; debit: number; credit: number }[];
     const moves = new Map(period.map(row => [row.key, row]));
-    const open = db.prepare(`SELECT COALESCE(b.customer_id,b.phone) key,b.id,b.date,b.start_time,b.total,b.status,
-        COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid
-      FROM bookings b WHERE b.status IN ('confirmed','completed') AND b.date<=?`).all(to) as unknown as
-      { key: string; id: string; date: string; start_time: string; total: number; status: string; paid: number }[];
+    // Rincian diambil dari jurnal yang sama dengan saldonya, jadi jumlah rincian selalu sama dengan
+    // saldo akhir: termasuk uang muka sesi mendatang dan dana booking batal yang belum dikembalikan.
+    const open = receivableByBooking(to);
     const rows = now.map(row => ({
       key: row.key, name: row.customer, subtitle: row.phone,
       opening: before.get(row.key) ?? 0, debit: moves.get(row.key)?.debit ?? 0, credit: moves.get(row.key)?.credit ?? 0, balance: row.balance,
-      detail: open.filter(booking => booking.key === row.key && booking.total - booking.paid !== 0)
-        .map(booking => ({ label: `${booking.date} · ${booking.start_time}`, amount: booking.total - booking.paid })),
+      detail: open.filter(booking => booking.key === row.key)
+        .map(booking => ({ label: `${booking.date} · ${booking.start_time}${booking.balance < 0 ? " · uang muka" : ""}`, amount: booking.balance })),
     })).filter(row => row.balance !== 0 || row.debit !== 0 || row.credit !== 0)
       .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
     return { kind, from, to, rows, total: rows.reduce((sum, row) => sum + row.balance, 0) };
@@ -396,16 +418,16 @@ export function overview(input: unknown) {
 // --- Daftar jurnal ---------------------------------------------------------
 
 export function journal(input: unknown) {
-  const query = z.object({ from: optionalDate, to: optionalDate, account_id: idSchema.optional(), source: z.string().trim().max(20).optional(), q: z.string().trim().max(60).default(""), limit: z.coerce.number().int().min(1).max(500).default(200) }).parse(input ?? {});
+  const query = z.object({ from: optionalDate, to: optionalDate, account_id: idSchema.optional(), source: z.string().trim().max(20).optional(), q: z.string().trim().max(60).default(""), limit: z.coerce.number().int().min(1).max(10000).default(200) }).parse(input ?? {});
   const from = query.from || "0000-01-01", to = query.to || "9999-12-31";
-  const account = query.account_id ?? null, source = query.source ?? null, term = query.q.toLowerCase();
-  const rows = db.prepare(`SELECT DISTINCT e.id,e.number,e.date,e.memo,e.source,e.ref_id,e.created_by,e.created_at FROM journal_entries e
-    JOIN journal_lines l ON l.entry_id=e.id
-    WHERE e.date BETWEEN ? AND ? AND (? IS NULL OR l.account_id=?) AND (? IS NULL OR e.source=?)
-      AND (?='' OR lower(e.memo) LIKE '%'||?||'%' OR lower(e.number) LIKE '%'||?||'%')
-    ORDER BY e.date DESC,e.number DESC LIMIT ?`)
-    .all(from, to, account, account, source, source, term, term, term, query.limit) as unknown as Omit<JournalEntry, "lines">[];
-  return { entries: rows.map(entry => ({ ...entry, lines: entryLines(entry.id) })) };
+  const account = query.account_id ?? null, source = query.source || null, term = query.q.toLowerCase();
+  const where = `FROM journal_entries e WHERE e.date BETWEEN ? AND ? AND (? IS NULL OR EXISTS (SELECT 1 FROM journal_lines l WHERE l.entry_id=e.id AND l.account_id=?))
+      AND (? IS NULL OR e.source=?) AND (?='' OR lower(e.memo) LIKE '%'||?||'%' OR lower(e.number) LIKE '%'||?||'%')`;
+  const params = [from, to, account, account, source, source, term, term, term];
+  const rows = db.prepare(`SELECT e.id,e.number,e.date,e.memo,e.source,e.ref_id,e.created_by,e.created_at ${where}
+    ORDER BY e.date DESC,e.number DESC LIMIT ?`).all(...params, query.limit) as unknown as Omit<JournalEntry, "lines">[];
+  const { total } = db.prepare(`SELECT count(*) total ${where}`).get(...params) as { total: number };
+  return { entries: rows.map(entry => ({ ...entry, lines: entryLines(entry.id) })), total };
 }
 function entryLines(entryId: string) {
   return db.prepare(`SELECT l.id,l.account_id,a.code account_code,a.name account_name,l.debit,l.credit,l.memo,l.partner_id,p.name partner_name,l.booking_id
@@ -424,6 +446,7 @@ export function saveJournal(input: unknown, actor: string, id?: string) {
   const data = journalSchema.parse(input);
   return transaction(() => {
     ensureOpen(data.date);
+    for (const line of data.lines) if (line.partner_id) check(db.prepare("SELECT 1 FROM partners WHERE id=?").get(line.partner_id), 404, "Pemasok atau pihak pada jurnal tidak ditemukan.");
     if (id) {
       const existing = db.prepare("SELECT id,source,date FROM journal_entries WHERE id=?").get(id) as { id: string; source: EntrySource; date: string } | undefined;
       check(existing, 404, "Jurnal tidak ditemukan.");
@@ -474,18 +497,19 @@ function getRecord(id: string) {
 export function records(input: unknown) {
   const query = z.object({ from: optionalDate, to: optionalDate, kind: z.enum(["pengeluaran", "pemasukan"]).optional(), status: z.enum(["semua", "belum"]).default("semua"), account_id: idSchema.optional(), partner_id: idSchema.optional(), q: z.string().trim().max(60).default("") }).parse(input ?? {});
   const kind = query.kind ?? null, account = query.account_id ?? null, partner = query.partner_id ?? null, term = query.q.toLowerCase();
-  const rows = db.prepare(`SELECT ${recordColumns} ${recordFrom}
+  const where = `${recordFrom}
     WHERE r.date BETWEEN ? AND ? AND (? IS NULL OR r.kind=?) AND (? IS NULL OR r.account_id=?) AND (? IS NULL OR r.partner_id=?)
       AND (?='' OR lower(r.description) LIKE '%'||?||'%' OR lower(r.number) LIKE '%'||?||'%' OR lower(COALESCE(p.name,'')) LIKE '%'||?||'%')
-      AND (?=0 OR (r.settle='tempo' AND r.settled_at IS NULL))
-    ORDER BY r.date DESC,r.number DESC LIMIT 500`)
-    .all(query.from || "0000-01-01", query.to || "9999-12-31", kind, kind, account, account, partner, partner, term, term, term, term, query.status === "belum" ? 1 : 0) as unknown as FinanceRecord[];
-  return {
-    records: rows,
-    expense: rows.filter(row => row.kind === "pengeluaran").reduce((sum, row) => sum + row.amount, 0),
-    income: rows.filter(row => row.kind === "pemasukan").reduce((sum, row) => sum + row.amount, 0),
-    unsettled: rows.filter(row => row.settle === "tempo" && !row.settled_at).reduce((sum, row) => sum + row.amount, 0),
-  };
+      AND (?=0 OR (r.settle='tempo' AND r.settled_at IS NULL))`;
+  const params = [query.from || "0000-01-01", query.to || "9999-12-31", kind, kind, account, account, partner, partner, term, term, term, term, query.status === "belum" ? 1 : 0];
+  const rows = db.prepare(`SELECT ${recordColumns} ${where} ORDER BY r.date DESC,r.number DESC LIMIT 500`).all(...params) as unknown as FinanceRecord[];
+  // Total dihitung dari seluruh catatan yang cocok, bukan hanya 500 baris yang ditampilkan.
+  const totals = db.prepare(`SELECT count(*) count,
+      COALESCE(SUM(CASE WHEN r.kind='pengeluaran' THEN r.amount END),0) expense,
+      COALESCE(SUM(CASE WHEN r.kind='pemasukan' THEN r.amount END),0) income,
+      COALESCE(SUM(CASE WHEN r.settle='tempo' AND r.settled_at IS NULL THEN r.amount END),0) unsettled ${where}`).get(...params) as
+    { count: number; expense: number; income: number; unsettled: number };
+  return { records: rows, ...totals };
 }
 
 export const recordSchema = z.object({
