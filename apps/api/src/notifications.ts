@@ -1,38 +1,45 @@
 import { randomUUID } from "node:crypto";
 import nodemailer, { type Transporter } from "nodemailer";
 import { z } from "zod";
-import { audit, db, isDuplicate, saveSetting, transaction } from "./store.js";
+import { audit, db, isDuplicate, readSetting, saveSetting, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { publicUrl } from "./config.js";
 import { localClock } from "./clock.js";
 import { getInfo } from "./content.js";
+import { defaultEvents, eventsSchema, type NotifyEvent } from "./notify-events.js";
+import { deliverDueWhatsApp, enqueueWhatsApp, staffNumbers, waNumber, whatsappConfig, whatsappReady } from "./whatsapp.js";
+import { notifyInbox } from "./inbox.js";
+
+export type { NotifyEvent } from "./notify-events.js";
+/** Nama lama, dipertahankan untuk pemanggil yang sudah ada. */
+export type EmailEvent = NotifyEvent;
 
 /**
- * Notifikasi email lewat SMTP (Gmail, Zoho, Mailgun, SendGrid, atau server email sendiri).
+ * Notifikasi untuk pelanggan dan staf lewat tiga kanal:
+ * - email lewat SMTP (Gmail, Zoho, Mailgun, SendGrid, atau server email sendiri),
+ * - WhatsApp lewat penyedia pihak ketiga (lihat whatsapp.ts),
+ * - kotak masuk di akun pelanggan (lihat inbox.ts), untuk booking yang terhubung ke akun.
  *
- * Email tidak dikirim langsung saat booking berubah. Pesannya ditulis ke `email_outbox` di dalam
- * transaksi yang sama, lalu proses latar (`startMailer`) mengirimnya dan mengulang bila SMTP
- * sedang gagal. Dengan begitu booking tidak pernah gagal hanya karena server email lambat, dan
- * email tidak terkirim untuk perubahan yang akhirnya dibatalkan. Kolom `key` unik menjamin satu
- * peristiwa hanya menghasilkan satu email, walau webhook Midtrans datang berkali-kali.
+ * Pesan tidak dikirim langsung saat booking berubah. Setiap kanal menulis ke antreannya sendiri di
+ * dalam transaksi yang sama, lalu proses latar (`startMailer`) mengirimnya dan mengulang bila
+ * penyedia sedang gagal. Dengan begitu booking tidak pernah gagal hanya karena server email lambat,
+ * dan pesan tidak terkirim untuk perubahan yang akhirnya dibatalkan. Kolom `key` unik menjamin satu
+ * peristiwa hanya menghasilkan satu pesan per kanal, walau webhook Midtrans datang berkali-kali.
  *
  * Seperti Midtrans, pengaturan SMTP dapat diisi dari panel admin atau dari environment; environment
  * selalu menang. Password SMTP tidak pernah dikirim kembali ke browser.
  */
-export type EmailEvent = "confirmed" | "reschedule" | "cancelled" | "reminder" | "staff_new";
 export interface EmailSettings {
   enabled: boolean; host: string; port: number; secure: boolean; user: string; password: string;
   from_name: string; from_email: string; staff_recipients: string[]; reminder_hours: number;
-  events: Record<EmailEvent, boolean>; updated_at: string | null;
+  events: Record<NotifyEvent, boolean>; updated_at: string | null;
 }
-const defaultEvents: Record<EmailEvent, boolean> = { confirmed: true, reschedule: true, cancelled: true, reminder: true, staff_new: true };
 const defaults: EmailSettings = {
   enabled: false, host: "", port: 587, secure: false, user: "", password: "",
   from_name: "", from_email: "", staff_recipients: [], reminder_hours: 24, events: defaultEvents, updated_at: null,
 };
 async function stored(): Promise<EmailSettings> {
-  const row = await db.prepare("SELECT document FROM settings WHERE `key`='email'").get() as { document: string } | undefined;
-  const value = row ? JSON.parse(row.document) as Partial<EmailSettings> : {};
+  const value = await readSetting<Partial<EmailSettings>>("email") ?? {};
   return { ...defaults, ...value, events: { ...defaultEvents, ...value.events } };
 }
 export async function emailConfig() {
@@ -53,25 +60,41 @@ export async function emailConfig() {
 type EmailConfig = Awaited<ReturnType<typeof emailConfig>>;
 export const emailReady = (config: EmailConfig) => config.enabled && !!config.host && !!config.from_email;
 
-// --- Isi email ----------------------------------------------------------------
+// --- Isi pesan ----------------------------------------------------------------
 
 const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]!);
-const rupiah = (value: number) => "Rp" + value.toLocaleString("id-ID");
+export const rupiah = (value: number) => "Rp" + value.toLocaleString("id-ID");
 const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 export function longDate(date: string) {
   const value = new Date(date + "T12:00:00Z");
   return `${days[value.getUTCDay()]}, ${value.getUTCDate()} ${months[value.getUTCMonth()]} ${value.getUTCFullYear()}`;
 }
+/** Jam batas bayar dalam zona venue, mis. "Senin, 19 Oktober 2026 pukul 14:35". */
+export function deadline(unixSeconds: number) {
+  const clock = localClock(new Date(unixSeconds * 1000));
+  return `${longDate(clock.date)} pukul ${clock.time}`;
+}
 export interface Session { court_name: string; date: string; start_time: string; end_time: string; total?: number }
 const sessionLine = (session: Session) => `${session.court_name} · ${longDate(session.date)} · ${session.start_time}–${session.end_time}`;
 const venueName = async () => (await getInfo()).name || "Venue padel";
 
-interface Message { subject: string; heading: string; intro: string; rows?: [label: string, value: string][]; sessions?: Session[]; link?: { label: string; url: string }; outro?: string }
+type Tone = "info" | "success" | "warning" | "danger";
+interface Message {
+  subject: string; heading: string; intro: string; rows?: [label: string, value: string][]; sessions?: Session[];
+  link?: { label: string; url: string }; outro?: string;
+  /** Warna aksen email dan ikon di kotak masuk. */
+  tone?: Tone;
+  /** Judul pendek untuk kotak masuk dan baris pertama WhatsApp; bawaannya `subject`. */
+  title?: string;
+}
+const toneColor: Record<Tone, string> = { info: "#0f766e", success: "#15803d", warning: "#b45309", danger: "#b91c1c" };
+
 /** Satu tata letak untuk semua email: teks biasa untuk klien sederhana, HTML untuk yang lain. */
 async function render(message: Message) {
   const venue = await getInfo();
   const contact = [venue.whatsapp && `WhatsApp +${venue.whatsapp}`, venue.phone, venue.email].filter(Boolean).join(" · ");
+  const accent = toneColor[message.tone ?? "info"];
   const text = [
     message.heading, "", message.intro, "",
     ...(message.sessions ?? []).map(session => "• " + sessionLine(session)),
@@ -80,17 +103,19 @@ async function render(message: Message) {
     ...(message.outro ? ["", message.outro] : []),
     "", `— ${await venueName()}`, ...(venue.address ? [venue.address] : []), ...(contact ? [contact] : []),
   ].join("\n");
-  const rows = (message.rows ?? []).map(([label, value]) => `<tr><td style="padding:4px 12px 4px 0;color:#6b7280">${escape(label)}</td><td style="padding:4px 0;font-weight:600">${escape(value)}</td></tr>`).join("");
-  const sessions = (message.sessions ?? []).map(session => `<li style="margin:4px 0">${escape(sessionLine(session))}</li>`).join("");
-  const html = `<!doctype html><html lang="id"><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#111827">
+  const rows = (message.rows ?? []).map(([label, value]) => `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;vertical-align:top">${escape(label)}</td><td style="padding:6px 0;font-weight:600;text-align:right">${escape(value)}</td></tr>`).join("");
+  const sessions = (message.sessions ?? []).map(session => `<tr><td style="padding:10px 12px;border-top:1px solid #e5e7eb"><b style="display:block">${escape(session.court_name)}</b><span style="color:#4b5563">${escape(longDate(session.date))} · ${escape(session.start_time)}–${escape(session.end_time)}</span></td></tr>`).join("");
+  const html = `<!doctype html><html lang="id"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
+<body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#111827">
+<span style="display:none;max-height:0;overflow:hidden">${escape(message.intro)}</span>
 <div style="max-width:560px;margin:0 auto;padding:24px 16px">
 <p style="margin:0 0 12px;font-size:14px;font-weight:700;color:#0f766e">${escape(await venueName())}</p>
-<div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:24px">
-<h1 style="margin:0 0 12px;font-size:20px">${escape(message.heading)}</h1>
+<div style="background:#ffffff;border:1px solid #e5e7eb;border-top:4px solid ${accent};border-radius:8px;padding:24px">
+<h1 style="margin:0 0 12px;font-size:20px;line-height:1.3">${escape(message.heading)}</h1>
 <p style="margin:0 0 16px;line-height:1.5">${escape(message.intro)}</p>
-${sessions ? `<ul style="margin:0 0 16px;padding-left:20px;line-height:1.5">${sessions}</ul>` : ""}
-${rows ? `<table style="border-collapse:collapse;font-size:14px;margin:0 0 16px">${rows}</table>` : ""}
-${message.link ? `<p style="margin:0 0 16px"><a href="${escape(message.link.url)}" style="display:inline-block;background:#0f766e;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:600">${escape(message.link.label)}</a></p>` : ""}
+${sessions ? `<table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-top:0;border-radius:6px;font-size:14px;margin:0 0 16px">${sessions}</table>` : ""}
+${rows ? `<table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px">${rows}</table>` : ""}
+${message.link ? `<p style="margin:0 0 16px"><a href="${escape(message.link.url)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;font-weight:600">${escape(message.link.label)}</a></p>` : ""}
 ${message.outro ? `<p style="margin:0;line-height:1.5;color:#374151">${escape(message.outro)}</p>` : ""}
 </div>
 <p style="margin:12px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escape([venue.address, contact].filter(Boolean).join(" · "))}</p>
@@ -98,15 +123,33 @@ ${message.outro ? `<p style="margin:0;line-height:1.5;color:#374151">${escape(me
   return { subject: message.subject, text, html };
 }
 
+/** Versi WhatsApp: teks pendek dengan *tebal* bawaan WhatsApp, tanpa HTML. */
+async function renderWhatsApp(message: Message) {
+  return [
+    `*${message.heading}*`, "", message.intro,
+    ...(message.sessions?.length ? ["", ...message.sessions.map(session => `• ${sessionLine(session)}`)] : []),
+    ...(message.rows?.length ? ["", ...message.rows.map(([label, value]) => `${label}: *${value}*`)] : []),
+    ...(message.link ? ["", `${message.link.label}:`, message.link.url] : []),
+    ...(message.outro ? ["", message.outro] : []),
+    "", `_${await venueName()}_`,
+  ].join("\n");
+}
+
+/** Versi kotak masuk: satu paragraf ringkas dan tautan relatif ke situs ini. */
+function renderInbox(message: Message) {
+  const sessions = (message.sessions ?? []).map(sessionLine);
+  const amount = message.rows?.find(([label]) => /^(Tagihan|Dibayar|Dikembalikan|Sisa)/.test(label));
+  const body = [message.intro, ...sessions, ...(amount ? [`${amount[0]}: ${amount[1]}`] : [])].join("\n");
+  const url = message.link?.url ?? "";
+  const link = url.startsWith(publicUrl) ? url.slice(publicUrl.length) || "/" : url;
+  return { title: message.title ?? message.heading, body, link };
+}
+
 // --- Antrean ------------------------------------------------------------------
 
 const emailSchema = z.email();
 const validEmail = (value: string | null | undefined): value is string => !!value && emailSchema.safeParse(value).success;
-/**
- * Masukkan email ke antrean. Aman dipanggil di dalam transaksi yang sedang berjalan.
- * Email dengan `key` yang sudah pernah dibuat diabaikan.
- */
-async function enqueue(key: string, kind: string, recipient: string, message: Message, refId: string | null) {
+async function enqueueEmail(key: string, kind: string, recipient: string, message: Message, refId: string | null) {
   if (!validEmail(recipient)) return false;
   const { subject, text, html } = await render(message);
   try {
@@ -119,39 +162,151 @@ async function enqueue(key: string, kind: string, recipient: string, message: Me
     throw error;
   }
 }
-/** Hanya peristiwa yang dinyalakan admin yang masuk antrean; pengaturan dibaca sekali per panggilan. */
-async function wants(event: EmailEvent) {
-  const config = await emailConfig();
-  return emailReady(config) && config.events[event] ? config : null;
-}
-const staffTargets = (config: EmailConfig) => config.staff_recipients.filter(validEmail);
 
-/** Email pelanggan untuk satu booking: isian staf, email pesanan online, lalu email akun Google. */
-export async function customerEmail(bookingId: string) {
-  const row = await db.prepare(`SELECT b.email booking_email,o.email order_email,a.email account_email FROM bookings b
-    LEFT JOIN orders o ON o.id=b.order_id LEFT JOIN customer_accounts a ON a.id=b.account_id WHERE b.id=?`).get(bookingId) as
-    { booking_email: string; order_email: string | null; account_email: string | null } | undefined;
-  return [row?.booking_email, row?.order_email, row?.account_email].find(validEmail) ?? "";
+export type Channel = "email" | "whatsapp" | "inbox";
+/** Penerima satu pesan. Kanal yang alamatnya kosong dilewati. */
+export interface Target { email?: string | null; phone?: string | null; account_id?: string | null }
+
+/**
+ * Kirim satu peristiwa ke semua kanal yang aktif untuknya. Aman dipanggil di dalam transaksi.
+ * Pelanggan yang mematikan email atau WhatsApp di akunnya tidak dikirimi lewat kanal itu,
+ * tetapi tetap menerima catatannya di kotak masuk akun.
+ */
+async function dispatch(key: string, event: NotifyEvent, target: Target, message: Message, refId: string | null, only?: Channel[]) {
+  const use = (channel: Channel) => !only || only.includes(channel);
+  const prefs = target.account_id
+    ? await db.prepare("SELECT notify_email,notify_whatsapp FROM customer_accounts WHERE id=?").get(target.account_id) as { notify_email: number; notify_whatsapp: number } | undefined
+    : undefined;
+  let queued = 0;
+  if (use("email") && target.email && prefs?.notify_email !== 0) {
+    const config = await emailConfig();
+    if (emailReady(config) && config.events[event] && await enqueueEmail(key, event, target.email, message, refId)) queued++;
+  }
+  if (use("whatsapp") && target.phone && prefs?.notify_whatsapp !== 0) {
+    const config = await whatsappConfig();
+    if (whatsappReady(config) && config.events[event] && await enqueueWhatsApp(key, event, target.phone, await renderWhatsApp(message), refId)) queued++;
+  }
+  if (use("inbox") && prefs && target.account_id && event !== "staff_new") {
+    if (await notifyInbox(key, target.account_id, event, { ...renderInbox(message), tone: message.tone ?? "info" }, refId)) queued++;
+  }
+  return queued;
 }
-const orderLink = (orderId: string | null) => orderId ? { label: "Lihat pesanan", url: `${publicUrl}/pesanan/${orderId}` } : undefined;
+
+/** Pemberitahuan untuk staf lewat email dan WhatsApp staf yang terdaftar di panel. */
+async function notifyStaff(key: string, message: Message, refId: string | null) {
+  const email = await emailConfig();
+  if (emailReady(email) && email.events.staff_new)
+    for (const recipient of email.staff_recipients.filter(validEmail)) await enqueueEmail(`${key}:${recipient}`, "staff_new", recipient, message, refId);
+  const wa = await whatsappConfig();
+  if (whatsappReady(wa) && wa.events.staff_new) {
+    const text = await renderWhatsApp(message);
+    for (const number of staffNumbers(wa)) await enqueueWhatsApp(`${key}:${number}`, "staff_new", number, text, refId);
+  }
+}
+
+/** Alamat pelanggan untuk satu booking: isian staf, data pesanan online, lalu akun Google. */
+export async function contactOf(bookingId: string): Promise<Target> {
+  const row = await db.prepare(`SELECT b.email booking_email,o.email order_email,a.email account_email,b.phone booking_phone,o.phone order_phone,a.phone account_phone,b.account_id
+    FROM bookings b LEFT JOIN orders o ON o.id=b.order_id LEFT JOIN customer_accounts a ON a.id=b.account_id WHERE b.id=?`).get(bookingId) as
+    { booking_email: string | null; order_email: string | null; account_email: string | null; booking_phone: string | null; order_phone: string | null; account_phone: string | null; account_id: string | null } | undefined;
+  if (!row) return {};
+  return {
+    email: [row.booking_email, row.order_email, row.account_email].find(validEmail) ?? "",
+    phone: [row.booking_phone, row.order_phone, row.account_phone].map(waNumber).find(Boolean) ?? "",
+    account_id: row.account_id,
+  };
+}
+/** Email pelanggan untuk satu booking (dipertahankan untuk pemanggil lama). */
+export const customerEmail = async (bookingId: string) => (await contactOf(bookingId)).email ?? "";
+const orderLink = (orderId: string | null, label = "Lihat pesanan") => orderId ? { label, url: `${publicUrl}/pesanan/${orderId}` } : undefined;
+
+// --- Peristiwa ----------------------------------------------------------------
+
+/** Tagihan baru: pesanan online menunggu dibayar, atau link pembayaran dari kasir. */
+export async function notifyBill(input: {
+  key: string; booking_id: string; order_id: string | null; code: string; customer: string; email?: string; amount: number; total: number;
+  expires_at: number; sessions: Session[]; pay_url: string; from_staff: boolean;
+}) {
+  const target = await contactOf(input.booking_id);
+  const rows: [string, string][] = [["Kode pesanan", input.code], ["Tagihan", rupiah(input.amount)]];
+  if (input.total > input.amount) rows.push(["Total pesanan", rupiah(input.total)]);
+  rows.push(["Bayar sebelum", deadline(input.expires_at)]);
+  return await dispatch(`bill:${input.key}`, "bill", { ...target, email: input.email || target.email }, {
+    subject: input.from_staff ? `Tagihan ${input.code}: ${rupiah(input.amount)}` : `Selesaikan pembayaran pesanan ${input.code}`,
+    title: input.from_staff ? "Tagihan baru dari venue" : "Menunggu pembayaran",
+    heading: input.from_staff ? "Ada tagihan untuk booking Anda" : "Satu langkah lagi: selesaikan pembayaran",
+    intro: input.from_staff
+      ? `Halo ${input.customer}, venue mengirim tagihan untuk booking berikut. Anda bisa membayar lewat QRIS, transfer bank, atau e-wallet.`
+      : `Halo ${input.customer}, jadwal berikut kami tahan untuk Anda sampai batas waktu bayar. Setelah itu slotnya dilepas untuk pemesan lain.`,
+    sessions: input.sessions, rows, tone: "warning",
+    link: { label: "Bayar sekarang", url: input.pay_url },
+    outro: "Abaikan pesan ini bila Anda sudah membayar.",
+  }, input.order_id ?? input.booking_id);
+}
+
+/** Pengingat sebelum batas bayar habis untuk pesanan online yang belum dibayar. */
+export async function queuePaymentDue(holdMinutes: number) {
+  // Setengah waktu tahan, paling lama 15 menit sebelum habis; minimal 2 menit agar masih sempat bayar.
+  const window = Math.min(15, holdMinutes / 2) * 60;
+  const rows = await db.prepare(`SELECT o.id order_id,o.code,o.customer,o.email,MIN(b.id) booking_id,MIN(b.hold_expires_at) expires_at,i.amount
+    FROM orders o JOIN bookings b ON b.order_id=o.id
+    JOIN payment_intents i ON i.order_ref=o.id AND i.status='pending' AND i.kind='booking'
+    WHERE b.status='pending' AND b.hold_expires_at-UNIX_TIMESTAMP() BETWEEN 120 AND ?
+    GROUP BY o.id,o.code,o.customer,o.email,i.amount`).all(window) as
+    { order_id: string; code: string; customer: string; email: string; booking_id: string; expires_at: number; amount: number }[];
+  let queued = 0;
+  for (const row of rows) {
+    const target = await contactOf(row.booking_id);
+    const left = Math.max(1, Math.round((Number(row.expires_at) - Date.now() / 1000) / 60));
+    queued += await dispatch(`due:${row.order_id}`, "payment_due", { ...target, email: row.email || target.email }, {
+      subject: `Sisa ${left} menit untuk membayar pesanan ${row.code}`,
+      title: "Batas bayar hampir habis",
+      heading: `Sisa sekitar ${left} menit untuk membayar`,
+      intro: `Halo ${row.customer}, pesanan ${row.code} belum dibayar. Bila belum lunas sampai batas waktu, jadwalnya dilepas untuk pemesan lain.`,
+      rows: [["Tagihan", rupiah(row.amount)], ["Bayar sebelum", deadline(Number(row.expires_at))]], tone: "warning",
+      link: orderLink(row.order_id, "Bayar sekarang"),
+    }, row.order_id);
+  }
+  return queued;
+}
+
+/** Waktu bayar habis dan slot dilepas. Satu pesan per pesanan. */
+export async function notifyExpired(orderId: string) {
+  const order = await db.prepare("SELECT id,code,customer,email FROM orders WHERE id=?").get(orderId) as { id: string; code: string; customer: string; email: string } | undefined;
+  if (!order) return 0;
+  const sessions = await db.prepare(`SELECT b.id,b.date,b.start_time,b.end_time,c.name court_name FROM bookings b JOIN courts c ON c.id=b.court_id
+    WHERE b.order_id=? ORDER BY b.date,b.start_time`).all(orderId) as (Session & { id: string })[];
+  if (!sessions.length) return 0;
+  const target = await contactOf(sessions[0].id);
+  return await dispatch(`expired:${orderId}`, "expired", { ...target, email: order.email || target.email }, {
+    subject: `Waktu bayar pesanan ${order.code} habis`,
+    title: "Waktu pembayaran habis",
+    heading: "Waktu pembayaran sudah habis",
+    intro: `Halo ${order.customer}, pesanan ${order.code} belum dibayar sampai batas waktu, jadi jadwal berikut sudah dilepas. Bila jamnya masih kosong, Anda bisa memesannya lagi.`,
+    sessions, tone: "danger",
+    link: { label: "Pesan lagi", url: `${publicUrl}/ketersediaan?tanggal=${sessions[0].date}` },
+    outro: "Bila Anda sudah membayar tetapi menerima pesan ini, hubungi venue dengan menyebut kode pesanan.",
+  }, orderId);
+}
 
 /** Pembayaran online diterima dan sesi terkonfirmasi. */
-export async function notifyOrderPaid(input: { key: string; order_id: string | null; code: string; customer: string; email: string; amount: number; total: number; paid: number; sessions: Session[]; cancelled: boolean }) {
-  const config = await wants("confirmed");
-  const staff = await emailConfig();
+export async function notifyOrderPaid(input: { key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; total: number; paid: number; sessions: Session[]; cancelled: boolean }) {
   const remaining = Math.max(0, input.total - input.paid);
-  if (config) await enqueue(`paid:${input.key}`, "confirmed", input.email, {
+  const target = input.booking_id ? await contactOf(input.booking_id) : {};
+  await dispatch(`paid:${input.key}`, "confirmed", { ...target, email: input.email || target.email }, {
     subject: input.cancelled ? `Pembayaran pesanan ${input.code} perlu dikembalikan` : `Booking ${input.code} terkonfirmasi`,
+    title: input.cancelled ? "Pembayaran perlu dikembalikan" : "Booking terkonfirmasi",
     heading: input.cancelled ? "Pembayaran diterima, tetapi jadwalnya sudah terlepas" : "Pembayaran diterima, booking Anda terkonfirmasi",
     intro: input.cancelled
       ? `Halo ${input.customer}, pembayaran Anda masuk setelah batas waktu bayar sehingga slotnya sudah dilepas. Venue akan menghubungi Anda untuk pengembalian dana.`
       : `Halo ${input.customer}, terima kasih. Pembayaran Anda sudah kami terima dan jadwal berikut sudah dikunci untuk Anda.`,
     sessions: input.sessions,
     rows: [["Kode pesanan", input.code], ["Dibayar", rupiah(input.amount)], ...(remaining > 0 && !input.cancelled ? [["Sisa dibayar di venue", rupiah(remaining)] as [string, string]] : [])],
-    link: orderLink(input.order_id),
-    outro: input.cancelled ? undefined : "Mohon datang 10 menit sebelum jam main.",
+    link: input.order_id ? { label: input.cancelled ? "Lihat pesanan" : "Lihat bukti booking", url: `${publicUrl}/pesanan/${input.order_id}` } : undefined,
+    outro: input.cancelled ? undefined : "Tunjukkan kode pesanan saat datang. Mohon tiba 10 menit sebelum jam main.",
+    tone: input.cancelled ? "danger" : "success",
   }, input.order_id);
-  if (emailReady(staff) && staff.events.staff_new) for (const recipient of staffTargets(staff)) await enqueue(`staff-paid:${input.key}:${recipient}`, "staff_new", recipient, {
+  await notifyStaff(`staff-paid:${input.key}`, {
     subject: `Booking online baru: ${input.customer} (${input.code})`,
     heading: input.cancelled ? "Pembayaran masuk setelah slot dilepas" : "Booking online baru sudah dibayar",
     intro: input.cancelled ? `${input.customer} membayar setelah batas waktu. Booking ditutup sebagai batal dan dananya perlu dikembalikan.` : `${input.customer} memesan dan membayar lewat situs.`,
@@ -160,19 +315,42 @@ export async function notifyOrderPaid(input: { key: string; order_id: string | n
   }, input.order_id);
 }
 
+/** Kasir mencatat pembayaran atau pengembalian dana: pelanggan menerima kwitansinya. */
+export async function notifyReceipt(input: {
+  payment_id: string; booking_id: string; kind: "payment" | "refund"; amount: number; method: string;
+  code: string; customer: string; order_id: string | null; session: Session; total: number; paid: number;
+}) {
+  const refund = input.kind === "refund";
+  const remaining = Math.max(0, input.total - input.paid);
+  const methodName: Record<string, string> = { cash: "Tunai", transfer: "Transfer", qris: "QRIS", va: "Virtual account", ewallet: "E-wallet", card: "Kartu" };
+  const rows: [string, string][] = [
+    ["Kode booking", input.code], [refund ? "Dikembalikan" : "Dibayar", rupiah(input.amount)], ["Metode", methodName[input.method] ?? input.method],
+  ];
+  if (!refund) rows.push(remaining > 0 ? ["Sisa tagihan", rupiah(remaining)] : ["Status", "Lunas"]);
+  return await dispatch(`receipt:${input.payment_id}`, "receipt", await contactOf(input.booking_id), {
+    subject: refund ? `Pengembalian dana ${rupiah(input.amount)} untuk booking ${input.code}` : `Kwitansi pembayaran ${rupiah(input.amount)} untuk booking ${input.code}`,
+    title: refund ? "Dana dikembalikan" : remaining > 0 ? "Pembayaran diterima" : "Booking lunas",
+    heading: refund ? "Dana Anda sudah dikembalikan" : remaining > 0 ? "Pembayaran Anda sudah kami terima" : "Terima kasih, booking Anda sudah lunas",
+    intro: refund
+      ? `Halo ${input.customer}, venue sudah mencatat pengembalian dana untuk booking berikut.`
+      : `Halo ${input.customer}, berikut bukti pembayaran untuk booking Anda.`,
+    sessions: [input.session], rows,
+    link: orderLink(input.order_id, refund ? "Lihat pesanan" : "Lihat kwitansi"),
+    tone: refund ? "info" : "success",
+  }, input.booking_id);
+}
+
 /** Booking dipindah ke jadwal lain, oleh staf atau oleh pelanggan sendiri. */
 export async function notifyReschedule(input: { booking_id: string; count: number; code: string; customer: string; order_id: string | null; before: Session; after: Session; total: number; paid: number; by_customer: boolean }) {
-  const config = await wants("reschedule");
-  if (!config) return;
   const rows: [string, string][] = [["Jadwal lama", sessionLine(input.before)], ["Jadwal baru", sessionLine(input.after)], ["Total tagihan", rupiah(input.total)]];
   if (input.total > input.paid) rows.push(["Sisa tagihan", rupiah(input.total - input.paid)]);
-  await enqueue(`reschedule:${input.booking_id}:${input.count}`, "reschedule", await customerEmail(input.booking_id), {
-    subject: `Jadwal booking ${input.code} berubah`, heading: "Jadwal booking Anda sudah dipindah",
-    intro: `Halo ${input.customer}, booking ${input.code} sekarang berada di jadwal baru di bawah ini.`,
+  await dispatch(`reschedule:${input.booking_id}:${input.count}`, "reschedule", await contactOf(input.booking_id), {
+    subject: `Jadwal booking ${input.code} berubah`, title: "Jadwal dipindah", heading: "Jadwal booking Anda sudah dipindah",
+    intro: `Halo ${input.customer}, booking ${input.code} sekarang berada di jadwal baru: ${sessionLine(input.after)}.`,
     rows, link: orderLink(input.order_id),
     outro: input.total > input.paid ? "Sisa tagihan dapat dibayar di venue sebelum main." : undefined,
   }, input.booking_id);
-  if (input.by_customer && config.events.staff_new) for (const recipient of staffTargets(config)) await enqueue(`staff-reschedule:${input.booking_id}:${input.count}:${recipient}`, "staff_new", recipient, {
+  if (input.by_customer) await notifyStaff(`staff-reschedule:${input.booking_id}:${input.count}`, {
     subject: `${input.customer} memindah jadwal booking ${input.code}`, heading: "Pelanggan memindah jadwal",
     intro: `${input.customer} memindah jadwal booking ${input.code} dari halaman akunnya.`, rows,
   }, input.booking_id);
@@ -180,25 +358,32 @@ export async function notifyReschedule(input: { booking_id: string; count: numbe
 
 /** Booking dibatalkan staf. */
 export async function notifyCancelled(input: { booking_id: string; code: string; customer: string; order_id: string | null; session: Session; reason: string; paid: number }) {
-  if (!await wants("cancelled")) return;
-  await enqueue(`cancel:${input.booking_id}`, "cancelled", await customerEmail(input.booking_id), {
-    subject: `Booking ${input.code} dibatalkan`, heading: "Booking Anda dibatalkan",
+  await dispatch(`cancel:${input.booking_id}`, "cancelled", await contactOf(input.booking_id), {
+    subject: `Booking ${input.code} dibatalkan`, title: "Booking dibatalkan", heading: "Booking Anda dibatalkan",
     intro: `Halo ${input.customer}, booking berikut sudah dibatalkan oleh venue.`,
     sessions: [input.session],
     rows: [["Alasan", input.reason], ...(input.paid > 0 ? [["Pembayaran diterima", rupiah(input.paid)] as [string, string]] : [])],
     outro: input.paid > 0 ? "Venue akan menghubungi Anda terkait pengembalian dana sesuai kebijakan pembatalan." : undefined,
+    link: orderLink(input.order_id), tone: "danger",
   }, input.booking_id);
 }
 
+/** Kotak masuk akun selalu mengingatkan sehari sebelumnya, walau email dan WhatsApp mati. */
+const inboxReminderHours = 24;
 /**
- * Pengingat sebelum main untuk booking aktif yang dimulai dalam `reminder_hours` jam ke depan.
- * Dipanggil berkala oleh proses latar; kunci per booking dan jadwal mencegah pengingat ganda,
- * dan booking yang dipindah mendapat pengingat baru untuk jadwal barunya.
+ * Pengingat sebelum main untuk booking aktif. Setiap kanal punya jendelanya sendiri (jam sebelum
+ * main); kunci per booking dan jadwal mencegah pengingat ganda, dan booking yang dipindah mendapat
+ * pengingat baru untuk jadwal barunya. Mengembalikan jumlah pesan yang masuk antrean.
  */
 export async function queueReminders(now = new Date()) {
-  const config = await wants("reminder");
-  if (!config || config.reminder_hours <= 0) return 0;
-  const clock = localClock(now), later = localClock(new Date(now.getTime() + config.reminder_hours * 3600000));
+  const email = await emailConfig(), wa = await whatsappConfig();
+  const windows: [Channel, number][] = [
+    ["email", emailReady(email) && email.events.reminder ? email.reminder_hours : 0],
+    ["whatsapp", whatsappReady(wa) && wa.events.reminder ? wa.reminder_hours : 0],
+    ["inbox", inboxReminderHours],
+  ];
+  const widest = Math.max(...windows.map(([, hours]) => hours));
+  const clock = localClock(now), later = localClock(new Date(now.getTime() + widest * 3600000));
   const rows = await db.prepare(`SELECT b.id,b.customer,b.date,b.start_time,b.end_time,b.total,b.order_id,c.name court_name,
       COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid
     FROM bookings b JOIN courts c ON c.id=b.court_id
@@ -207,16 +392,22 @@ export async function queueReminders(now = new Date()) {
     { id: string; customer: string; date: string; start_time: string; end_time: string; total: number; order_id: string | null; court_name: string; paid: number }[];
   let queued = 0;
   for (const row of rows) {
+    // Selisih menit dari sekarang ke jam main, dihitung di zona venue lewat tanggal dan jamnya.
+    const startsIn = (Date.parse(`${row.date}T${row.start_time}:00Z`) - Date.parse(`${clock.date}T${clock.time}:00Z`)) / 3600000;
+    const only = windows.filter(([, hours]) => hours > 0 && startsIn <= hours).map(([channel]) => channel);
+    if (!only.length) continue;
     const code = row.id.slice(0, 8).toUpperCase();
-    const rows: [string, string][] = [["Kode booking", code]];
-    if (row.total > row.paid) rows.push(["Sisa tagihan", rupiah(row.total - row.paid)]);
-    if (await enqueue(`reminder:${row.id}:${row.date}T${row.start_time}`, "reminder", await customerEmail(row.id), {
-      subject: `Pengingat: main padel ${row.date === clock.date ? "hari ini" : longDate(row.date)} pukul ${row.start_time}`,
+    const details: [string, string][] = [["Kode booking", code]];
+    if (row.total > row.paid) details.push(["Sisa tagihan", rupiah(row.total - row.paid)]);
+    const when = row.date === clock.date ? "hari ini" : longDate(row.date);
+    queued += await dispatch(`reminder:${row.id}:${row.date}T${row.start_time}`, "reminder", await contactOf(row.id), {
+      subject: `Pengingat: main padel ${when} pukul ${row.start_time}`,
+      title: `Main ${when} pukul ${row.start_time}`,
       heading: "Sampai jumpa di lapangan",
       intro: `Halo ${row.customer}, ini pengingat untuk jadwal main Anda.`,
-      sessions: [row], rows, link: orderLink(row.order_id),
+      sessions: [row], rows: details, link: orderLink(row.order_id),
       outro: "Mohon datang 10 menit sebelum jam main.",
-    }, row.id)) queued++;
+    }, row.id, only);
   }
   return queued;
 }
@@ -272,11 +463,17 @@ export async function deliverDue(batch = 20) {
   return { sent, failed };
 }
 
-/** Proses latar: pengingat dan pengiriman setiap 30 detik. Tidak dijalankan saat tes. */
-export function startMailer(intervalMs = 30000) {
+/**
+ * Proses latar setiap 30 detik: menyiapkan pengingat main dan pengingat bayar, lalu mengirim
+ * antrean email dan WhatsApp. Tidak dijalankan saat tes. `holdMinutes` dibaca dari pengaturan
+ * pembayaran lewat parameter agar modul ini tidak bergantung pada midtrans.ts.
+ */
+export function startMailer(holdMinutes: () => Promise<number>, intervalMs = 30000) {
   const tick = async () => {
-    try { await queueReminders(); } catch (error) { console.error("Gagal menyiapkan pengingat email:", (error as Error).message); }
+    try { await queueReminders(); } catch (error) { console.error("Gagal menyiapkan pengingat:", (error as Error).message); }
+    try { await queuePaymentDue(await holdMinutes()); } catch (error) { console.error("Gagal menyiapkan pengingat bayar:", (error as Error).message); }
     await deliverDue().catch(error => console.error("Gagal mengirim email:", (error as Error).message));
+    await deliverDueWhatsApp().catch(error => console.error("Gagal mengirim WhatsApp:", (error as Error).message));
   };
   const timer = setInterval(tick, intervalMs);
   timer.unref();
@@ -300,7 +497,7 @@ export const emailSettingsSchema = z.object({
   from_email: z.union([z.email("Email pengirim tidak valid."), z.literal("")]).default(""),
   staff_recipients: recipientList.default([]),
   reminder_hours: z.number().int().min(0).max(72, "Pengingat paling awal 72 jam sebelum main.").default(24),
-  events: z.object({ confirmed: z.boolean(), reschedule: z.boolean(), cancelled: z.boolean(), reminder: z.boolean(), staff_new: z.boolean() }).default(defaultEvents),
+  events: eventsSchema,
 });
 export async function saveEmailSettings(input: unknown, actor: string) {
   const data = emailSettingsSchema.parse(input);

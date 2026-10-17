@@ -179,7 +179,7 @@ export async function verifyIdToken(token: string, projectId: string): Promise<G
 
 export interface Account {
   id: string; firebase_uid: string; email: string; name: string; phone: string | null;
-  photo_url: string; created_at: string; last_login_at: string;
+  photo_url: string; created_at: string; last_login_at: string; notify_email?: number; notify_whatsapp?: number;
 }
 const findAccount = async (id: string) => await db.prepare("SELECT * FROM customer_accounts WHERE id=?").get(id) as Account | undefined;
 export async function getAccount(id: string) {
@@ -196,6 +196,7 @@ export const displayPhone = (phone: string | null) => {
 export const publicAccount = (account: Account) => ({
   id: account.id, email: account.email, name: account.name, phone: displayPhone(account.phone),
   photo_url: account.photo_url, created_at: account.created_at, needs_profile: !account.phone,
+  notify: { email: account.notify_email !== 0, whatsapp: account.notify_whatsapp !== 0 },
 });
 
 export async function signIn(idToken: unknown) {

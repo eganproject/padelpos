@@ -428,12 +428,53 @@ export const schema: string[] = [
   )`,
 ];
 
+/**
+ * Migrasi 2: notifikasi banyak kanal. Antrean WhatsApp (bentuknya sama dengan `email_outbox`),
+ * kotak masuk notifikasi di akun pelanggan, dan pilihan kanal per akun.
+ */
+export const schemaV2: string[] = [
+  `CREATE TABLE whatsapp_outbox (
+    id ${id} PRIMARY KEY,
+    \`key\` VARCHAR(191) NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    recipient VARCHAR(32) NOT NULL,
+    text MEDIUMTEXT NOT NULL,
+    ref_id ${id},
+    provider VARCHAR(16) NOT NULL DEFAULT '',
+    status VARCHAR(16) NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
+    attempts INT NOT NULL DEFAULT 0,
+    next_attempt_at BIGINT NOT NULL,
+    last_error TEXT NOT NULL DEFAULT (''),
+    created_at ${stamp} NOT NULL,
+    sent_at ${stamp},
+    UNIQUE KEY whatsapp_outbox_key (\`key\`),
+    KEY whatsapp_outbox_queue (status, next_attempt_at),
+    KEY whatsapp_outbox_created (created_at)
+  )`,
+  `CREATE TABLE customer_notifications (
+    id ${id} PRIMARY KEY,
+    \`key\` VARCHAR(191) NOT NULL,
+    account_id ${id} NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    link VARCHAR(512) NOT NULL DEFAULT '',
+    ref_id ${id},
+    read_at ${stamp},
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY customer_notifications_key (\`key\`),
+    KEY customer_notifications_inbox (account_id, created_at),
+    CONSTRAINT customer_notifications_account FOREIGN KEY (account_id) REFERENCES customer_accounts(id) ON DELETE CASCADE
+  )`,
+  `ALTER TABLE customer_accounts ADD COLUMN notify_email TINYINT NOT NULL DEFAULT 1, ADD COLUMN notify_whatsapp TINYINT NOT NULL DEFAULT 1`,
+];
+
 /** Urutan tabel yang aman untuk diisi ulang (induk sebelum anak) saat impor atau pemulihan. */
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
   "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "orders",
   "bookings", "payments", "addons", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
-  "journal_entries", "journal_lines", "finance_records", "email_outbox", "migrations",
+  "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
 ];
 
 type MenuSeed = [id: string, name: string, path: string, icon: string, group: string, order: number];
@@ -452,7 +493,7 @@ export const menuSeed: MenuSeed[] = [
   ["info", "Info Venue", "/admin/info", "Store", "Venue & Layanan", 104],
   ["payments", "Pembayaran Online", "/admin/payments", "CreditCard", "Pengaturan", 201],
   ["finance-settings", "Pengaturan Keuangan", "/admin/keuangan/pengaturan", "SlidersHorizontal", "Pengaturan", 202],
-  ["notifications", "Notifikasi Email", "/admin/notifications", "Mail", "Pengaturan", 203],
+  ["notifications", "Notifikasi", "/admin/notifications", "BellRing", "Pengaturan", 203],
   ["customer-login", "Login Pelanggan", "/admin/customer-login", "KeyRound", "Pengaturan", 204],
   ["users", "Pengguna", "/admin/users", "UsersRound", "Pengaturan", 205],
   ["roles", "Role & Akses", "/admin/roles", "ShieldCheck", "Pengaturan", 206],
