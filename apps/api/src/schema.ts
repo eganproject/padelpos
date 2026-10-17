@@ -500,6 +500,7 @@ export const menuSeed: MenuSeed[] = [
   ["menus", "Menu Navigasi", "/admin/menus", "MenuSquare", "Pengaturan", 207],
   ["audit", "Log Aktivitas", "/admin/audit", "History", "Pengaturan", 208],
   ["backups", "Cadangan Data", "/admin/backups", "DatabaseBackup", "Pengaturan", 209],
+  ["receipts", "Nota & Cetak", "/admin/nota", "Printer", "Pengaturan", 210],
   ["profile", "Profil Saya", "/admin/profile", "UserRound", "Akun", 301],
 ];
 export const defaultMenus = (createdAt: string): AccessMenu[] =>

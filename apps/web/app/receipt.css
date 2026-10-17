@@ -1,0 +1,84 @@
+/* Nota cetak kasir (/cetak/nota/<id>) dan pratinjaunya di Pengaturan › Nota & Cetak.
+   Warnanya sengaja tetap hitam di atas putih di tema apa pun karena mengikuti kertas. */
+.receipt-screen{min-height:100vh;background:#e9ebe7;color:#111;padding:16px;font-family:var(--font-inter),system-ui,sans-serif}
+.receipt-tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:820px;margin:0 auto 8px}
+.receipt-papers{display:flex;flex-wrap:wrap;gap:4px;flex:1}
+.receipt-papers button,.receipt-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid #c9cdc5;background:#fff;color:#111;border-radius:8px;padding:7px 11px;font:inherit;font-size:13px;cursor:pointer;text-decoration:none}
+.receipt-papers button.active{background:#111;color:#fff;border-color:#111}
+.receipt-btn.primary{background:#16794c;border-color:#16794c;color:#fff;font-weight:600}
+.receipt-btn.ghost{background:transparent}
+.receipt-width{display:inline-flex;align-items:center;gap:6px;font-size:13px}
+.receipt-width input{width:70px;padding:6px 8px;border:1px solid #c9cdc5;border-radius:8px;font:inherit}
+.receipt-hint{max-width:820px;margin:0 auto 14px;font-size:12.5px;color:#4b5049}
+.receipt-message{max-width:420px;margin:60px auto;background:#fff;border-radius:12px;padding:20px;display:grid;gap:12px;justify-items:start}
+.receipt-stage{display:flex;justify-content:center;overflow-x:auto;padding-bottom:24px}
+
+.receipt{background:#fff;color:#000;box-shadow:0 2px 14px rgba(0,0,0,.12);font-variant-numeric:tabular-nums;line-height:1.35;box-sizing:border-box}
+.receipt *{box-sizing:border-box}
+.receipt h1{margin:0;font-size:inherit}
+.receipt dl,.receipt dd,.receipt p{margin:0}
+.receipt .num{text-align:right;white-space:nowrap;vertical-align:top}
+.receipt table{width:100%;border-collapse:collapse}
+.receipt td,.receipt th{padding:0;text-align:left;font-weight:inherit}
+.receipt td span{display:block}
+.receipt .muted{color:#444}
+
+.receipt-head{display:grid;gap:1px}
+.receipt-venue{font-weight:700}
+.receipt-note{font-style:italic}
+.receipt-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.receipt-title h1{text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+.receipt-state{font-weight:700;border:1.5px solid #000;padding:1px 6px;border-radius:4px;white-space:nowrap}
+.receipt-meta div{display:flex;justify-content:space-between;gap:8px}
+.receipt-meta dt{color:#333}
+.receipt-meta dd{text-align:right;font-weight:600;overflow-wrap:anywhere}
+.receipt-lines tbody td{padding-bottom:4px}
+.receipt-lines tfoot td{padding-top:2px}
+.receipt-lines tr.total td{font-weight:700}
+.receipt-lines tr.due td{font-weight:700}
+.receipt-foot{display:grid;gap:3px}
+
+/* Kertas gulung (thermal 58/80 mm atau lebar lain). Lebar diatur lewat atribut style. */
+.receipt.roll{padding:4mm 3.5mm 6mm;font-size:12px;display:grid;gap:2.5mm}
+.receipt.roll.size-narrow{font-size:10.5px;padding:3mm 2.5mm 5mm}
+.receipt.roll .receipt-head,.receipt.roll .receipt-foot{text-align:center;justify-items:center}
+.receipt.roll .receipt-venue{font-size:1.25em}
+.receipt.roll .receipt-title,.receipt.roll .receipt-meta,.receipt.roll .receipt-lines tfoot{border-top:1px dashed #000;padding-top:2mm}
+.receipt.roll .receipt-lines tr.total td{border-top:1px dashed #000;padding-top:1.5mm;font-size:1.15em}
+.receipt.roll .receipt-foot{border-top:1px dashed #000;padding-top:2mm}
+.receipt.roll td span{font-size:.92em;color:#222}
+
+/* Lembar A4/A5. */
+.receipt.sheet{padding:10mm;font-size:13px;display:grid;gap:6mm}
+.receipt.sheet.size-a5{width:148mm;font-size:12px;padding:8mm}
+.receipt.sheet.size-a4{width:210mm;min-height:120mm}
+.receipt.sheet .receipt-venue{font-size:1.5em}
+.receipt.sheet .receipt-title h1{font-size:1.6em}
+.receipt.sheet .receipt-meta{display:grid;grid-template-columns:1fr 1fr;gap:3px 24px;border-top:1px solid #000;border-bottom:1px solid #000;padding:3mm 0}
+.receipt.sheet .receipt-lines th{border-bottom:1px solid #000;padding:0 0 2mm;font-weight:700}
+.receipt.sheet .receipt-lines th.num{text-align:right}
+.receipt.sheet .receipt-lines tbody td{padding:2mm 0;border-bottom:1px solid #ddd}
+.receipt.sheet .receipt-lines tfoot td{padding:1.2mm 0}
+.receipt.sheet .receipt-lines tfoot tr.total td{border-top:1.5px solid #000;font-size:1.15em;padding-top:2mm}
+.receipt.sheet td span{color:#333;font-size:.92em}
+.receipt.sheet .receipt-foot{border-top:1px solid #000;padding-top:3mm}
+
+@media print{
+  html,body{background:#fff!important}
+  .receipt-screen{padding:0;background:#fff;min-height:0}
+  .receipt-screen .no-print,[data-sonner-toaster]{display:none!important}
+  .receipt-stage{display:block;padding:0;overflow:visible}
+  .receipt{box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* Lembar: margin diatur @page, jadi nota mengisi lebar area cetak. */
+  .receipt.sheet,.receipt.sheet.size-a5,.receipt.sheet.size-a4{width:auto;min-height:0;padding:0}
+  .receipt-preview{display:none}
+}
+
+/* Pratinjau di halaman pengaturan. */
+.receipt-preview{background:#e9ebe7;border-radius:12px;padding:16px;display:flex;justify-content:center;overflow-x:auto}
+.receipt-preview .receipt.sheet{transform-origin:top center}
+.receipt-paper-choices{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:var(--s2)}
+.receipt-paper-choices .cms-check{border:1px solid var(--line);border-radius:var(--r-md,8px);padding:8px 10px;align-items:flex-start}
+.receipt-paper-choices .cms-check.active{border-color:var(--green-solid,#16794c);box-shadow:0 0 0 1px var(--green-solid,#16794c)}
+.receipt-paper-choices .cms-check span{display:grid;gap:2px}
+.receipt-paper-choices input{margin-top:3px}

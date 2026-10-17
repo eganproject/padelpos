@@ -165,6 +165,18 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
       if (menu && menu.name === "Notifikasi Email") await db.prepare("UPDATE menus SET document=? WHERE id='notifications'").run(JSON.stringify({ ...menu, name: "Notifikasi", icon: "BellRing" }));
     },
   },
+  {
+    // Menu "Nota & Cetak" untuk database yang sudah berjalan; instalasi baru mendapatkannya dari versi 1.
+    // Hanya Super Admin yang langsung bisa membukanya; role lain ditambahkan lewat Role & Akses.
+    version: 3, async up() {
+      if (await db.prepare("SELECT 1 FROM menus WHERE id='receipts' OR JSON_UNQUOTE(JSON_EXTRACT(document,'$.path'))='/admin/nota'").get()) return;
+      const menu = defaultMenus(new Date().toISOString()).find(item => item.id === "receipts")!;
+      await db.prepare("INSERT INTO menus (id, document) VALUES (?, ?)").run(menu.id, JSON.stringify(menu));
+      const row = await db.prepare("SELECT document FROM roles WHERE id='admin'").get() as { document: string } | undefined;
+      const role = row ? JSON.parse(row.document) as AccessRole : null;
+      if (role && !role.menuIds.includes(menu.id)) await db.prepare("UPDATE roles SET document=? WHERE id='admin'").run(JSON.stringify({ ...role, menuIds: [...role.menuIds, menu.id] }));
+    },
+  },
 ];
 
 async function ensureDatabase() {
