@@ -1,11 +1,13 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { api, ApiError } from "./api";
 
 /** Sama dengan API (apps/api/src/customers.ts). */
 export type Account = {
   id: string; email: string; name: string; phone: string; photo_url: string; created_at: string; needs_profile: boolean;
+  /** Kanal yang boleh dipakai venue untuk mengirim kabar; kotak masuk akun selalu aktif. */
+  notify?: { email: boolean; whatsapp: boolean };
 };
 export type Phase = "upcoming" | "past" | "cancelled";
 export type HistoryItem = {
@@ -168,7 +170,10 @@ export function validPhone(value: string) {
 export const safeNext = (value: string | null) => (value && value.startsWith("/") && !value.startsWith("//") ? value : "/akun");
 
 /** Berkas kalender (.ics) untuk satu sesi, dibuat di browser tanpa bantuan server. */
-export function calendarFile(item: Pick<HistoryItem, "id" | "court_name" | "date" | "start_time" | "end_time">, venue: { name: string; address: string }) {
+type CalendarItem = Pick<HistoryItem, "id" | "court_name" | "date" | "start_time" | "end_time">;
+/** Satu berkas boleh berisi beberapa sesi sekaligus, mis. seluruh isi satu pesanan. */
+export function calendarFile(input: CalendarItem | CalendarItem[], venue: { name: string; address: string }) {
+  const items = Array.isArray(input) ? input : [input];
   // Jam venue memakai WIB; ditulis dengan offset tetap agar kalender di zona lain tetap tepat.
   const stamp = (date: string, time: string) => {
     // "24:00" adalah tengah malam berikutnya, bukan 23:59.
@@ -179,13 +184,78 @@ export function calendarFile(item: Pick<HistoryItem, "id" | "court_name" | "date
   const escape = (value: string) => value.replace(/[\\,;]/g, match => `\\${match}`).replace(/\n/g, "\\n");
   const lines = [
     "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Padelix//Booking//ID", "CALSCALE:GREGORIAN", "METHOD:PUBLISH",
-    "BEGIN:VEVENT",
-    `UID:${item.id}@padelix`, `DTSTAMP:${stamp(new Date().toISOString().slice(0, 10), "00:00")}`,
-    `DTSTART:${stamp(item.date, item.start_time)}`, `DTEND:${stamp(item.date, item.end_time)}`,
-    `SUMMARY:${escape(`Main padel · ${item.court_name}`)}`,
-    `LOCATION:${escape([venue.name, venue.address].filter(Boolean).join(", "))}`,
-    "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", `DESCRIPTION:${escape(`Main padel di ${item.court_name} dua jam lagi`)}`, "END:VALARM",
-    "END:VEVENT", "END:VCALENDAR",
+    ...items.flatMap(item => [
+      "BEGIN:VEVENT",
+      `UID:${item.id}@padelix`, `DTSTAMP:${stamp(new Date().toISOString().slice(0, 10), "00:00")}`,
+      `DTSTART:${stamp(item.date, item.start_time)}`, `DTEND:${stamp(item.date, item.end_time)}`,
+      `SUMMARY:${escape(`Main padel · ${item.court_name}`)}`,
+      `LOCATION:${escape([venue.name, venue.address].filter(Boolean).join(", "))}`,
+      "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY", `DESCRIPTION:${escape(`Main padel di ${item.court_name} dua jam lagi`)}`, "END:VALARM",
+      "END:VEVENT",
+    ]),
+    "END:VCALENDAR",
   ];
   return new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
 }
+
+// --- Kotak masuk notifikasi --------------------------------------------------
+
+export type InboxItem = {
+  id: string; kind: string; tone: "info" | "success" | "warning" | "danger"; title: string; body: string; link: string; read: boolean; created_at: string;
+};
+export type Inbox = { items: InboxItem[]; unread: number; more: boolean };
+
+/**
+ * Jumlah notifikasi belum dibaca, dibagi ke lonceng di kepala halaman, tab akun, dan bilah bawah.
+ * Dibaca ulang setiap menit selama tab terlihat, dan langsung saat pelanggan kembali ke tab.
+ */
+let unread = 0;
+let unreadOwner = "";
+const unreadListeners = new Set<() => void>();
+const emitUnread = () => { for (const listener of unreadListeners) listener(); };
+export function setUnread(value: number) { if (value !== unread) { unread = value; emitUnread(); } }
+async function pollUnread() {
+  if (!current || document.visibilityState === "hidden") return;
+  try { setUnread((await api<{ unread: number }>("/customer/notifications/unread")).unread); } catch { /* jaringan putus: coba lagi nanti */ }
+}
+let unreadTimer = 0;
+function subscribeUnread(listener: () => void) {
+  unreadListeners.add(listener);
+  if (unreadListeners.size === 1) {
+    void pollUnread();
+    unreadTimer = window.setInterval(() => void pollUnread(), 60000);
+    document.addEventListener("visibilitychange", pollUnread);
+  }
+  return () => {
+    unreadListeners.delete(listener);
+    if (!unreadListeners.size) { window.clearInterval(unreadTimer); document.removeEventListener("visibilitychange", pollUnread); }
+  };
+}
+/** Jumlah belum dibaca untuk akun yang sedang masuk; 0 untuk tamu. */
+export function useUnread() {
+  const account = useAccount();
+  const count = useSyncExternalStore(subscribeUnread, () => unread, () => 0);
+  // Akun berganti (keluar lalu masuk akun lain): hitungan lama tidak boleh terbawa.
+  const id = account?.id ?? "";
+  useEffect(() => {
+    if (id === unreadOwner) return;
+    unreadOwner = id;
+    if (id) void pollUnread(); else setUnread(0);
+  }, [id]);
+  return account ? count : 0;
+}
+export const fetchInbox = async (before?: string) => {
+  const result = await member(api<Inbox>(`/customer/notifications?limit=20${before ? `&before=${encodeURIComponent(before)}` : ""}`));
+  setUnread(result.unread);
+  return result;
+};
+export const markRead = async (ids?: string[]) => {
+  const result = await member(api<{ unread: number }>("/customer/notifications/read", { method: "POST", body: JSON.stringify(ids ? { ids } : {}) }));
+  setUnread(result.unread);
+  return result.unread;
+};
+export const saveNotifyPreferences = async (body: { email: boolean; whatsapp: boolean }) => {
+  const result = await member(api<{ account: Account }>("/customer/me/notifications", { method: "PUT", body: JSON.stringify(body) }));
+  setAccount(result.account);
+  return result.account;
+};

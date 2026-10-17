@@ -9,7 +9,7 @@ import { syncBooking } from "./finance.js";
 import { billOf,taxSnapshot } from "./bill.js";
 import { ensureOpen } from "./finance.js";
 import { getPolicies } from "./content.js";
-import { notifyCancelled,notifyReschedule } from "./notifications.js";
+import { notifyCancelled,notifyReceipt,notifyReschedule } from "./notifications.js";
 export { clockLabel,localClock,minutes };
 
 export interface Court {id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;created_at:string;layout_x:number;layout_y:number;layout_w:number;layout_h:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id:string|null}
@@ -182,7 +182,10 @@ export async function recordPayment(id:string,input:unknown,actor:string){
     }
     await db.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?)").run(data.id,id,data.amount,data.kind,data.method,data.note,actor,new Date().toISOString());
     await syncBooking(id);
-    await audit(actor,data.kind,data.id,{booking_id:id,customer:booking.customer,amount:data.amount,method:data.method,note:data.note,paid_before:booking.paid,total:booking.total});return {booking:await getBooking(id),payments:await payments(id)};
+    await audit(actor,data.kind,data.id,{booking_id:id,customer:booking.customer,amount:data.amount,method:data.method,note:data.note,paid_before:booking.paid,total:booking.total});
+    const after=await getBooking(id);
+    await notifyReceipt({payment_id:data.id,booking_id:id,kind:data.kind,amount:data.amount,method:data.method,code:id.slice(0,8).toUpperCase(),customer:booking.customer,order_id:booking.order_id,session:booking,total:after.total,paid:after.paid});
+    return {booking:after,payments:await payments(id)};
   });
 }
 /** Uang yang masih boleh dikembalikan ke pelanggan. */

@@ -28,3 +28,23 @@
 .audit-detail dt{color:var(--label)}
 .audit-detail dd{margin:0;color:var(--text);word-break:break-word}
 .audit-target{word-break:break-all}
+
+/* Notifikasi: status tiga kanal, pilihan penyedia WhatsApp, dan pratinjau pesan. */
+.notif-channels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s3)}
+.notif-channels .pay-badge{padding:var(--s4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);min-width:0}
+.notif-events{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2) var(--s5)}
+.notif-providers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--s2)}
+.notif-provider{position:relative;display:flex;flex-direction:column;gap:4px;padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);cursor:pointer}
+.notif-provider input{position:absolute;opacity:0;pointer-events:none}
+.notif-provider b{font-size:var(--fs-md);font-weight:600;color:var(--text)}
+.notif-provider small{font-size:var(--fs-xs);line-height:var(--lh-snug);color:var(--muted)}
+.notif-provider.on{border-color:var(--text);box-shadow:inset 0 0 0 1px var(--text)}
+.notif-provider:has(input:focus-visible){outline:2px solid var(--text);outline-offset:2px}
+.notif-seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--r-md);background:var(--panel2)}
+.notif-seg button{display:inline-flex;align-items:center;gap:6px;height:var(--control);padding:0 var(--s3);border:0;border-radius:var(--r-sm);background:none;color:var(--muted);font-size:var(--fs-sm);cursor:pointer}
+.notif-seg button[aria-selected=true]{background:var(--panel);color:var(--text);font-weight:500;box-shadow:var(--shadow-1)}
+.notif-preview summary{display:flex;align-items:center;gap:var(--s2);cursor:pointer;list-style:none}
+.notif-preview summary::-webkit-details-marker{display:none}
+.notif-preview pre{margin:var(--s2) 0 0;padding:var(--s3);max-width:420px;border-radius:var(--r-md);background:var(--green-bg,#e8f5e9);color:var(--text);font:inherit;font-size:var(--fs-sm);line-height:var(--lh-snug);white-space:pre-wrap;word-break:break-word}
+@media(max-width:900px){.notif-channels,.notif-providers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.notif-channels,.notif-providers,.notif-events{grid-template-columns:1fr}}

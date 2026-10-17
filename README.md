@@ -195,22 +195,47 @@ bila kebijakan venue (Info Venue → Kebijakan) mengizinkan pindah jadwal. Batas
 booking, paling lambat sesuai "batas jam pindah jadwal", dengan durasi yang sama, dan tagihan baru
 tidak boleh lebih kecil dari yang sudah dibayar.
 
-## Notifikasi email
+## Notifikasi
 
-Menu **Pengaturan → Notifikasi Email** menyambungkan server SMTP (Gmail atau Google Workspace dengan
-App Password, Zoho, Mailgun, SendGrid, dan sejenisnya). Email yang dikirim:
+Menu **Pengaturan → Notifikasi** mengatur tiga kanal sekaligus:
 
-- konfirmasi saat pembayaran online diterima,
-- pemberitahuan saat jadwal dipindah dan saat booking dibatalkan staf,
-- pengingat sebelum main (bawaan 24 jam sebelumnya),
-- pemberitahuan ke email staf untuk booking online baru dan pindah jadwal oleh pelanggan.
+- **Email** lewat SMTP (Gmail atau Google Workspace dengan App Password, Zoho, Mailgun, SendGrid).
+- **WhatsApp** lewat Fonnte, Wablas, atau WhatsApp Cloud API dari Meta. Mode **Simulasi** (bawaan)
+  tidak mengirim apa pun: isi setiap pesan hanya dicatat di tab Riwayat kiriman, jadi alurnya bisa
+  dicoba sebelum berlangganan penyedia.
+- **Notifikasi akun**: pelanggan yang masuk dengan Google melihat semua kabar di menu
+  **Akun → Notifikasi** (dengan lonceng dan hitungan belum dibaca di kepala halaman), dan bisa
+  mematikan salinan email atau WhatsApp dari halaman profilnya.
 
-Pelanggan menerima email bila alamatnya diketahui: isian kasir saat membuat booking, email saat
-checkout online, atau email akun Google. Email ditulis ke antrean (`email_outbox`) di transaksi
-yang sama dengan perubahannya, lalu dikirim proses latar API setiap 30 detik. Bila SMTP gagal,
-email dicoba ulang sampai 5 kali dan dapat dikirim ulang dari panel. Pengaturan SMTP juga dapat
-diisi lewat environment (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`,
-`MAIL_FROM`); nilai environment mengalahkan isian panel.
+Pesan yang dikirim, masing-masing bisa dinyalakan atau dimatikan per kanal:
+
+| Pesan | Kapan |
+| --- | --- |
+| Tagihan | Pelanggan checkout online (berisi nominal, batas bayar, tombol bayar), atau kasir membuat link pembayaran |
+| Pengingat batas bayar | Pesanan online belum dibayar, sekali menjelang batas waktunya (setengah waktu tahan, paling lama 15 menit sebelum habis) |
+| Pembayaran diterima | Webhook Midtrans mengonfirmasi pembayaran |
+| Waktu bayar habis | Slot dilepas karena belum dibayar, dengan tautan untuk memesan lagi |
+| Kwitansi kasir | Kasir mencatat pembayaran atau pengembalian dana |
+| Jadwal dipindah, booking dibatalkan | Oleh staf atau oleh pelanggan sendiri |
+| Pengingat main | Sesuai jam sebelum main yang diatur per kanal (bawaan 24 jam) |
+| Untuk staf | Booking online baru dan pindah jadwal oleh pelanggan, ke email dan nomor WhatsApp staf |
+
+Setiap kanal punya antreannya sendiri (`email_outbox`, `whatsapp_outbox`, `customer_notifications`)
+yang ditulis di transaksi yang sama dengan perubahannya, lalu dikirim proses latar API setiap 30
+detik. Kunci unik per peristiwa mencegah pesan ganda walau webhook datang berkali-kali. Bila
+penyedia gagal, pesan dicoba ulang sampai 5 kali dan dapat dikirim ulang dari panel.
+
+Pengaturan juga dapat diisi lewat environment, yang mengalahkan isian panel: `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` untuk email, dan
+`WHATSAPP_PROVIDER` (`simulasi`, `fonnte`, `wablas`, `cloud`), `WHATSAPP_TOKEN`,
+`WHATSAPP_BASE_URL`, `WHATSAPP_PHONE_NUMBER_ID` untuk WhatsApp.
+
+### Kwitansi
+
+Halaman pesanan (`/pesanan/<id>`) menampilkan riwayat pembayaran dan tautan ke
+`/pesanan/<id>/kwitansi`: kwitansi (bila lunas) atau tagihan (bila masih ada sisa) yang siap dicetak
+atau disimpan sebagai PDF lewat dialog cetak browser. Setelah terkonfirmasi, halaman pesanan juga
+menawarkan simpan ke kalender, bagikan jadwal ke teman main, dan petunjuk arah.
 
 ## Pembukuan & laporan keuangan
 

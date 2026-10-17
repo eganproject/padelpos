@@ -111,3 +111,65 @@
   .shop .pay-bar{display:none}
   .shop .order{margin-inline:auto}
 }
+
+/* --- Pesanan terkonfirmasi: langkah berikutnya ---------------------------- */
+.shop .order-progress{justify-content:center;margin:18px 0 0}
+.shop .order-next{margin-bottom:14px}
+.shop .order-next-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.shop .order-next-grid>*{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-height:96px;padding:14px;border:1px solid var(--rule);border-radius:var(--radius-sm);background:var(--paper);color:var(--green);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+.shop .order-next-grid>*:hover{border-color:var(--green);background:var(--green-wash)}
+.shop .order-next-grid b{margin-top:4px;font-size:14.5px;color:var(--ink)}
+.shop .order-next-grid small{font-size:12.5px;line-height:1.4;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media (min-width:720px){.shop .order-next-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+.shop .receipt-payments{list-style:none;margin:0 0 12px;padding:10px 0 0;border-top:1px dashed var(--rule-2);display:flex;flex-direction:column;gap:8px}
+.shop .receipt-payments li{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;font-size:14px}
+.shop .receipt-payments span{display:flex;flex-direction:column;color:var(--ink-2)}
+.shop .receipt-payments small{font-size:12px;color:var(--ink-3)}
+.shop .receipt-payments .refund b{color:var(--red)}
+.shop .receipt .text-link{display:inline-flex;align-items:center;gap:6px;margin-top:8px}
+
+/* --- Kwitansi dan tagihan siap cetak --------------------------------------- */
+.shop .invoice-page{padding-top:20px;padding-bottom:32px;max-width:820px}
+.shop .invoice-tools{display:flex;justify-content:space-between;gap:8px;margin-bottom:14px}
+.shop .invoice{padding:22px;border:1px solid var(--rule);border-radius:var(--radius);background:#fff;color:#111;box-shadow:var(--shadow)}
+.shop .invoice-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:2px solid var(--green)}
+.shop .invoice-head>div:first-child{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--ink-2)}
+.shop .invoice-venue{font-family:var(--font-display);font-size:20px;color:var(--green)}
+.shop .invoice-title{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.shop .invoice-title h1{margin:0;font-size:24px;letter-spacing:.06em;text-transform:uppercase}
+.shop .invoice-stamp{padding:4px 12px;border:2px solid currentColor;border-radius:8px;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;transform:rotate(-3deg)}
+.shop .invoice-stamp.on{color:var(--lime-deep)}
+.shop .invoice-stamp.wait{color:var(--amber)}
+.shop .invoice-stamp.off{color:var(--red)}
+.shop .invoice-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 16px;margin:16px 0}
+.shop .invoice-meta dt{font-size:12px;color:var(--ink-3)}
+.shop .invoice-meta dd{margin:0;font-weight:700;overflow-wrap:anywhere}
+.shop .invoice-lines{width:100%;border-collapse:collapse;font-size:14px}
+.shop .invoice-lines th{padding:8px 0;border-bottom:1px solid var(--rule-2);font-size:12px;text-align:left;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-3)}
+.shop .invoice-lines td{padding:8px 0;vertical-align:top}
+.shop .invoice-lines .num{text-align:right;white-space:nowrap;padding-left:12px}
+.shop .invoice-lines .session td{padding-top:12px;border-top:1px solid var(--rule)}
+.shop .invoice-lines .session td:first-child{display:flex;flex-direction:column;gap:2px}
+.shop .invoice-lines .session span{font-size:13px;color:var(--ink-3)}
+.shop .invoice-lines .sub td{padding:3px 0 3px 14px;color:var(--ink-2);font-size:13.5px}
+.shop .invoice-lines .sub td.num{padding-left:12px}
+.shop .invoice-lines .off td{color:var(--ink-3);text-decoration:line-through}
+.shop .invoice-lines tfoot td{padding:6px 0;font-size:13.5px;color:var(--ink-2)}
+.shop .invoice-lines tfoot .total td{padding-top:12px;border-top:2px solid var(--ink);font-size:16px;font-weight:800;color:var(--ink)}
+.shop .invoice-lines tfoot .due td{padding-top:10px;border-top:1px solid var(--rule-2);font-size:16px;font-weight:800;color:var(--ink)}
+.shop .invoice-foot{margin-top:20px;font-size:13.5px;color:var(--ink-2)}
+.shop .invoice-foot .muted{margin-top:6px;font-size:12px;color:var(--ink-3)}
+@media (min-width:720px){
+  .shop .invoice{padding:36px}
+  .shop .invoice-meta{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media print{
+  @page{margin:14mm}
+  .shop{background:#fff}
+  .shop .shop-head,.shop .shop-tabbar,.shop .shop-foot,.shop .shop-skip,.shop .no-print,[data-sonner-toaster]{display:none !important}
+  .shop .shop-body{padding:0 !important}
+  .shop .invoice-page{max-width:none;padding:0}
+  .shop .invoice{border:0;box-shadow:none;padding:0}
+  .shop .invoice-stamp,.shop .invoice-head{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}

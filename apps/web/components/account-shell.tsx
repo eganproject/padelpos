@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { CalendarDays, History, LayoutDashboard, UserRound } from "lucide-react";
-import { useAccount } from "@/lib/account";
+import { Bell, CalendarDays, History, LayoutDashboard, UserRound } from "lucide-react";
+import { useAccount, useUnread } from "@/lib/account";
 import { Avatar } from "./shop-header";
 import { ProfileForm } from "./account-ui";
 
 const tabs = [
   { href: "/akun", label: "Ringkasan", icon: LayoutDashboard },
   { href: "/akun/pesanan", label: "Pesanan", icon: History },
+  { href: "/akun/notifikasi", label: "Notifikasi", icon: Bell },
   { href: "/akun/profil", label: "Profil", icon: UserRound },
 ];
 
@@ -20,6 +21,7 @@ const tabs = [
  */
 export function AccountShell({ children }: { children: React.ReactNode }) {
   const account = useAccount();
+  const unread = useUnread();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -63,7 +65,8 @@ export function AccountShell({ children }: { children: React.ReactNode }) {
       <nav className="acct-tabs" aria-label="Menu akun">
         {tabs.map(tab => (
           <Link key={tab.href} href={tab.href} aria-current={active(tab.href) ? "page" : undefined}>
-            <tab.icon size={17} aria-hidden="true" /> {tab.label}
+            <tab.icon size={17} aria-hidden="true" /> <span className="label">{tab.label}</span>
+            {tab.href === "/akun/notifikasi" && unread > 0 && <em className="acct-tab-count" aria-label={`${unread} belum dibaca`}>{unread > 9 ? "9+" : unread}</em>}
           </Link>
         ))}
       </nav>

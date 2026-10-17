@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, CheckCircle2, Clock3, Copy, CreditCard, ExternalLink, Hourglass, Loader2, Lock, MessageCircle, PartyPopper, RefreshCw, TriangleAlert, XCircle } from "lucide-react";
+import { ArrowRight, CalendarDays, CalendarPlus, CheckCircle2, Clock3, Copy, CreditCard, ExternalLink, Hourglass, Loader2, Lock, MapPin, MessageCircle, PartyPopper, ReceiptText, RefreshCw, Share2, TriangleAlert, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { money } from "@/lib/api";
 import { ShopSteps } from "@/components/shop-steps";
 import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
-import { whatsappLink } from "@/lib/venue-info";
-import { countdown, fetchOrder, intentLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
+import { mapsLink, whatsappLink } from "@/lib/venue-info";
+import { downloadCalendar } from "@/components/account-bookings";
+import { OrderProgress } from "@/components/order-progress";
+import { countdown, fetchOrder, intentLabel, methodLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
 import { loadSnap } from "@/lib/snap";
 
@@ -109,6 +111,17 @@ export default function OrderPage() {
   const timeLeft = payment && waiting ? countdown(payment.expires_at, now) : "";
   const message = order ? `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin menanyakan pesanan ${order.code}.` : "";
 
+  /** Bagikan jadwal ke teman main: lembar bagikan bawaan ponsel, atau salin teks di desktop. */
+  async function share() {
+    if (!order) return;
+    const lines = active.map(session => `• ${session.court_name}, ${formatDay(session.date)} ${session.start_time}–${session.end_time}`);
+    const text = [`Main padel${info?.name ? ` di ${info.name}` : ""}:`, ...lines, ...(info?.address ? [info.address] : [])].join("\n");
+    try {
+      if (navigator.share) await navigator.share({ title: `Jadwal padel ${order.code}`, text });
+      else { await navigator.clipboard.writeText(text); toast.success("Jadwal disalin", { description: "Tempel di grup WhatsApp teman main Anda." }); }
+    } catch { /* lembar bagikan ditutup */ }
+  }
+
   async function copyCode() {
     if (!order) return;
     try { await navigator.clipboard.writeText(order.code); toast.success("Kode pesanan disalin"); }
@@ -132,6 +145,7 @@ export default function OrderPage() {
               <b>{order.code}</b>
               <Copy size={16} aria-hidden="true" />
             </button>
+            <OrderProgress status={order.status} firstSession={active[0] ?? order.sessions[0]} />
           </section>
 
           {waiting && payment && (
@@ -162,7 +176,28 @@ export default function OrderPage() {
           )}
 
           {order.status === "confirmed" && (
-            <p className="shop-note ok"><CheckCircle2 size={18} aria-hidden="true" /> Pembayaran diterima{payment?.payment_type ? ` lewat ${payTypeLabel(payment.payment_type)}` : ""}.</p>
+            <>
+              <p className="shop-note ok"><CheckCircle2 size={18} aria-hidden="true" /> Pembayaran diterima{payment?.payment_type ? ` lewat ${payTypeLabel(payment.payment_type)}` : ""}.</p>
+              <section className="card order-next" aria-labelledby="judul-siap">
+                <h2 id="judul-siap" className="card-title">Siap main</h2>
+                <div className="order-next-grid">
+                  <button type="button" onClick={() => downloadCalendar(active, { name: info?.name ?? "", address: info?.address ?? "" })}>
+                    <CalendarPlus size={20} aria-hidden="true" /><b>Simpan ke kalender</b><small>Dengan pengingat 2 jam sebelumnya</small>
+                  </button>
+                  <button type="button" onClick={() => void share()}>
+                    <Share2 size={20} aria-hidden="true" /><b>Ajak teman main</b><small>Bagikan jam dan lokasinya</small>
+                  </button>
+                  {info?.address && (
+                    <a href={mapsLink(info)} target="_blank" rel="noopener">
+                      <MapPin size={20} aria-hidden="true" /><b>Petunjuk arah</b><small>{info.address}</small>
+                    </a>
+                  )}
+                  <Link href={`/pesanan/${order.id}/kwitansi`}>
+                    <ReceiptText size={20} aria-hidden="true" /><b>Kwitansi</b><small>Cetak atau simpan sebagai PDF</small>
+                  </Link>
+                </div>
+              </section>
+            </>
           )}
 
           <section className="card receipt">
@@ -200,7 +235,20 @@ export default function OrderPage() {
                 <div className={order.status === "pending" ? "due" : "now"}><dt>{order.status === "pending" ? "Belum dibayar" : "Dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
               )}
             </dl>
+            {!!data?.payments?.length && (
+              <ul className="receipt-payments" aria-label="Riwayat pembayaran">
+                {data.payments.map(entry => (
+                  <li key={entry.id} className={entry.kind}>
+                    <span>{entry.kind === "refund" ? "Dikembalikan" : "Dibayar"} · {entry.source === "gateway" ? "online" : methodLabel[entry.method] ?? entry.method}<small>{new Date(entry.created_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" })}</small></span>
+                    <b>{entry.kind === "refund" ? "−" : ""}{money(entry.amount)}</b>
+                  </li>
+                ))}
+              </ul>
+            )}
             <p className="muted small">Atas nama {order.customer} · {order.phone}{payment ? ` · ${intentLabel[payment.status]}` : ""}</p>
+            {order.status !== "confirmed" && order.paid > 0 && (
+              <Link className="text-link" href={`/pesanan/${order.id}/kwitansi`}><ReceiptText size={15} aria-hidden="true" /> Lihat kwitansi</Link>
+            )}
           </section>
 
           <div className="btn-row">

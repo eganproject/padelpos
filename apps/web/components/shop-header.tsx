@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CircleUserRound, House, LifeBuoy, Orbit, ShoppingBag } from "lucide-react";
+import { Bell, CalendarDays, CircleUserRound, House, LifeBuoy, Orbit, ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart";
-import { useAccount, type Account } from "@/lib/account";
+import { useAccount, useUnread, type Account } from "@/lib/account";
 
 export type ShopNavProps = {
   /** Nama venue: tampil di kepala halaman dan dipakai sebagai label aksesibilitas. */
@@ -46,6 +46,7 @@ export function ShopHeader({ name, hasLocation, hasFaq, loginEnabled }: ShopNavP
   const pathname = usePathname();
   const cart = useCart();
   const account = useAccount();
+  const unread = useUnread();
 
   const links = [
     { href: "/ketersediaan", label: "Jadwal & booking" },
@@ -68,6 +69,13 @@ export function ShopHeader({ name, hasLocation, hasFaq, loginEnabled }: ShopNavP
             <ShoppingBag size={20} aria-hidden="true" />
             {cart.length > 0 && <em className="shop-badge" aria-hidden="true">{cart.length}</em>}
           </Link>
+          {account && (
+            <Link href="/akun/notifikasi" className="shop-icon-btn" aria-current={current("/akun/notifikasi")}
+              aria-label={unread ? `Notifikasi, ${unread} belum dibaca` : "Notifikasi"}>
+              <Bell size={20} aria-hidden="true" />
+              {unread > 0 && <em className="shop-badge" aria-hidden="true">{unread > 9 ? "9+" : unread}</em>}
+            </Link>
+          )}
           {account ? (
             <Link href="/akun" className="shop-icon-btn account" aria-current={pathname.startsWith("/akun") ? "page" : undefined} aria-label={`Akun saya, ${account.name}`}>
               <Avatar account={account} size={30} />

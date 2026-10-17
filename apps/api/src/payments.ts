@@ -13,7 +13,7 @@ import {
   payableAmount, signatureFor, signatureMatches, type MidtransStatus, type Outcome,
 } from "./midtrans.js";
 import { publicUrl } from "./config.js";
-import { customerEmail, notifyOrderPaid } from "./notifications.js";
+import { customerEmail, notifyBill, notifyExpired, notifyOrderPaid } from "./notifications.js";
 
 /**
  * Pemesanan online lewat Midtrans Snap, dengan keranjang.
@@ -58,10 +58,11 @@ export const recentIntents = async (limit = 30) =>
  * Dipanggil sebelum jadwal dibaca dan sebelum transaksi baru dibuat.
  */
 export async function expireHolds() {
-  const stale = await db.prepare("SELECT id FROM bookings WHERE status='pending' AND hold_expires_at<=UNIX_TIMESTAMP()").all() as { id: string }[];
+  const stale = await db.prepare("SELECT id,order_id FROM bookings WHERE status='pending' AND hold_expires_at<=UNIX_TIMESTAMP()").all() as { id: string; order_id: string | null }[];
   if (!stale.length) return 0;
   return await transaction(async () => {
     const stamp = new Date().toISOString();
+    const orders = new Set<string>();
     for (const booking of stale) {
       // Proses lain mungkin sudah melepasnya lebih dulu; stok hanya dikembalikan sekali.
       if (!(await db.prepare("UPDATE bookings SET status='expired' WHERE id=? AND status='pending' AND hold_expires_at<=UNIX_TIMESTAMP()").run(booking.id)).changes) continue;
@@ -69,7 +70,10 @@ export async function expireHolds() {
       await syncBooking(booking.id);
       await db.prepare("UPDATE payment_intents SET status='expired',updated_at=? WHERE booking_id=? AND status='pending'").run(stamp, booking.id);
       await audit("sistem", "booking.expired", booking.id);
+      if (booking.order_id) orders.add(booking.order_id);
     }
+    // Satu kabar per pesanan, bukan per sesi; kuncinya mencegah kabar ganda dari proses lain.
+    for (const orderId of orders) await notifyExpired(orderId);
     return stale.length;
   });
 }
@@ -293,6 +297,11 @@ export async function createCheckout(input: unknown, accountId: string | null = 
   const intent = await insertIntent(bookings[0].id, order.id, amount, "booking", bookings[0].hold_expires_at!, null);
   try {
     const snap = await openSnap(bookings, intent, { name: data.customer, phone: data.phone, email: data.email }, config.hold_minutes, config.mode === "full");
+    // Tagihan ikut dikirim agar pelanggan yang menutup tab tetap punya tautan untuk membayar.
+    await notifyBill({
+      key: intent.order_id, booking_id: bookings[0].id, order_id: order.id, code: order.code, customer: data.customer, email: data.email,
+      amount, total: order.total, expires_at: Number(bookings[0].hold_expires_at), sessions: bookings, pay_url: `${publicUrl}/pesanan/${order.id}`, from_staff: false,
+    }).catch(error => console.error("Gagal menyiapkan tagihan", order.code, (error as Error).message));
     return {
       order_id: order.id, code: order.code, transaction_id: intent.order_id, sessions: bookings.length,
       amount, total: order.total, expires_at: bookings[0].hold_expires_at,
@@ -329,7 +338,11 @@ export async function createPaymentLink(bookingId: string, input: unknown, actor
   const intent = await insertIntent(booking.id, null, amount, "tagihan", Math.floor(Date.now() / 1000) + hours * 3600, actor);
   const snap = await openSnap([booking], intent, { name: booking.customer, phone: booking.phone, email: "" }, hours * 60, amount === booking.total);
   await audit(actor, "payment.link", booking.id);
-  return { ...(await intentOf(intent.order_id))!, redirect_url: snap.redirect_url };
+  const notified = await notifyBill({
+    key: intent.order_id, booking_id: booking.id, order_id: booking.order_id, code: bookingCode(booking.id), customer: booking.customer,
+    amount, total: remaining, expires_at: intent.expires_at, sessions: [booking], pay_url: snap.redirect_url, from_staff: true,
+  }).catch(error => { console.error("Gagal mengirim tagihan", booking.id, (error as Error).message); return 0; });
+  return { ...(await intentOf(intent.order_id))!, redirect_url: snap.redirect_url, notified };
 }
 
 const notificationSchema = z.object({
@@ -389,7 +402,7 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
       for (const booking of bookings) settled.push(await getBooking(booking.id));
       const order = intent.order_ref ? await db.prepare("SELECT id,code,customer,email FROM orders WHERE id=?").get(intent.order_ref) as { id: string; code: string; customer: string; email: string } | undefined : undefined;
       await notifyOrderPaid({
-        key: intent.order_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
+        key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
         customer: order?.customer ?? settled[0].customer, email: order?.email || await customerEmail(intent.booking_id), amount: intent.amount,
         total: settled.reduce((sum, booking) => sum + booking.total, 0), paid: settled.reduce((sum, booking) => sum + booking.paid, 0),
         sessions: settled,
@@ -403,6 +416,7 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
         await syncBooking(booking.id);
       }
       await audit("midtrans", "payment." + outcome, intent.order_ref ?? intent.booking_id);
+      if (intent.order_ref && bookings.some(booking => booking.status === "pending")) await notifyExpired(intent.order_ref);
     }
     return { handled: true, outcome, booking: await getBooking(intent.booking_id) };
   });
@@ -474,6 +488,10 @@ export async function orderView(id: string) {
         addons: (await bookingAddons(booking.id)).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
       }))),
     },
+    /** Riwayat uang masuk dan keluar untuk kwitansi; catatan kasir tidak ikut karena tautannya bisa diteruskan. */
+    payments: (await db.prepare(`SELECT p.id,p.booking_id,p.amount,p.kind,p.method,p.source,p.created_at FROM payments p JOIN bookings b ON b.id=p.booking_id
+      WHERE b.order_id=? ORDER BY p.created_at,p.id`).all(order.id) as { id: string; booking_id: string; amount: number; kind: string; method: string; source: string; created_at: string }[])
+      .map(row => ({ ...row, session_code: bookingCode(row.booking_id) })),
     payment: intent ? {
       order_id: intent.order_id, status: intent.status, amount: intent.amount, kind: intent.kind,
       redirect_url: intent.status === "pending" ? intent.redirect_url : null,

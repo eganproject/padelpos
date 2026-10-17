@@ -185,10 +185,11 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       await request("/public/payments/midtrans/notification", "POST", notify(order.transaction_id, order.amount), "", "");
       assert.equal((await request(`/operations/bookings/${bookingId}`, "GET", undefined, admin)).data.payments.length, 1, "notifikasi ganda tidak menambah pembayaran");
       const mails = await db.prepare("SELECT kind,recipient,subject,text FROM email_outbox WHERE ref_id=? ORDER BY kind").all(order.order_id) as { kind: string; recipient: string; subject: string; text: string }[];
-      assert.deepEqual(mails.map(mail => [mail.kind, mail.recipient]), [["confirmed", "pelanggan@contoh.test"], ["staff_new", "kasir@venue.test"]], "satu email pelanggan dan satu untuk staf walau webhook datang dua kali");
-      assert.match(mails[0].subject, /terkonfirmasi/);
-      assert.match(mails[0].text, /Court Bayar/);
-      assert.match(mails[0].text, new RegExp(`https://padelix.contoh/pesanan/${order.order_id}`));
+      assert.deepEqual(mails.map(mail => [mail.kind, mail.recipient]), [["bill", "pelanggan@contoh.test"], ["confirmed", "pelanggan@contoh.test"], ["staff_new", "kasir@venue.test"]], "tagihan saat checkout, lalu satu email pelanggan dan satu untuk staf walau webhook datang dua kali");
+      assert.match(mails[1].subject, /terkonfirmasi/);
+      assert.match(mails[1].text, /Court Bayar/);
+      assert.match(mails[1].text, new RegExp(`https://padelix.contoh/pesanan/${order.order_id}`));
+      assert.match(mails[0].text, /Bayar sebelum/, "tagihan memuat batas waktu bayar");
     });
 
     await t.test("keranjang dua sesi dibayar sekali dan dibukukan per sesi", async () => {

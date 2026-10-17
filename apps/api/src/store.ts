@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, schema } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, schema, schemaV2 } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -154,6 +154,15 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
         cash_accounts: { cash: kas, transfer: bank, qris: bank, va: bank, ewallet: bank, card: bank },
         default_cash_account: kas, locked_until: "", updated_at: stamp,
       }));
+    },
+  },
+  {
+    version: 2, async up() {
+      for (const statement of schemaV2) await db.exec(statement);
+      // Menu lama bernama "Notifikasi Email"; namanya diganti hanya bila admin belum mengubahnya.
+      const row = await db.prepare("SELECT document FROM menus WHERE id='notifications'").get() as { document: string } | undefined;
+      const menu = row ? JSON.parse(row.document) as { name: string; icon: string } : null;
+      if (menu && menu.name === "Notifikasi Email") await db.prepare("UPDATE menus SET document=? WHERE id='notifications'").run(JSON.stringify({ ...menu, name: "Notifikasi", icon: "BellRing" }));
     },
   },
 ];

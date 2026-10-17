@@ -6,6 +6,7 @@ import { addPhoto,maxPhotoSize,orderPhotos,photoIndex,photoTypes,removePhoto } f
 import * as addons from "../addons.js";
 import * as finance from "../finance.js";
 import * as notifications from "../notifications.js";
+import * as whatsapp from "../whatsapp.js";
 import { taxSnapshot } from "../bill.js";
 import { adminAccounts, adminLogin, bookingAccount, linkBooking, saveLoginSettings, testLogin } from "../customers.js";
 import { adminPayment,savePaymentSettings,testCredentials } from "../midtrans.js";
@@ -98,7 +99,11 @@ router.get("/backups/:name/download",requireMenu("backups"),async (req:AuthReque
   createReadStream(file).on("error",()=>res.destroy()).pipe(res);
 });
 router.delete("/backups/:name",requireMenu("backups"),async (req:AuthRequest,res)=>{await backups.removeBackup(String(req.params.name),req.auth!.sub);res.json(await backups.backupOverview())});
-router.get("/notifications",requireMenu("notifications"),async (_req,res)=>res.json({settings:await notifications.adminEmail(),outbox:await notifications.outbox()}));
+router.get("/notifications",requireMenu("notifications"),async (_req,res)=>res.json({settings:await notifications.adminEmail(),outbox:await notifications.outbox(),whatsapp:{settings:await whatsapp.adminWhatsApp(),outbox:await whatsapp.whatsappOutbox()}}));
+// WhatsApp: penyedia, pesan uji, dan antrean kiriman. Didaftarkan sebelum rute ber-:id di bawah.
+router.put("/notifications/whatsapp",requireMenu("notifications"),async (req:AuthRequest,res)=>res.json({settings:await whatsapp.saveWhatsAppSettings(req.body,req.auth!.sub)}));
+router.post("/notifications/whatsapp/test",requireMenu("notifications"),async(req:AuthRequest,res)=>res.json(await whatsapp.sendTestWhatsApp(req.body,req.auth!.sub)));
+router.post("/notifications/whatsapp/:id/retry",requireMenu("notifications"),async(req:AuthRequest,res)=>{await whatsapp.retryWhatsApp(String(req.params.id),req.auth!.sub);res.json({outbox:await whatsapp.whatsappOutbox()})});
 router.put("/notifications/settings",requireMenu("notifications"),async (req:AuthRequest,res)=>res.json({settings:await notifications.saveEmailSettings(req.body,req.auth!.sub)}));
 router.post("/notifications/test",requireMenu("notifications"),async(req:AuthRequest,res)=>res.json(await notifications.sendTestEmail(req.body,req.auth!.sub)));
 router.post("/notifications/:id/retry",requireMenu("notifications"),async(req:AuthRequest,res)=>{await notifications.retryEmail(String(req.params.id),req.auth!.sub);res.json({outbox:await notifications.outbox()})});

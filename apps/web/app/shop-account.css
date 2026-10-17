@@ -179,3 +179,53 @@
 .shop .acct-move select{min-height:44px;width:100%;padding:0 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:15px;font-weight:500}
 .shop .acct-move select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px #0f33261a}
 @media (max-width:560px){.shop .acct-move-row{grid-template-columns:1fr}}
+
+/* --- Tab akun dengan hitungan notifikasi ---------------------------------- */
+.shop .acct-tabs a{position:relative}
+.shop .acct-tab-count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--red);color:#fff;font-size:11px;font-style:normal;font-weight:800}
+/* Empat tab di ponsel: ikon di atas label agar tidak berdesakan di layar 360px. */
+@media (max-width:519px){
+  .shop .acct-tabs a{flex-direction:column;gap:2px;min-height:52px;font-size:12px}
+  .shop .acct-tab-count{position:absolute;top:4px;left:calc(50% + 6px)}
+}
+
+/* --- Kotak masuk notifikasi ------------------------------------------------ */
+.shop .acct-inbox{display:flex;flex-direction:column;gap:14px}
+.shop .acct-inbox .acct-section-head h2{display:flex;align-items:center;gap:8px}
+.shop .acct-inbox-count{white-space:nowrap;padding:2px 8px;border-radius:999px;background:var(--red-wash);color:var(--red);font-size:12px;font-weight:800}
+.shop .acct-inbox-tools{display:flex;gap:6px}
+.shop .acct-inbox-day h3{margin:4px 0 8px;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-3)}
+.shop .acct-inbox-day ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border:1px solid var(--rule);border-radius:var(--radius);background:var(--card);overflow:hidden}
+.shop .acct-inbox-day li+li{border-top:1px solid var(--rule)}
+.shop .acct-inbox-item{display:flex;align-items:flex-start;gap:12px;width:100%;padding:14px;border:0;background:none;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
+.shop .acct-inbox-item:hover{background:var(--paper)}
+.shop .acct-inbox-item:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+.shop .acct-inbox-item.unread{background:#fbfdf6}
+.shop .acct-inbox-item .icon{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--green-wash);color:var(--green)}
+.shop .acct-inbox-item.success .icon{background:var(--lime-wash);color:var(--lime-deep)}
+.shop .acct-inbox-item.warning .icon{background:var(--amber-wash);color:var(--amber)}
+.shop .acct-inbox-item.danger .icon{background:var(--red-wash);color:var(--red)}
+.shop .acct-inbox-item .text{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.shop .acct-inbox-item .top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.shop .acct-inbox-item .top b{font-size:15px}
+.shop .acct-inbox-item.unread .top b{font-weight:800}
+.shop .acct-inbox-item time{flex:none;font-size:12px;color:var(--ink-3)}
+.shop .acct-inbox-item .body{font-size:13.5px;line-height:1.45;color:var(--ink-2);white-space:pre-line;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.shop .acct-inbox-item .dot{flex:none;width:9px;height:9px;margin-top:6px;border-radius:50%;background:var(--red)}
+.shop .acct-inbox-empty{display:flex;flex-direction:column;align-items:center;gap:8px;padding:36px 20px;border:1px dashed var(--rule-2);border-radius:var(--radius);background:var(--card);text-align:center;color:var(--ink-3)}
+.shop .acct-inbox-empty b{color:var(--ink);font-size:16px}
+.shop .acct-inbox-empty p{max-width:340px;font-size:14px}
+
+/* --- Pilihan kanal di profil ----------------------------------------------- */
+.shop .acct-prefs{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.shop .acct-pref{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--rule);border-radius:var(--radius-sm);cursor:pointer;color:var(--green)}
+.shop .acct-pref span{flex:1;min-width:0;display:flex;flex-direction:column;color:var(--ink)}
+.shop .acct-pref small{font-size:13px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis}
+.shop .acct-pref input[role=switch]{appearance:none;flex:none;position:relative;width:44px;height:26px;border-radius:999px;background:var(--rule-2);cursor:pointer;transition:background .15s}
+.shop .acct-pref input[role=switch]:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .15s}
+.shop .acct-pref input[role=switch]:checked{background:var(--green)}
+.shop .acct-pref input[role=switch]:checked:after{transform:translateX(18px)}
+.shop .acct-pref input[role=switch]:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.shop .acct-pref input[role=switch]:disabled{opacity:.6}
+.shop .acct-pref-note{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-3)}
+.shop .acct-inbox .acct-section-head{flex-wrap:wrap;gap:8px}
