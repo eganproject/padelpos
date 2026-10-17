@@ -16,6 +16,7 @@ import { check } from "../errors.js";
 import { audit } from "../store.js";
 import { auditFilters, auditLog } from "../auditlog.js";
 import * as backups from "../backups.js";
+import * as receipts from "../receipts.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 const router=Router();
@@ -78,6 +79,10 @@ router.get("/bookings",requireMenu("bookings"),async (req,res)=>{
 });
 router.post("/bookings",requireMenu("bookings"),async (req:AuthRequest,res)=>res.status(201).json({booking:await ops.createBooking(req.body,req.auth!.sub)}));
 router.get("/bookings/:id",requireMenu("bookings"),async (req,res)=>{const booking=await ops.getBooking(String(req.params.id));res.json({booking,payments:await ops.payments(booking.id),addons:await addons.bookingAddons(booking.id),intents:await bookingIntents(booking.id),account:await bookingAccount(booking)})});
+// Nota cetak: kasir yang membuka booking boleh mencetak; pengaturan bawaannya punya menu sendiri.
+router.get("/bookings/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await receipts.bookingReceipt(String(req.params.id),req.auth!.sub)));
+router.get("/receipt-settings",requireAnyMenu(["receipts","bookings"]),async (_req,res)=>res.json({settings:await receipts.receiptSettings()}));
+router.put("/receipt-settings",requireMenu("receipts"),async (req:AuthRequest,res)=>res.json({settings:await receipts.saveReceiptSettings(req.body,req.auth!.sub)}));
 router.post("/bookings/:id/reschedule",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({booking:await ops.rescheduleBooking(String(req.params.id),req.body,req.auth!.sub)}));
 router.post("/bookings/:id/account",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({account:await linkBooking(String(req.params.id),req.body,req.auth!.sub)}));
 
