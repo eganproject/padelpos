@@ -4,7 +4,7 @@ import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 
 /**
- * Foto lapangan disimpan di SQLite agar ikut tercadang bersama database dan tidak
+ * Foto lapangan disimpan di database agar ikut tercadang bersama database dan tidak
  * butuh penyimpanan berkas terpisah. Browser admin sudah memperkecil foto sebelum
  * mengunggah, jadi ukurannya ratusan KB, bukan belasan MB dari kamera ponsel.
  */
@@ -22,21 +22,20 @@ const signatures: Record<PhotoType, (data: Buffer) => boolean> = {
 
 export interface CourtPhoto { id: string; court_id: string; position: number; bytes: number }
 
-export function courtPhotos(courtId: string) {
-  return db.prepare("SELECT id,court_id,position,bytes FROM court_photos WHERE court_id=? ORDER BY position,created_at").all(courtId) as unknown as CourtPhoto[];
+export async function courtPhotos(courtId: string) {
+  return await db.prepare("SELECT id,court_id,position,bytes FROM court_photos WHERE court_id=? ORDER BY position,created_at").all(courtId) as CourtPhoto[];
 }
 
 /** Id foto per lapangan, urut dengan foto sampul di depan. */
-export function photoIndex() {
+export async function photoIndex() {
   const index = new Map<string, string[]>();
-  for (const row of db.prepare("SELECT id,court_id FROM court_photos ORDER BY court_id,position,created_at").all() as { id: string; court_id: string }[])
+  for (const row of await db.prepare("SELECT id,court_id FROM court_photos ORDER BY court_id,position,created_at").all() as { id: string; court_id: string }[])
     index.set(row.court_id, [...(index.get(row.court_id) ?? []), row.id]);
   return index;
 }
 
-function renumber(courtId: string, ids: string[]) {
-  const update = db.prepare("UPDATE court_photos SET position=? WHERE id=? AND court_id=?");
-  ids.forEach((id, position) => update.run(position, id, courtId));
+async function renumber(courtId: string, ids: string[]) {
+  for (const [position, id] of ids.entries()) await db.prepare("UPDATE court_photos SET position=? WHERE id=? AND court_id=?").run(position, id, courtId);
 }
 
 /** Validasi berkas foto kiriman admin (lapangan maupun item tambahan). */
@@ -48,42 +47,42 @@ export function checkImage(contentType: string | undefined, body: unknown): Phot
   return type;
 }
 
-export function addPhoto(courtId: string, contentType: string | undefined, body: unknown, actor: string) {
+export async function addPhoto(courtId: string, contentType: string | undefined, body: unknown, actor: string) {
   const type = checkImage(contentType, body);
-  return transaction(() => {
-    check(db.prepare("SELECT 1 FROM courts WHERE id=?").get(courtId), 404, "Lapangan tidak ditemukan.");
-    const existing = courtPhotos(courtId);
+  return await transaction(async () => {
+    check(await db.prepare("SELECT 1 FROM courts WHERE id=?").get(courtId), 404, "Lapangan tidak ditemukan.");
+    const existing = await courtPhotos(courtId);
     check(existing.length < maxPhotosPerCourt, 409, `Maksimal ${maxPhotosPerCourt} foto per lapangan. Hapus salah satu terlebih dahulu.`);
     const id = randomUUID();
-    db.prepare("INSERT INTO court_photos (id,court_id,mime,data,bytes,position,created_at) VALUES (?,?,?,?,?,?,?)")
+    await db.prepare("INSERT INTO court_photos (id,court_id,mime,data,bytes,position,created_at) VALUES (?,?,?,?,?,?,?)")
       .run(id, courtId, type, body as Buffer, (body as Buffer).length, existing.length, new Date().toISOString());
-    audit(actor, "court.photo.add", id);
-    return courtPhotos(courtId);
+    await audit(actor, "court.photo.add", id);
+    return await courtPhotos(courtId);
   });
 }
 
-export function removePhoto(courtId: string, photoId: string, actor: string) {
-  return transaction(() => {
-    check(db.prepare("DELETE FROM court_photos WHERE id=? AND court_id=?").run(photoId, courtId).changes, 404, "Foto tidak ditemukan.");
-    renumber(courtId, courtPhotos(courtId).map(photo => photo.id));
-    audit(actor, "court.photo.delete", photoId);
-    return courtPhotos(courtId);
+export async function removePhoto(courtId: string, photoId: string, actor: string) {
+  return await transaction(async () => {
+    check((await db.prepare("DELETE FROM court_photos WHERE id=? AND court_id=?").run(photoId, courtId)).changes, 404, "Foto tidak ditemukan.");
+    await renumber(courtId, (await courtPhotos(courtId)).map(photo => photo.id));
+    await audit(actor, "court.photo.delete", photoId);
+    return await courtPhotos(courtId);
   });
 }
 
-export function orderPhotos(courtId: string, input: unknown, actor: string) {
+export async function orderPhotos(courtId: string, input: unknown, actor: string) {
   const { ids } = z.object({ ids: z.array(z.string().min(1)).max(maxPhotosPerCourt) }).parse(input);
-  return transaction(() => {
-    const current = courtPhotos(courtId).map(photo => photo.id);
+  return await transaction(async () => {
+    const current = (await courtPhotos(courtId)).map(photo => photo.id);
     check(ids.length === current.length && new Set(ids).size === ids.length && ids.every(id => current.includes(id)), 409, "Daftar foto sudah berubah. Muat ulang lalu coba lagi.");
-    renumber(courtId, ids);
-    audit(actor, "court.photo.order", courtId);
-    return courtPhotos(courtId);
+    await renumber(courtId, ids);
+    await audit(actor, "court.photo.order", courtId);
+    return await courtPhotos(courtId);
   });
 }
 
 /** Foto lapangan atau foto item tambahan; keduanya memakai id acak sehingga tidak bisa tertukar. */
-export function photoFile(id: string) {
-  return (db.prepare("SELECT mime,data FROM court_photos WHERE id=?").get(id)
-    ?? db.prepare("SELECT photo_mime mime,photo_data data FROM addons WHERE photo_id=?").get(id)) as { mime: PhotoType; data: Uint8Array } | undefined;
+export async function photoFile(id: string) {
+  return (await db.prepare("SELECT mime,data FROM court_photos WHERE id=?").get(id)
+    ?? await db.prepare("SELECT photo_mime mime,photo_data data FROM addons WHERE photo_id=?").get(id)) as { mime: PhotoType; data: Uint8Array } | undefined;
 }

@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { audit, db, transaction } from "./store.js";
+import { audit, db, saveSetting, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { publicUrl } from "./config.js";
 import { taxSnapshot } from "./bill.js";
@@ -19,12 +19,12 @@ const defaults: PaymentSettings = {
   enabled: false, environment: "sandbox", client_key: "", server_key: "",
   mode: "full", dp_percent: 50, hold_minutes: 20, note: "", updated_at: null,
 };
-function stored(): PaymentSettings {
-  const row = db.prepare("SELECT document FROM settings WHERE key='payment'").get() as { document: string } | undefined;
+async function stored(): Promise<PaymentSettings> {
+  const row = await db.prepare("SELECT document FROM settings WHERE `key`='payment'").get() as { document: string } | undefined;
   return { ...defaults, ...(row ? JSON.parse(row.document) as Partial<PaymentSettings> : {}) };
 }
-export function paymentConfig() {
-  const settings = stored();
+export async function paymentConfig() {
+  const settings = await stored();
   const envServer = process.env.MIDTRANS_SERVER_KEY?.trim() || "";
   const envClient = process.env.MIDTRANS_CLIENT_KEY?.trim() || "";
   const fromEnv = !!envServer;
@@ -37,7 +37,7 @@ export function paymentConfig() {
   };
 }
 /** Siap dipakai bila admin mengaktifkannya dan server key tersedia. */
-export const paymentReady = () => { const config = paymentConfig(); return config.enabled && !!config.serverKey; };
+export const paymentReady = async () => { const config = await paymentConfig(); return config.enabled && !!config.serverKey; };
 
 /** Nominal yang ditagih online: penuh, atau DP yang dibulatkan ke ribuan terdekat ke atas. */
 export function payableAmount(total: number, config: Pick<PaymentSettings, "mode" | "dp_percent">) {
@@ -51,7 +51,7 @@ const hosts = (environment: string) => environment === "production"
 
 type MidtransBody = Record<string, unknown> & { status_code?: string; status_message?: string; error_messages?: string[] };
 async function callMidtrans(host: "snap" | "api", path: string, init: { method: string; body?: string } = { method: "GET" }) {
-  const config = paymentConfig();
+  const config = await paymentConfig();
   check(config.serverKey, 409, "Server key Midtrans belum diisi.");
   let response: Response | undefined;
   try {
@@ -77,7 +77,7 @@ const complaint = (body: MidtransBody, status: number) =>
 export async function createSnapTransaction(payload: object) {
   const { status, body } = await callMidtrans("snap", "/snap/v1/transactions", { method: "POST", body: JSON.stringify(payload) });
   check(status < 300 && typeof body.token === "string", 502, `Midtrans menolak transaksi: ${complaint(body, status)}`);
-  return body as unknown as { token: string; redirect_url: string };
+  return body as { token: string; redirect_url: string };
 }
 export type MidtransStatus = { transaction_status?: string; fraud_status?: string; transaction_id?: string; payment_type?: string; gross_amount?: string; status_code?: string };
 /** null bila pelanggan belum memilih metode pembayaran, sehingga ordernya belum ada di Midtrans. */
@@ -90,7 +90,7 @@ export async function fetchTransactionStatus(orderId: string) {
 /** Uji kunci: 401 berarti server key ditolak; 404 berarti kunci sah dan order uji memang tidak ada. */
 export async function testCredentials() {
   const { status, body } = await callMidtrans("api", "/v2/padelix-uji-koneksi/status");
-  const environment = paymentConfig().environment === "production" ? "produksi" : "sandbox";
+  const environment = (await paymentConfig()).environment === "production" ? "produksi" : "sandbox";
   if (status === 401 || body.status_code === "401")
     return { ok: false, message: `Server key ditolak Midtrans. Periksa kuncinya dan pilihan ${environment}.` };
   check(status === 404 || status < 300 || body.status_code === "404", 502, `Midtrans menjawab: ${complaint(body, status)}`);
@@ -133,13 +133,13 @@ export const paymentSettingsSchema = z.object({
   hold_minutes: z.number().int().min(10, "Batas waktu bayar minimal 10 menit.").max(120, "Batas waktu bayar maksimal 120 menit."),
   note: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
 });
-export function savePaymentSettings(input: unknown, actor: string) {
+export async function savePaymentSettings(input: unknown, actor: string) {
   const data = paymentSettingsSchema.parse(input);
   const prefix = data.environment === "sandbox" ? "SB-Mid-" : "Mid-";
   if (data.server_key) check(data.server_key.startsWith(prefix + "server-"), 400, `Server key ${data.environment} diawali ${prefix}server-.`);
   if (data.client_key) check(data.client_key.startsWith(prefix + "client-"), 400, `Client key ${data.environment} diawali ${prefix}client-.`);
-  return transaction(() => {
-    const current = stored();
+  return await transaction(async () => {
+    const current = await stored();
     const serverKey = data.clear_server_key ? "" : (data.server_key || current.server_key);
     check(!data.enabled || serverKey || process.env.MIDTRANS_SERVER_KEY, 409, "Isi server key sebelum mengaktifkan pembayaran online.");
     const next: PaymentSettings = {
@@ -147,31 +147,31 @@ export function savePaymentSettings(input: unknown, actor: string) {
       mode: data.mode, dp_percent: data.dp_percent, hold_minutes: data.hold_minutes, note: data.note,
       updated_at: new Date().toISOString(),
     };
-    db.prepare("INSERT INTO settings (key,document) VALUES ('payment',?) ON CONFLICT(key) DO UPDATE SET document=excluded.document").run(JSON.stringify(next));
-    audit(actor, "payment.settings", "payment");
-    return adminPayment();
+    await saveSetting("payment", next);
+    await audit(actor, "payment.settings", "payment");
+    return await adminPayment();
   });
 }
 /** Ringkasan untuk panel admin, tanpa server key. */
-export function adminPayment() {
-  const config = paymentConfig();
+export async function adminPayment() {
+  const config = await paymentConfig();
   return {
     enabled: config.enabled, environment: config.environment, client_key: config.clientKey,
     mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes,
     note: config.note, updated_at: config.updated_at,
     server_key_set: !!config.serverKey, key_source: config.fromEnv ? "env" : "panel",
-    ready: paymentReady(),
+    ready: await paymentReady(),
     webhook_url: `${publicUrl}/api/public/payments/midtrans/notification`,
     finish_url: `${publicUrl}/pesanan/`,
   };
 }
 /** Yang boleh diketahui pelanggan. */
-export function publicPayment() {
-  const config = paymentConfig();
-  const ready = paymentReady();
+export async function publicPayment() {
+  const config = await paymentConfig();
+  const ready = await paymentReady();
   // Client key memang dibuat untuk browser: Snap.js memakainya agar pembayaran terbuka di halaman pesanan.
   return {
-    enabled: ready, mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note, tax: taxSnapshot(),
+    enabled: ready, mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note, tax: await taxSnapshot(),
     client_key: ready ? config.clientKey : "", environment: config.environment,
   };
 }

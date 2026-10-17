@@ -1,7 +1,7 @@
-﻿export class HttpError extends Error {
+export class HttpError extends Error {
   constructor(public status:number,message:string){super(message)}
 }
-export function check(condition:unknown,status:number,message:string):asserts condition {
+/** Lempar HttpError bila kondisi tidak terpenuhi. Promise ditolak di tingkat tipe karena selalu bernilai benar. */
+export function check<T>(condition:T extends PromiseLike<unknown>?never:T,status:number,message:string):asserts condition {
   if(!condition) throw new HttpError(status,message);
 }
-

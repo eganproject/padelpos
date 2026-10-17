@@ -4,9 +4,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { useTestDatabase } from "./mysql.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "padelix-pay-test-"));
 process.env.DATA_DIR = directory;
+await useTestDatabase("payments");
 process.env.NODE_ENV = "test";
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.PUBLIC_URL = "https://padelix.contoh";
@@ -154,7 +156,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.ok(!JSON.stringify(open.data).includes("Pelanggan Online"), "data pemesan tidak bocor di jadwal publik");
       assert.equal((await request("/public/checkout", "POST", checkout([item("12:30", "13:30")]))).status, 409, "slot yang sedang ditahan tidak bisa dipesan orang lain");
       assert.equal((await request("/public/checkout", "POST", checkout([item("12:00", "12:15")]))).status, 400, "durasi di luar 1–3 jam ditolak");
-      assert.equal((db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, 4, "stok bola berkurang selama booking ditahan");
+      assert.equal((await db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, 4, "stok bola berkurang selama booking ditahan");
       const pending = await request(`/public/orders/${created.data.order_id}`, "GET");
       assert.equal(pending.data.payment.snap_token, "tok-uji", "token Snap tersedia selama menunggu pembayaran");
       (globalThis as Record<string, unknown>).orderPertama = created.data;
@@ -182,7 +184,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(booking.data.booking.hold_expires_at, null);
       await request("/public/payments/midtrans/notification", "POST", notify(order.transaction_id, order.amount), "", "");
       assert.equal((await request(`/operations/bookings/${bookingId}`, "GET", undefined, admin)).data.payments.length, 1, "notifikasi ganda tidak menambah pembayaran");
-      const mails = db.prepare("SELECT kind,recipient,subject,text FROM email_outbox WHERE ref_id=? ORDER BY kind").all(order.order_id) as { kind: string; recipient: string; subject: string; text: string }[];
+      const mails = await db.prepare("SELECT kind,recipient,subject,text FROM email_outbox WHERE ref_id=? ORDER BY kind").all(order.order_id) as { kind: string; recipient: string; subject: string; text: string }[];
       assert.deepEqual(mails.map(mail => [mail.kind, mail.recipient]), [["confirmed", "pelanggan@contoh.test"], ["staff_new", "kasir@venue.test"]], "satu email pelanggan dan satu untuk staf walau webhook datang dua kali");
       assert.match(mails[0].subject, /terkonfirmasi/);
       assert.match(mails[0].text, /Court Bayar/);
@@ -246,21 +248,21 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
     });
 
     await t.test("pembayaran gagal atau kedaluwarsa melepas slot dan mengembalikan stok", async () => {
-      const stock = (db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock;
+      const stock = (await db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock;
       const created = await request("/public/checkout", "POST", checkout([item("14:00", "15:00", [{ addon_id: addonId, quantity: 2 }])]));
       assert.equal(created.status, 201);
-      assert.equal((db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, stock - 2);
+      assert.equal((await db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, stock - 2);
       const expired = await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount, "expire"), "", "");
       assert.equal(expired.data.outcome, "expired");
       assert.equal((await request(`/public/orders/${created.data.order_id}`, "GET")).data.order.status, "expired");
-      assert.equal((db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, stock, "stok kembali setelah pembayaran gagal");
+      assert.equal((await db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as { stock: number }).stock, stock, "stok kembali setelah pembayaran gagal");
       assert.equal(await stateAt("14:00"), "available", "slot terbuka lagi");
     });
 
     await t.test("batas waktu bayar yang lewat melepas slot walau webhook tidak pernah datang", async () => {
       const created = await request("/public/checkout", "POST", checkout([item("16:00", "17:00")]));
       assert.equal(created.status, 201);
-      db.prepare("UPDATE bookings SET hold_expires_at=unixepoch()-60 WHERE order_id=?").run(created.data.order_id);
+      await db.prepare("UPDATE bookings SET hold_expires_at=UNIX_TIMESTAMP()-60 WHERE order_id=?").run(created.data.order_id);
       assert.equal(await stateAt("16:00"), "available");
       assert.equal((await request(`/public/orders/${created.data.order_id}`, "GET")).data.order.status, "expired");
       assert.equal((await request("/public/checkout", "POST", checkout([item("16:00", "17:00")]))).status, 201, "slot yang sudah dilepas bisa dipesan lagi");
@@ -269,7 +271,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
     await t.test("hold kedaluwarsa tidak dianggap terisi di panel, dan bayar telat menjadi pengembalian", async () => {
       const created = await request("/public/checkout", "POST", checkout([item("17:00", "18:00")]));
       assert.equal(created.status, 201);
-      db.prepare("UPDATE bookings SET hold_expires_at=unixepoch()-60 WHERE order_id=?").run(created.data.order_id);
+      await db.prepare("UPDATE bookings SET hold_expires_at=UNIX_TIMESTAMP()-60 WHERE order_id=?").run(created.data.order_id);
       const context = await request(`/operations/context?date=${tomorrow}`, "GET", undefined, admin);
       assert.equal(context.status, 200);
       assert.ok(!context.data.schedule.some((entry: { start_time: string }) => entry.start_time === "17:00"), "formulir booking staf tidak lagi melihat slot itu terisi");
@@ -277,7 +279,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       // Midtrans menghitung batas bayarnya sedikit lebih lambat, jadi dana bisa masuk setelah booking kedaluwarsa.
       const late = await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount), "", "");
       assert.equal(late.status, 200);
-      const { id } = db.prepare("SELECT id FROM bookings WHERE order_id=?").get(created.data.order_id) as { id: string };
+      const { id } = await db.prepare("SELECT id FROM bookings WHERE order_id=?").get(created.data.order_id) as { id: string };
       const booking = (await request(`/operations/bookings/${id}`, "GET", undefined, admin)).data.booking;
       assert.equal(booking.status, "cancelled", "booking kedaluwarsa yang terlanjur dibayar dibatalkan agar dananya dikembalikan");
       assert.equal(booking.paid, created.data.amount);
@@ -311,7 +313,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       const view = (await request(`/public/orders/${created.data.order_id}`, "GET")).data.order;
       assert.equal(view.paid, 240000, "yang tercatat sama dengan yang ditagih Midtrans");
       assert.deepEqual(view.sessions.map((session: { paid: number }) => session.paid), [120000, 120000]);
-      const cash = db.prepare(`SELECT SUM(l.debit) debit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
+      const cash = await db.prepare(`SELECT SUM(l.debit) debit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
         WHERE e.source='pembayaran' AND a.is_cash=1 AND l.booking_id IS NULL AND e.ref_id IN (SELECT id FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?))`).get(created.data.order_id) as { debit: number };
       assert.equal(cash.debit, 240000, "jurnal kas sama dengan uang yang masuk");
       assert.equal((await request("/operations/payments/settings", "PUT", settings(), admin)).status, 200);
@@ -320,7 +322,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
     await t.test("uang yang masuk setelah batas bayar lewat dapat dikembalikan staf", async () => {
       const created = await request("/public/checkout", "POST", checkout([item("20:00", "21:00")]));
       assert.equal(created.status, 201);
-      db.prepare("UPDATE bookings SET hold_expires_at=unixepoch()-60 WHERE order_id=?").run(created.data.order_id);
+      await db.prepare("UPDATE bookings SET hold_expires_at=UNIX_TIMESTAMP()-60 WHERE order_id=?").run(created.data.order_id);
       assert.equal((await request(`/public/orders/${created.data.order_id}`, "GET")).data.order.status, "expired");
       await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount), "", "");
       const session = (await request(`/public/orders/${created.data.order_id}`, "GET")).data.order.sessions[0];
@@ -332,10 +334,10 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
     });
 
     await t.test("pajak ikut di keranjang dan halaman Midtrans, potongan gateway dicatat sebagai beban", async () => {
-      const kas = (code: string) => (db.prepare("SELECT id FROM accounts WHERE code=?").get(code) as { id: string }).id;
-      const finance = (extra: object) => request("/operations/finance/settings", "PUT", {
-        cash_accounts: { cash: kas("1-100"), transfer: kas("1-200"), qris: kas("1-200"), va: kas("1-200"), ewallet: kas("1-200"), card: kas("1-200") },
-        default_cash_account: kas("1-100"), locked_until: "", ...extra,
+      const kas = async (code: string) => (await db.prepare("SELECT id FROM accounts WHERE code=?").get(code) as { id: string }).id;
+      const finance = async (extra: object) => request("/operations/finance/settings", "PUT", {
+        cash_accounts: { cash: await kas("1-100"), transfer: await kas("1-200"), qris: await kas("1-200"), va: await kas("1-200"), ewallet: await kas("1-200"), card: await kas("1-200") },
+        default_cash_account: await kas("1-100"), locked_until: "", ...extra,
       }, admin);
       assert.equal((await finance({ tax: { enabled: true, label: "PB1", rate: 10, inclusive: false }, gateway_fees: { qris: { percent: 0.7, flat: 0 }, va: { percent: 0, flat: 4000 } } })).status, 200);
       const later = { ...item("17:00", "18:00"), date: (() => { const value = new Date(tomorrow + "T12:00:00Z"); value.setUTCDate(value.getUTCDate() + 1); return value.toISOString().slice(0, 10) })() };
@@ -350,9 +352,9 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.ok(snap.item_details.some(line => line.name.startsWith("PB1") && line.price === 30000), "pajak tampil sebagai baris sendiri, bukan penyesuaian");
       assert.equal(snap.item_details.reduce((sum, line) => sum + line.price * line.quantity, 0), snap.transaction_details.gross_amount);
       await request("/public/payments/midtrans/notification", "POST", notify(created.data.transaction_id, created.data.amount), "", "");
-      const fee = db.prepare("SELECT fee FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?)").get(created.data.order_id) as { fee: number };
+      const fee = await db.prepare("SELECT fee FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?)").get(created.data.order_id) as { fee: number };
       assert.equal(fee.fee, 2310, "0,7% dari 330.000");
-      const lines = db.prepare(`SELECT a.code,l.debit,l.credit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
+      const lines = await db.prepare(`SELECT a.code,l.debit,l.credit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
         WHERE e.source='pembayaran' AND e.ref_id IN (SELECT id FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?))`).all(created.data.order_id) as { code: string; debit: number; credit: number }[];
       assert.equal(lines.find(line => line.code === "1-200")!.debit, 330000 - 2310, "yang masuk rekening sudah dipotong");
       assert.equal(lines.find(line => line.code === "5-800")!.debit, 2310, "potongan menjadi biaya payment gateway");
@@ -456,7 +458,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
     });
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
-    db.close();
+    await db.close();
     assert.ok(path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep + "padelix-pay-test-"));
     rmSync(directory, { recursive: true, force: true });
   }

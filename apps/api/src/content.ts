@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { audit, db, transaction } from "./store.js";
+import { audit, db, saveSetting, transaction } from "./store.js";
 
 /**
  * Informasi yang membangun kepercayaan pelanggan: profil dan kontak venue,
@@ -74,37 +74,37 @@ export const faqsSchema = z.object({
   })).max(30, "Maksimal 30 pertanyaan.").default([]),
 });
 
-function read<T extends object>(key: string, schema: z.ZodType<T>): T & { updated_at: string | null } {
-  const row = db.prepare("SELECT document FROM settings WHERE key = ?").get(key) as { document: string } | undefined;
+async function read<T extends object>(key: string, schema: z.ZodType<T>): Promise<T & { updated_at: string | null }> {
+  const row = await db.prepare("SELECT document FROM settings WHERE `key` = ?").get(key) as { document: string } | undefined;
   const stored = row ? JSON.parse(row.document) as Record<string, unknown> : {};
   // Bila skema kelak bertambah kolom, dokumen lama tetap terbaca dan kolom baru memakai nilai bawaan.
   const parsed = schema.safeParse(stored);
   return { ...(parsed.success ? parsed.data : schema.parse({})), updated_at: typeof stored.updated_at === "string" ? stored.updated_at : null };
 }
 
-function write<T extends object>(key: string, schema: z.ZodType<T>, input: unknown, actor: string) {
+async function write<T extends object>(key: string, schema: z.ZodType<T>, input: unknown, actor: string) {
   const document = { ...schema.parse(input), updated_at: new Date().toISOString() };
-  transaction(() => {
-    db.prepare("INSERT INTO settings (key, document) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET document = excluded.document").run(key, JSON.stringify(document));
-    audit(actor, `content.${key}.update`, key);
+  await transaction(async () => {
+    await saveSetting(key, document);
+    await audit(actor, `content.${key}.update`, key);
   });
   return document;
 }
 
-export const getInfo = () => read("info", infoSchema);
+export const getInfo = async () => await read("info", infoSchema);
 /** Batas durasi satu sesi booking online dalam menit; null bila hanya dibatasi jam tutup. */
-export const maxBookingMinutes = () => { const hours = getInfo().max_booking_hours; return hours > 0 ? hours * 60 : null; };
+export const maxBookingMinutes = async () => { const hours = (await getInfo()).max_booking_hours; return hours > 0 ? hours * 60 : null; };
 /** Pesan galat bila durasi di luar batas, atau string kosong bila sah. */
-export function durationProblem(duration: number) {
-  const max = maxBookingMinutes();
+export async function durationProblem(duration: number) {
+  const max = await maxBookingMinutes();
   if (duration < 60) return "Durasi main minimal 1 jam.";
   if (duration % 30 !== 0) return "Durasi main harus kelipatan 30 menit.";
   if (max !== null && duration > max) return `Durasi main maksimal ${(max / 60).toLocaleString("id-ID")} jam per booking.`;
   return "";
 }
-export const getPolicies = () => read("policies", policiesSchema);
-export const getFaqs = () => read("faqs", faqsSchema);
-export const saveInfo = (input: unknown, actor: string) => write("info", infoSchema, input, actor);
-export const savePolicies = (input: unknown, actor: string) => write("policies", policiesSchema, input, actor);
-export const saveFaqs = (input: unknown, actor: string) => write("faqs", faqsSchema, input, actor);
-export const content = () => ({ info: getInfo(), policies: getPolicies(), faqs: getFaqs() });
+export const getPolicies = async () => await read("policies", policiesSchema);
+export const getFaqs = async () => await read("faqs", faqsSchema);
+export const saveInfo = async (input: unknown, actor: string) => await write("info", infoSchema, input, actor);
+export const savePolicies = async (input: unknown, actor: string) => await write("policies", policiesSchema, input, actor);
+export const saveFaqs = async (input: unknown, actor: string) => await write("faqs", faqsSchema, input, actor);
+export const content = async () => ({ info: await getInfo(), policies: await getPolicies(), faqs: await getFaqs() });

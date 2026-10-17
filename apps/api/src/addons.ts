@@ -30,7 +30,7 @@ export interface BookingAddon {id:string;booking_id:string;addon_id:string|null;
 type StockReason="awal"|"restok"|"koreksi"|"rusak"|"terpakai"|"kembali";
 
 /** Booking yang sedang memegang barang: aktif, selesai, atau hold online yang belum kedaluwarsa. */
-const holding="(b.status IN ('confirmed','completed') OR (b.status='pending' AND b.hold_expires_at>unixepoch()))";
+const holding="(b.status IN ('confirmed','completed') OR (b.status='pending' AND b.hold_expires_at>UNIX_TIMESTAMP()))";
 const columns="id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,photo_id,created_at";
 const rupiah=(value:number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(value);
 
@@ -48,86 +48,85 @@ export const addonSchema=z.object({
   online:z.boolean(),
 }).refine(v=>v.type!=="jual"||v.pricing==="per_booking",{message:"Barang jual dihitung per pcs, bukan per jam.",path:["pricing"]});
 
-export function addons(){return db.prepare(`SELECT ${columns} FROM addons ORDER BY position,created_at`).all() as unknown as Addon[]}
-function getAddon(id:string){
-  const addon=addons().find(item=>item.id===id);
+export async function addons(){return await db.prepare(`SELECT ${columns} FROM addons ORDER BY position,created_at`).all() as Addon[]}
+async function getAddon(id:string){
+  const addon=(await addons()).find(item=>item.id===id);
   check(addon,404,"Item tambahan tidak ditemukan.");
   return addon;
 }
-const usedInBooking=(id:string)=>!!db.prepare("SELECT 1 FROM booking_addons WHERE addon_id=? LIMIT 1").get(id);
+const usedInBooking=async(id:string)=>!!await db.prepare("SELECT 1 FROM booking_addons WHERE addon_id=? LIMIT 1").get(id);
 /** Katalog untuk admin. `in_use` menandai item yang sudah tercatat di booking sehingga tidak dapat dihapus. */
-export function manageAddons(){
-  const used=new Set((db.prepare("SELECT DISTINCT addon_id FROM booking_addons WHERE addon_id IS NOT NULL").all() as {addon_id:string}[]).map(row=>row.addon_id));
-  return addons().map(addon=>({...addon,in_use:used.has(addon.id)}));
+export async function manageAddons(){
+  const used=new Set((await db.prepare("SELECT DISTINCT addon_id FROM booking_addons WHERE addon_id IS NOT NULL").all() as {addon_id:string}[]).map(row=>row.addon_id));
+  return (await addons()).map(addon=>({...addon,in_use:used.has(addon.id)}));
 }
-const managed=(id:string)=>manageAddons().find(addon=>addon.id===id)!;
+const managed=async(id:string)=>(await manageAddons()).find(addon=>addon.id===id)!;
 
-function recordMove(addonId:string,delta:number,reason:StockReason,stockAfter:number,actor:string,note="",bookingId:string|null=null){
-  db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,booking_id,stock_after,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+async function recordMove(addonId:string,delta:number,reason:StockReason,stockAfter:number,actor:string,note="",bookingId:string|null=null){
+  await db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,booking_id,stock_after,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
     .run(randomUUID(),addonId,delta,reason,note,bookingId,stockAfter,actor,new Date().toISOString());
 }
 
-export function saveAddon(input:unknown,actor:string,id?:string){
+export async function saveAddon(input:unknown,actor:string,id?:string){
   const data=addonSchema.parse(input);
-  return transaction(()=>{
-    const all=addons(),existing=id?all.find(item=>item.id===id):undefined;
+  return await transaction(async()=>{
+    const all=await addons(),existing=id?all.find(item=>item.id===id):undefined;
     check(!id||existing,404,"Item tambahan tidak ditemukan.");
     check(!all.some(item=>item.id!==id&&item.name.toLowerCase()===data.name.toLowerCase()),409,"Nama item sudah digunakan.");
     if(existing){
       // Stok barang jual sudah dipotong oleh booking lama; mengganti jenis akan merusak hitungannya.
-      check(existing.type===data.type||!usedInBooking(existing.id),409,"Jenis item tidak dapat diubah setelah dipakai di booking. Buat item baru bila perlu.");
-      db.prepare("UPDATE addons SET name=?,category=?,type=?,pricing=?,price=?,stock=?,low_stock=?,max_per_booking=?,description=?,active=?,online=? WHERE id=?")
+      check(existing.type===data.type||!await usedInBooking(existing.id),409,"Jenis item tidak dapat diubah setelah dipakai di booking. Buat item baru bila perlu.");
+      await db.prepare("UPDATE addons SET name=?,category=?,type=?,pricing=?,price=?,stock=?,low_stock=?,max_per_booking=?,description=?,active=?,online=? WHERE id=?")
         .run(data.name,data.category,data.type,data.pricing,data.price,data.stock,data.low_stock,data.max_per_booking,data.description,Number(data.active),Number(data.online),existing.id);
       if(data.stock!==null&&data.stock!==existing.stock)
-        recordMove(existing.id,data.stock-(existing.stock??0),existing.stock===null?"awal":"koreksi",data.stock,actor,existing.stock===null?"Stok mulai dilacak":"Diubah dari formulir item");
+        await recordMove(existing.id,data.stock-(existing.stock??0),existing.stock===null?"awal":"koreksi",data.stock,actor,existing.stock===null?"Stok mulai dilacak":"Diubah dari formulir item");
     }else{
       id=randomUUID();
       const position=all.length?Math.max(...all.map(item=>item.position))+1:0;
-      db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      await db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .run(id,data.name,data.category,data.type,data.pricing,data.price,data.stock,data.low_stock,data.max_per_booking,data.description,Number(data.active),Number(data.online),position,new Date().toISOString());
-      if(data.stock!==null)recordMove(id,data.stock,"awal",data.stock,actor);
+      if(data.stock!==null)await recordMove(id,data.stock,"awal",data.stock,actor);
     }
-    audit(actor,existing?"addon.update":"addon.create",id!);
-    return managed(id!);
+    await audit(actor,existing?"addon.update":"addon.create",id!);
+    return await managed(id!);
   });
 }
 
-export function removeAddon(id:string,actor:string){transaction(()=>{
-  getAddon(id);
-  check(!usedInBooking(id),409,"Item ini sudah tercatat di booking. Nonaktifkan saja agar riwayat tagihan tetap utuh.");
+export async function removeAddon(id:string,actor:string){await transaction(async()=>{
+  await getAddon(id);
+  check(!await usedInBooking(id),409,"Item ini sudah tercatat di booking. Nonaktifkan saja agar riwayat tagihan tetap utuh.");
   // Riwayat stok ikut terhapus lewat ON DELETE CASCADE.
-  db.prepare("DELETE FROM addons WHERE id=?").run(id);
-  audit(actor,"addon.delete",id);
+  await db.prepare("DELETE FROM addons WHERE id=?").run(id);
+  await audit(actor,"addon.delete",id);
 })}
 
-export function orderAddons(input:unknown,actor:string){
+export async function orderAddons(input:unknown,actor:string){
   const {ids}=z.object({ids:z.array(z.string().min(1)).max(500)}).parse(input);
-  return transaction(()=>{
-    const current=addons().map(item=>item.id);
+  return await transaction(async()=>{
+    const current=(await addons()).map(item=>item.id);
     check(ids.length===current.length&&new Set(ids).size===ids.length&&ids.every(id=>current.includes(id)),409,"Daftar item sudah berubah. Muat ulang lalu coba lagi.");
-    const update=db.prepare("UPDATE addons SET position=? WHERE id=?");
-    ids.forEach((id,position)=>update.run(position,id));
-    audit(actor,"addon.order","addons");
-    return manageAddons();
+    for(const [position,id] of ids.entries())await db.prepare("UPDATE addons SET position=? WHERE id=?").run(position,id);
+    await audit(actor,"addon.order","addons");
+    return await manageAddons();
   });
 }
 
 /** Satu foto per item. Id foto selalu baru agar cache browser untuk foto lama tidak terpakai. */
-export function setAddonPhoto(id:string,contentType:string|undefined,body:unknown,actor:string){
+export async function setAddonPhoto(id:string,contentType:string|undefined,body:unknown,actor:string){
   const type=checkImage(contentType,body);
-  return transaction(()=>{
-    getAddon(id);
-    db.prepare("UPDATE addons SET photo_id=?,photo_mime=?,photo_data=? WHERE id=?").run(randomUUID(),type,body as Buffer,id);
-    audit(actor,"addon.photo.set",id);
-    return managed(id);
+  return await transaction(async()=>{
+    await getAddon(id);
+    await db.prepare("UPDATE addons SET photo_id=?,photo_mime=?,photo_data=? WHERE id=?").run(randomUUID(),type,body as Buffer,id);
+    await audit(actor,"addon.photo.set",id);
+    return await managed(id);
   });
 }
-export function removeAddonPhoto(id:string,actor:string){
-  return transaction(()=>{
-    getAddon(id);
-    db.prepare("UPDATE addons SET photo_id=NULL,photo_mime=NULL,photo_data=NULL WHERE id=?").run(id);
-    audit(actor,"addon.photo.delete",id);
-    return managed(id);
+export async function removeAddonPhoto(id:string,actor:string){
+  return await transaction(async()=>{
+    await getAddon(id);
+    await db.prepare("UPDATE addons SET photo_id=NULL,photo_mime=NULL,photo_data=NULL WHERE id=?").run(id);
+    await audit(actor,"addon.photo.delete",id);
+    return await managed(id);
   });
 }
 
@@ -138,10 +137,10 @@ export const stockSchema=z.object({
   note:z.string().trim().max(200,"Keterangan maksimal 200 karakter.").default(""),
 });
 /** restok menambah, rusak mengurangi, koreksi menyetel stok ke hasil hitung fisik. */
-export function adjustStock(id:string,input:unknown,actor:string){
+export async function adjustStock(id:string,input:unknown,actor:string){
   const data=stockSchema.parse(input);
-  return transaction(()=>{
-    const addon=getAddon(id);
+  return await transaction(async()=>{
+    const addon=await getAddon(id);
     check(addon.stock!==null,409,"Stok item ini tidak dibatasi. Isi jumlah stok di formulir item untuk mulai melacaknya.");
     const current=addon.stock;
     if(data.reason!=="koreksi")check(data.quantity>0,400,"Jumlah minimal 1.");
@@ -150,24 +149,24 @@ export function adjustStock(id:string,input:unknown,actor:string){
     check(next<=100000,400,"Stok maksimal 100.000.");
     check(next!==current,400,"Jumlah stok tidak berubah.");
     if(data.reason==="rusak")check(data.note.length>=3,400,"Isi keterangan barang rusak atau hilang.");
-    db.prepare("UPDATE addons SET stock=? WHERE id=?").run(next,id);
-    recordMove(id,next-current,data.reason,next,actor,data.note);
-    audit(actor,"addon.stock",id);
-    return {addon:managed(id),moves:stockMoves(id)};
+    await db.prepare("UPDATE addons SET stock=? WHERE id=?").run(next,id);
+    await recordMove(id,next-current,data.reason,next,actor,data.note);
+    await audit(actor,"addon.stock",id);
+    return {addon:await managed(id),moves:await stockMoves(id)};
   });
 }
-export function stockMoves(id:string){
-  getAddon(id);
-  const names=new Map(getUsers().map(user=>[user.id,user.name]));
-  const rows=db.prepare("SELECT m.id,m.delta,m.reason,m.note,m.booking_id,m.stock_after,m.created_by,m.created_at,b.customer booking_customer,b.date booking_date FROM addon_stock_moves m LEFT JOIN bookings b ON b.id=m.booking_id WHERE m.addon_id=? ORDER BY m.created_at DESC,m.rowid DESC LIMIT 60").all(id) as {created_by:string|null}[];
+export async function stockMoves(id:string){
+  await getAddon(id);
+  const names=new Map((await getUsers()).map(user=>[user.id,user.name]));
+  const rows=await db.prepare("SELECT m.id,m.delta,m.reason,m.note,m.booking_id,m.stock_after,m.created_by,m.created_at,b.customer booking_customer,b.date booking_date FROM addon_stock_moves m LEFT JOIN bookings b ON b.id=m.booking_id WHERE m.addon_id=? ORDER BY m.created_at DESC,m.seq DESC LIMIT 60").all(id) as {created_by:string|null}[];
   return rows.map(row=>({...row,actor:row.created_by?names.get(row.created_by)??"":""}));
 }
 
 // --- Ketersediaan -----------------------------------------------------------
 export type AddonWindow={date:string;start:string;end:string};
 /** Unit yang dipakai booking lain pada slot 30 menit tersibuk di dalam rentang. */
-function peakUse(addonId:string,window:AddonWindow,excludeBooking:string){
-  const rows=db.prepare(`SELECT b.start_time,b.end_time,SUM(l.quantity) quantity FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE l.addon_id=? AND b.date=? AND ${holding} AND b.start_time<? AND b.end_time>? AND b.id<>? GROUP BY b.id`)
+async function peakUse(addonId:string,window:AddonWindow,excludeBooking:string){
+  const rows=await db.prepare(`SELECT b.start_time,b.end_time,SUM(l.quantity) quantity FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE l.addon_id=? AND b.date=? AND ${holding} AND b.start_time<? AND b.end_time>? AND b.id<>? GROUP BY b.id`)
     .all(addonId,window.date,window.end,window.start,excludeBooking) as {start_time:string;end_time:string;quantity:number}[];
   let peak=0;
   for(let value=minutes(window.start);value<minutes(window.end);value+=30){
@@ -177,22 +176,26 @@ function peakUse(addonId:string,window:AddonWindow,excludeBooking:string){
   return peak;
 }
 /** Jumlah yang masih bisa dipakai booking ini. Barang yang sudah dipegang booking ini dihitung tersedia. */
-function remaining(addon:Addon,window:AddonWindow,bookingId=""){
+async function remaining(addon:Addon,window:AddonWindow,bookingId=""){
   if(addon.stock===null)return null;
   if(addon.type==="jual"){
-    const own=bookingId?(db.prepare("SELECT COALESCE(SUM(quantity),0) n FROM booking_addons WHERE booking_id=? AND addon_id=?").get(bookingId,addon.id) as {n:number}).n:0;
+    const own=bookingId?(await db.prepare("SELECT COALESCE(SUM(quantity),0) n FROM booking_addons WHERE booking_id=? AND addon_id=?").get(bookingId,addon.id) as {n:number}).n:0;
     return addon.stock+own;
   }
-  return Math.max(0,addon.stock-peakUse(addon.id,window,bookingId));
+  return Math.max(0,addon.stock-await peakUse(addon.id,window,bookingId));
 }
 const optionShape=(addon:Addon)=>({id:addon.id,name:addon.name,category:addon.category,type:addon.type,pricing:addon.pricing,price:addon.price,description:addon.description,photo_id:addon.photo_id,max_per_booking:addon.max_per_booking});
 /** Pilihan untuk formulir booking staf: semua item aktif, termasuk yang tidak tampil online. */
-export function addonOptions(window:AddonWindow,bookingId=""){
-  return addons().filter(addon=>addon.active).map(addon=>({...optionShape(addon),online:!!addon.online,available:remaining(addon,window,bookingId)}));
+export async function addonOptions(window:AddonWindow,bookingId=""){
+  const list=[];
+  for(const addon of (await addons()).filter(addon=>addon.active))list.push({...optionShape(addon),online:!!addon.online,available:await remaining(addon,window,bookingId)});
+  return list;
 }
 /** Pilihan untuk pelanggan. Tanpa rentang jam, `available` untuk sewa adalah jumlah unit. */
-export function publicAddons(window?:AddonWindow){
-  return addons().filter(addon=>addon.active&&addon.online).map(addon=>({...optionShape(addon),available:window?remaining(addon,window):addon.stock}));
+export async function publicAddons(window?:AddonWindow){
+  const list=[];
+  for(const addon of (await addons()).filter(addon=>addon.active&&addon.online))list.push({...optionShape(addon),available:window?await remaining(addon,window):addon.stock});
+  return list;
 }
 
 // --- Tambahan pada booking --------------------------------------------------
@@ -209,34 +212,36 @@ export const lineSchema=z.object({
   quantity:z.number().int().min(1,"Jumlah minimal 1.").max(99,"Jumlah maksimal 99."),
 });
 export const linesSchema=z.array(lineSchema).max(30,"Maksimal 30 baris tambahan per booking.");
-export function bookingAddons(bookingId:string){
-  return db.prepare("SELECT id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,returned_at,created_at FROM booking_addons WHERE booking_id=? ORDER BY created_at,rowid").all(bookingId) as unknown as BookingAddon[];
+export async function bookingAddons(bookingId:string){
+  return await db.prepare("SELECT id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,returned_at,created_at FROM booking_addons WHERE booking_id=? ORDER BY created_at,seq").all(bookingId) as BookingAddon[];
 }
 /**
  * Tambahan booking yang dipindah ke jam lain: barang sewa harus cukup di jam baru, dan harga per jam
  * mengikuti durasi baru. Barang jual tidak bergantung jam. Mengembalikan subtotal baru tiap baris
  * tanpa menyimpan apa pun; `saveMovedLines` menuliskannya setelah semua pemeriksaan lolos.
  */
-export function moveLines(bookingId:string,window:AddonWindow){
-  const duration=minutes(window.end)-minutes(window.start),catalog=addons();
-  return bookingAddons(bookingId).map(line=>{
+export async function moveLines(bookingId:string,window:AddonWindow){
+  const duration=minutes(window.end)-minutes(window.start),catalog=await addons();
+  const moved=[];
+  for(const line of await bookingAddons(bookingId)){
     const addon=line.type==="sewa"&&line.addon_id?catalog.find(entry=>entry.id===line.addon_id):undefined;
     if(addon&&addon.stock!==null){
-      const use=peakUse(addon.id,window,bookingId);
+      const use=await peakUse(addon.id,window,bookingId);
       check(use+line.quantity<=addon.stock,409,`${addon.name} hanya tersisa ${Math.max(0,addon.stock-use)} pada ${window.start}–${window.end}. Kurangi jumlahnya atau pilih jam lain.`);
     }
-    return {id:line.id,subtotal:lineTotal(line.unit_price,line.quantity,line.pricing,duration)};
-  });
+    moved.push({id:line.id,subtotal:lineTotal(line.unit_price,line.quantity,line.pricing,duration)});
+  }
+  return moved;
 }
-export function saveMovedLines(lines:{id:string;subtotal:number}[]){
-  const update=db.prepare("UPDATE booking_addons SET subtotal=? WHERE id=?");
-  for(const line of lines)update.run(line.subtotal,line.id);
+export async function saveMovedLines(lines:{id:string;subtotal:number}[]){
+  for(const line of lines)await db.prepare("UPDATE booking_addons SET subtotal=? WHERE id=?").run(line.subtotal,line.id);
 }
 /** Potong (atau kembalikan bila negatif) stok barang jual yang dilacak. */
-function consume(addonId:string|null,quantity:number,bookingId:string,actor:string,note=""){
+async function consume(addonId:string|null,quantity:number,bookingId:string,actor:string,note=""){
   if(!addonId||quantity===0)return;
-  const row=db.prepare("UPDATE addons SET stock=stock-? WHERE id=? AND type='jual' AND stock IS NOT NULL RETURNING stock").get(quantity,addonId) as {stock:number}|undefined;
-  if(row)recordMove(addonId,-quantity,quantity>0?"terpakai":"kembali",row.stock,actor,note,bookingId);
+  const changed=await db.prepare("UPDATE addons SET stock=stock-? WHERE id=? AND type='jual' AND stock IS NOT NULL").run(quantity,addonId);
+  const row=changed.changes?await db.prepare("SELECT stock FROM addons WHERE id=?").get(addonId) as {stock:number}:undefined;
+  if(row)await recordMove(addonId,-quantity,quantity>0?"terpakai":"kembali",row.stock,actor,note,bookingId);
 }
 
 export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number;discount:number;tax_rate:number;tax_inclusive:number};
@@ -244,9 +249,9 @@ export type BookingRef={id:string;date:string;start_time:string;end_time:string;
  * Ganti seluruh tambahan booking dengan daftar baru, lalu perbarui total tagihan.
  * Harus dipanggil di dalam transaksi. Baris lama yang tidak ikut dikirim dihapus.
  */
-export function applyLines(booking:BookingRef,input:unknown,actor:string){
+export async function applyLines(booking:BookingRef,input:unknown,actor:string){
   const lines=linesSchema.parse(input);
-  const current=bookingAddons(booking.id),catalog=addons();
+  const current=await bookingAddons(booking.id),catalog=await addons();
   const duration=minutes(booking.end_time)-minutes(booking.start_time);
   const window={date:booking.date,start:booking.start_time,end:booking.end_time};
   type Plan={line?:BookingAddon;addon?:Addon;name:string;type:BookingAddon["type"];pricing:AddonPricing;unit_price:number;quantity:number};
@@ -284,7 +289,7 @@ export function applyLines(booking:BookingRef,input:unknown,actor:string){
     if(addon.stock===null)continue;
     if(addon.type==="jual")check(addon.stock>=entry.quantity-previous,409,`Stok ${addon.name} hanya cukup untuk ${addon.stock+previous}.`);
     else{
-      const use=peakUse(addon.id,window,booking.id);
+      const use=await peakUse(addon.id,window,booking.id);
       check(use+entry.quantity<=addon.stock,409,`${addon.name} tersisa ${Math.max(0,addon.stock-use)} pada ${booking.start_time}–${booking.end_time}.`);
     }
   }
@@ -296,8 +301,8 @@ export function applyLines(booking:BookingRef,input:unknown,actor:string){
   const kept=new Set(plan.flatMap(entry=>entry.line?[entry.line.id]:[]));
   for(const line of current){
     if(kept.has(line.id))continue;
-    db.prepare("DELETE FROM booking_addons WHERE id=?").run(line.id);
-    if(line.type==="jual")consume(line.addon_id,-line.quantity,booking.id,actor,"Dihapus dari booking");
+    await db.prepare("DELETE FROM booking_addons WHERE id=?").run(line.id);
+    if(line.type==="jual")await consume(line.addon_id,-line.quantity,booking.id,actor,"Dihapus dari booking");
   }
   const now=new Date().toISOString();
   for(const entry of plan){
@@ -305,48 +310,47 @@ export function applyLines(booking:BookingRef,input:unknown,actor:string){
     if(entry.line){
       if(entry.line.quantity===entry.quantity)continue;
       // Barang sewa yang jumlahnya ditambah belum kembali semuanya.
-      db.prepare("UPDATE booking_addons SET quantity=?,subtotal=?,returned_at=CASE WHEN ?>quantity THEN NULL ELSE returned_at END WHERE id=?").run(entry.quantity,subtotal,entry.quantity,entry.line.id);
-      if(entry.type==="jual")consume(entry.line.addon_id,entry.quantity-entry.line.quantity,booking.id,actor);
+      await db.prepare("UPDATE booking_addons SET quantity=?,subtotal=?,returned_at=CASE WHEN ?>quantity THEN NULL ELSE returned_at END WHERE id=?").run(entry.quantity,subtotal,entry.quantity,entry.line.id);
+      if(entry.type==="jual")await consume(entry.line.addon_id,entry.quantity-entry.line.quantity,booking.id,actor);
     }else{
-      db.prepare("INSERT INTO booking_addons (id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      await db.prepare("INSERT INTO booking_addons (id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
         .run(randomUUID(),booking.id,entry.addon?.id??null,entry.name,entry.type,entry.pricing,entry.unit_price,entry.quantity,subtotal,actor,now);
-      if(entry.type==="jual")consume(entry.addon!.id,entry.quantity,booking.id,actor);
+      if(entry.type==="jual")await consume(entry.addon!.id,entry.quantity,booking.id,actor);
     }
   }
-  db.prepare("UPDATE bookings SET total=?,tax=? WHERE id=?").run(total,tax,booking.id);
+  await db.prepare("UPDATE bookings SET total=?,tax=? WHERE id=?").run(total,tax,booking.id);
   return total;
 }
 
 /** Booking dibatalkan: stok barang jual kembali. Barisnya tetap tersimpan sebagai riwayat tagihan. */
-export function releaseAddons(bookingId:string,actor:string){
-  for(const line of bookingAddons(bookingId))if(line.type==="jual")consume(line.addon_id,-line.quantity,bookingId,actor,"Booking dibatalkan");
+export async function releaseAddons(bookingId:string,actor:string){
+  for(const line of await bookingAddons(bookingId))if(line.type==="jual")await consume(line.addon_id,-line.quantity,bookingId,actor,"Booking dibatalkan");
 }
 
 export const returnSchema=z.object({line_ids:z.array(z.string().min(1)).min(1,"Pilih barang yang dikembalikan.").max(30),returned:z.boolean()});
-export function setReturned(bookingId:string,input:unknown){
+export async function setReturned(bookingId:string,input:unknown){
   const data=returnSchema.parse(input);
-  const lines=bookingAddons(bookingId);
+  const lines=await bookingAddons(bookingId);
   for(const id of data.line_ids){
     const line=lines.find(entry=>entry.id===id);
     check(line,404,"Barang tidak ditemukan pada booking ini. Muat ulang halaman.");
     check(line.type==="sewa",400,`${line.name} bukan barang sewa.`);
   }
-  const update=db.prepare("UPDATE booking_addons SET returned_at=? WHERE id=? AND booking_id=?");
   const stamp=data.returned?new Date().toISOString():null;
-  for(const id of data.line_ids)update.run(stamp,id,bookingId);
+  for(const id of data.line_ids)await db.prepare("UPDATE booking_addons SET returned_at=? WHERE id=? AND booking_id=?").run(stamp,id,bookingId);
 }
 
 // --- Ringkasan --------------------------------------------------------------
-export function addonSummary(){
+export async function addonSummary(){
   const now=localClock();
   const start=new Date(now.date+"T12:00:00Z");start.setUTCDate(start.getUTCDate()-29);
   const since=start.toISOString().slice(0,10);
   const counted="b.status IN ('confirmed','completed')";
-  const top=db.prepare(`SELECT l.addon_id,l.name,l.type,SUM(l.quantity) quantity,SUM(l.subtotal) revenue,COUNT(DISTINCT l.booking_id) bookings FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ? GROUP BY COALESCE(l.addon_id,'lain:'||lower(l.name)) ORDER BY revenue DESC,quantity DESC LIMIT 10`).all(since,now.date);
-  const sum=(from:string,to:string)=>(db.prepare(`SELECT COALESCE(SUM(l.subtotal),0) n FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ?`).get(from,to) as {n:number}).n;
+  const top=await db.prepare(`SELECT l.addon_id,l.name,l.type,SUM(l.quantity) quantity,SUM(l.subtotal) revenue,COUNT(DISTINCT l.booking_id) bookings FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ? GROUP BY COALESCE(l.addon_id,CONCAT('lain:',lower(l.name))) ORDER BY revenue DESC,quantity DESC LIMIT 10`).all(since,now.date);
+  const sum=async(from:string,to:string)=>(await db.prepare(`SELECT COALESCE(SUM(l.subtotal),0) n FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ?`).get(from,to) as {n:number}).n;
   // Barang sewa dianggap sedang dibawa pelanggan sejak jam main dimulai.
-  const unreturned=db.prepare(`SELECT l.id,l.name,l.quantity,b.id booking_id,b.customer,b.phone,b.date,b.start_time,b.end_time,c.name court_name FROM booking_addons l JOIN bookings b ON b.id=l.booking_id JOIN courts c ON c.id=b.court_id WHERE l.type='sewa' AND l.returned_at IS NULL AND ${counted} AND (b.date<? OR (b.date=? AND b.start_time<=?)) ORDER BY b.date,b.start_time LIMIT 100`).all(now.date,now.date,now.time);
-  const lowStock=addons().filter(addon=>addon.active&&addon.stock!==null&&(addon.stock===0||(addon.type==="jual"&&addon.stock<=addon.low_stock)))
+  const unreturned=await db.prepare(`SELECT l.id,l.name,l.quantity,b.id booking_id,b.customer,b.phone,b.date,b.start_time,b.end_time,c.name court_name FROM booking_addons l JOIN bookings b ON b.id=l.booking_id JOIN courts c ON c.id=b.court_id WHERE l.type='sewa' AND l.returned_at IS NULL AND ${counted} AND (b.date<? OR (b.date=? AND b.start_time<=?)) ORDER BY b.date,b.start_time LIMIT 100`).all(now.date,now.date,now.time);
+  const lowStock=(await addons()).filter(addon=>addon.active&&addon.stock!==null&&(addon.stock===0||(addon.type==="jual"&&addon.stock<=addon.low_stock)))
     .map(addon=>({id:addon.id,name:addon.name,type:addon.type,stock:addon.stock,low_stock:addon.low_stock}));
-  return {since,revenue:sum(since,now.date),today:sum(now.date,now.date),top,unreturned,low_stock:lowStock};
+  return {since,revenue:await sum(since,now.date),today:await sum(now.date,now.date),top,unreturned,low_stock:lowStock};
 }

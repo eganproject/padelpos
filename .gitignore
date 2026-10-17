@@ -9,6 +9,7 @@ apps/api/data/*.json
 
 apps/api/data/*.sqlite*
 apps/api/data/backups/
+apps/api/data/proxy-secret
 *.tsbuildinfo
 playwright-report/
 test-results/

@@ -1,789 +1,224 @@
-﻿import { randomUUID } from "node:crypto";
-import { mkdirSync, existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { dataDir } from "./config.js";
+import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
+import { databaseUrl } from "./config.js";
+import { accountSeed, defaultMenus, defaultRoles, schema } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
-mkdirSync(dataDir, { recursive: true });
-export const db = new DatabaseSync(path.join(dataDir, "padelix.sqlite"));
-db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;");
-export function transaction<T>(work: () => T): T {
-  db.exec("BEGIN IMMEDIATE");
-  try { const result = work(); db.exec("COMMIT"); return result; }
-  catch (error) { db.exec("ROLLBACK"); throw error; }
-}
-const now = new Date().toISOString();
-const defaultMenus: AccessMenu[] = [
-  ["dashboard", "Overview", "/admin", "LayoutDashboard", "Workspace", 1],
-  ["bookings", "Bookings", "/admin/bookings", "CalendarDays", "Workspace", 2],
-  ["courts", "Courts", "/admin/courts", "Activity", "Workspace", 3],
-  ["users", "Users", "/admin/users", "UsersRound", "Access Control", 4],
-  ["roles", "Roles", "/admin/roles", "ShieldCheck", "Access Control", 5],
-  ["menus", "Menu Access", "/admin/menus", "MenuSquare", "Access Control", 6],
-  ["profile", "My Profile", "/admin/profile", "UserRound", "System", 7],
-].map(([id, name, menuPath, icon, group, order]) => ({ id: String(id), name: String(name), path: String(menuPath), icon: String(icon), group: String(group), order: Number(order), active: true, createdAt: now }));
-const defaultRoles: AccessRole[] = [
-  { id:"admin", name:"Super Admin", slug:"admin", description:"Akses penuh.", menuIds:defaultMenus.map(m=>m.id), isSystem:true, createdAt:now },
-  { id:"staff", name:"Operator", slug:"staff", description:"Operasional harian.", menuIds:["dashboard","bookings","courts","profile"], isSystem:true, createdAt:now },
-];
-type Collection = "users" | "roles" | "menus";
-function collection<T>(name: Collection): T[] {
-  return (db.prepare(`SELECT document FROM ${name}`).all() as {document:string}[]).map(row => JSON.parse(row.document) as T);
-}
-function saveCollection(name: Collection, items: {id:string}[]) {
-  db.prepare(`DELETE FROM ${name}`).run();
-  const insert = db.prepare(`INSERT INTO ${name} (id, document) VALUES (?, ?)`);
-  for (const item of items) insert.run(item.id, JSON.stringify(item));
-}
-db.exec("CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)");
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 1").get()) transaction(() => {
-  for (const name of ["users","roles","menus"] as const) db.exec(`CREATE TABLE ${name} (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)))`);
-  db.exec(`
-    CREATE UNIQUE INDEX users_email ON users (lower(json_extract(document, '$.email')));
-    CREATE UNIQUE INDEX roles_slug ON roles (json_extract(document, '$.slug'));
-    CREATE UNIQUE INDEX menus_path ON menus (json_extract(document, '$.path'));
-    CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
-    CREATE TABLE courts (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, hourly_rate INTEGER NOT NULL CHECK(hourly_rate > 0), opens_at TEXT NOT NULL, closes_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
-    CREATE TABLE bookings (id TEXT PRIMARY KEY, court_id TEXT NOT NULL REFERENCES courts(id), customer TEXT NOT NULL, phone TEXT NOT NULL, date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, total INTEGER NOT NULL CHECK(total > 0), status TEXT NOT NULL CHECK(status IN ('confirmed','completed','cancelled')), notes TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL, cancel_reason TEXT NOT NULL DEFAULT '');
-    CREATE INDEX bookings_schedule ON bookings(court_id,date,start_time,end_time);
-    CREATE TABLE maintenance (id TEXT PRIMARY KEY, court_id TEXT NOT NULL REFERENCES courts(id), date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, reason TEXT NOT NULL);
-    CREATE TABLE payments (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL REFERENCES bookings(id), amount INTEGER NOT NULL CHECK(amount > 0), kind TEXT NOT NULL CHECK(kind IN ('payment','refund')), method TEXT NOT NULL CHECK(method IN ('cash','transfer','qris')), note TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL);
-    CREATE INDEX payments_booking ON payments(booking_id);
-    CREATE TABLE audit_log (id INTEGER PRIMARY KEY, actor_id TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT NOT NULL, created_at TEXT NOT NULL);
-    CREATE TRIGGER booking_overlap_insert BEFORE INSERT ON bookings WHEN NEW.status <> 'cancelled' BEGIN
-      SELECT RAISE(ABORT, 'schedule_conflict') WHERE EXISTS(SELECT 1 FROM bookings WHERE court_id=NEW.court_id AND date=NEW.date AND status <> 'cancelled' AND start_time < NEW.end_time AND end_time > NEW.start_time);
-      SELECT RAISE(ABORT, 'schedule_conflict') WHERE EXISTS(SELECT 1 FROM maintenance WHERE court_id=NEW.court_id AND date=NEW.date AND start_time < NEW.end_time AND end_time > NEW.start_time);
-    END;
-    CREATE TRIGGER maintenance_overlap BEFORE INSERT ON maintenance BEGIN
-      SELECT RAISE(ABORT, 'schedule_conflict') WHERE EXISTS(SELECT 1 FROM bookings WHERE court_id=NEW.court_id AND date=NEW.date AND status <> 'cancelled' AND start_time < NEW.end_time AND end_time > NEW.start_time);
-      SELECT RAISE(ABORT, 'schedule_conflict') WHERE EXISTS(SELECT 1 FROM maintenance WHERE court_id=NEW.court_id AND date=NEW.date AND start_time < NEW.end_time AND end_time > NEW.start_time);
-    END;
-  `);
-  for (const [name, defaults] of [["users", []], ["roles", defaultRoles], ["menus", defaultMenus]] as const) {
-    const legacy = path.join(dataDir, `${name}.json`);
-    const items = existsSync(legacy) ? JSON.parse(readFileSync(legacy,"utf8")) : defaults;
-    if (!Array.isArray(items)) throw new Error(`Data migrasi ${name} tidak valid`);
-    saveCollection(name, items);
-  }
-  db.prepare("INSERT INTO migrations VALUES (1, ?)").run(now);
-});
+/**
+ * Lapisan database MySQL.
+ *
+ * `db.prepare(sql).get/all/run` sengaja meniru bentuk node:sqlite yang dulu dipakai, hanya saja
+ * hasilnya Promise. Parameter dikirim lewat `query()` (escaping di sisi klien) sehingga satu
+ * permintaan cukup satu perjalanan ke server dan `LIMIT ?` berisi angka tetap valid.
+ *
+ * Semua penulisan berjalan berurutan seperti di SQLite: `transaction()` mengunci baris tunggal
+ * `app_lock` dengan `SELECT ... FOR UPDATE` sebelum mengerjakan apa pun, dan `run()` di luar transaksi
+ * otomatis dibungkus transaksi pendek. Pemeriksaan "baca lalu tulis" (bentrok jadwal, stok, nomor
+ * jurnal) karenanya tidak bisa saling mendahului antarpermintaan maupun antarproses API.
+ */
+export type Param = string | number | bigint | boolean | null | undefined | Buffer | Uint8Array;
+type Row = any;
+export interface RunResult { changes: number; lastInsertRowid: number }
+interface Scope { connection: PoolConnection; open: boolean }
 
-const overlapGuard = (self: boolean) => `
-  SELECT RAISE(ABORT,'schedule_conflict') WHERE EXISTS(SELECT 1 FROM bookings WHERE ${self ? "id<>NEW.id AND " : ""}court_id=NEW.court_id AND date=NEW.date AND status IN ('pending','confirmed','completed') AND NOT (status='pending' AND hold_expires_at<=unixepoch()) AND start_time<NEW.end_time AND end_time>NEW.start_time);
-  SELECT RAISE(ABORT,'schedule_conflict') WHERE EXISTS(SELECT 1 FROM maintenance WHERE court_id=NEW.court_id AND date=NEW.date AND start_time<NEW.end_time AND end_time>NEW.start_time);`;
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 2").get()) {
-  db.exec("PRAGMA foreign_keys = OFF; PRAGMA legacy_alter_table = ON;");
+const scope = new AsyncLocalStorage<Scope>();
+const sessionSetup = [
+  "SET SESSION sql_mode='STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'",
+  "SET SESSION time_zone='+00:00'",
+  "SET SESSION transaction_isolation='READ-COMMITTED'",
+].join(";");
+
+function createPool(): Pool {
+  const pool = mysql.createPool({
+    uri: databaseUrl,
+    // Kolase koneksi hanya untuk literal; perbandingan data mengikuti kolase kolom di schema.ts.
+    // (utf8mb4_0900_bin berid 309 dan tidak muat di paket handshake mysql2.)
+    charset: "utf8mb4_0900_ai_ci",
+    timezone: "Z",
+    dateStrings: true,
+    decimalNumbers: true,
+    supportBigNumbers: true,
+    bigNumberStrings: false,
+    multipleStatements: true,
+    connectionLimit: Number(process.env.DATABASE_POOL_SIZE || 10),
+    waitForConnections: true,
+    enableKeepAlive: true,
+  });
+  // Setiap koneksi baru diatur sama: mode ketat tanpa ONLY_FULL_GROUP_BY, jam UTC, dan READ COMMITTED.
+  pool.pool.on("connection", connection => { connection.query(sessionSetup, error => { if (error) console.error("Gagal menyiapkan sesi MySQL:", error); }); });
+  return pool;
+}
+export let pool = createPool();
+
+/** Koneksi transaksi yang sedang berjalan di alur async ini, atau pool bila di luar transaksi. */
+function executor() {
+  const current = scope.getStore();
+  return current?.open ? current.connection : pool;
+}
+const toParams = (params: Param[]) => params.map(value => (value instanceof Uint8Array && !Buffer.isBuffer(value) ? Buffer.from(value) : value === undefined ? null : value));
+
+async function rows(sql: string, params: Param[]): Promise<Row[]> {
+  const [result] = await executor().query(sql, toParams(params));
+  return result as Row[];
+}
+async function write(sql: string, params: Param[]): Promise<RunResult> {
+  if (!scope.getStore()?.open) return transaction(() => write(sql, params));
+  const [result] = await executor().query(sql, toParams(params));
+  const header = result as ResultSetHeader;
+  return { changes: header.affectedRows, lastInsertRowid: header.insertId };
+}
+
+export interface Statement {
+  get(...params: Param[]): Promise<Row | undefined>;
+  all(...params: Param[]): Promise<Row[]>;
+  run(...params: Param[]): Promise<RunResult>;
+}
+export const db = {
+  prepare(sql: string): Statement {
+    return {
+      get: async (...params) => (await rows(sql, params))[0],
+      all: (...params) => rows(sql, params),
+      run: (...params) => write(sql, params),
+    };
+  },
+  /** Beberapa pernyataan SQL tanpa parameter, dipisah titik koma. */
+  async exec(sql: string) { await executor().query(sql); },
+  async close() { await pool.end(); },
+};
+
+export const inTransaction = () => !!scope.getStore()?.open;
+/**
+ * Jalankan `work` dalam satu transaksi. Transaksi bersarang ikut transaksi luarnya.
+ * Error di dalam `work` membatalkan seluruh perubahan.
+ */
+export async function transaction<T>(work: () => Promise<T>): Promise<T> {
+  if (scope.getStore()?.open) return work();
+  const connection = await pool.getConnection();
+  const state: Scope = { connection, open: true };
   try {
-    transaction(() => {
-      db.exec(`
-        CREATE TABLE customers (id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL, email TEXT, created_at TEXT NOT NULL);
-        CREATE UNIQUE INDEX customers_phone ON customers (phone);
-        CREATE TABLE otp_codes (phone TEXT PRIMARY KEY, code_hash TEXT NOT NULL, expires_at INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, sent_at INTEGER NOT NULL);
-
-        CREATE TABLE bookings_v2 (
-          id TEXT PRIMARY KEY,
-          court_id TEXT NOT NULL REFERENCES courts(id),
-          customer_id TEXT REFERENCES customers(id),
-          customer TEXT NOT NULL, phone TEXT NOT NULL,
-          date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL,
-          total INTEGER NOT NULL CHECK(total > 0),
-          status TEXT NOT NULL CHECK(status IN ('pending','confirmed','completed','cancelled','expired')),
-          source TEXT NOT NULL DEFAULT 'staff' CHECK(source IN ('staff','online')),
-          hold_expires_at INTEGER,
-          notes TEXT NOT NULL DEFAULT '',
-          created_by TEXT,
-          created_at TEXT NOT NULL,
-          cancel_reason TEXT NOT NULL DEFAULT '',
-          CHECK ((source='staff' AND created_by IS NOT NULL) OR (source='online' AND customer_id IS NOT NULL)),
-          CHECK (status<>'pending' OR hold_expires_at IS NOT NULL)
-        );
-        INSERT INTO bookings_v2 (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at,cancel_reason)
-          SELECT id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at,cancel_reason FROM bookings;
-        DROP TABLE bookings;
-        ALTER TABLE bookings_v2 RENAME TO bookings;
-        CREATE INDEX bookings_schedule ON bookings (court_id,date,start_time,end_time);
-        CREATE INDEX bookings_hold ON bookings (status,hold_expires_at);
-        CREATE INDEX bookings_customer ON bookings (customer_id);
-
-        CREATE TABLE payments_v2 (
-          id TEXT PRIMARY KEY,
-          booking_id TEXT NOT NULL REFERENCES bookings(id),
-          amount INTEGER NOT NULL CHECK(amount > 0),
-          kind TEXT NOT NULL CHECK(kind IN ('payment','refund')),
-          method TEXT NOT NULL CHECK(method IN ('cash','transfer','qris','va','ewallet','card')),
-          source TEXT NOT NULL DEFAULT 'staff' CHECK(source IN ('staff','gateway')),
-          gateway_ref TEXT,
-          note TEXT NOT NULL DEFAULT '',
-          created_by TEXT,
-          created_at TEXT NOT NULL,
-          CHECK (source='gateway' OR created_by IS NOT NULL)
-        );
-        INSERT INTO payments_v2 (id,booking_id,amount,kind,method,note,created_by,created_at)
-          SELECT id,booking_id,amount,kind,method,note,created_by,created_at FROM payments;
-        DROP TABLE payments;
-        ALTER TABLE payments_v2 RENAME TO payments;
-        CREATE INDEX payments_booking ON payments (booking_id);
-        CREATE UNIQUE INDEX payments_gateway_ref ON payments (gateway_ref) WHERE gateway_ref IS NOT NULL;
-
-        DROP TABLE sessions;
-        CREATE TABLE sessions (id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, subject_type TEXT NOT NULL CHECK(subject_type IN ('staff','customer')), expires_at INTEGER NOT NULL);
-
-        DROP TRIGGER maintenance_overlap;
-        CREATE TRIGGER booking_overlap_insert BEFORE INSERT ON bookings WHEN NEW.status IN ('pending','confirmed','completed') BEGIN${overlapGuard(false)}
-        END;
-        CREATE TRIGGER booking_overlap_confirm BEFORE UPDATE OF status ON bookings WHEN OLD.status='pending' AND NEW.status IN ('confirmed','completed') BEGIN${overlapGuard(true)}
-        END;
-        CREATE TRIGGER maintenance_overlap BEFORE INSERT ON maintenance BEGIN${overlapGuard(false)}
-        END;
-      `);
-      const violations = db.prepare("PRAGMA foreign_key_check").all();
-      if (violations.length) throw new Error(`Migrasi 2 menyisakan ${violations.length} pelanggaran foreign key.`);
-      db.prepare("INSERT INTO migrations VALUES (2, ?)").run(new Date().toISOString());
-    });
+    await connection.beginTransaction();
+    await connection.query("SELECT id FROM app_lock WHERE id=1 FOR UPDATE");
+    const result = await scope.run(state, work);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    await connection.rollback().catch(() => undefined);
+    throw error;
   } finally {
-    db.exec("PRAGMA legacy_alter_table = OFF; PRAGMA foreign_keys = ON;");
+    // Kerja async yang tidak ditunggu dan masih membawa konteks ini akan kembali memakai pool.
+    state.open = false;
+    connection.release();
   }
+}
+
+/** Error MySQL untuk data unik yang sudah dipakai (mis. nama lapangan kembar). */
+export const isDuplicate = (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === "ER_DUP_ENTRY";
+
+type Collection = "users" | "roles" | "menus";
+async function collection<T>(name: Collection): Promise<T[]> {
+  return (await db.prepare(`SELECT document FROM ${name} ORDER BY seq`).all() as { document: string }[]).map(row => JSON.parse(row.document) as T);
+}
+async function saveCollection(name: Collection, items: { id: string }[]) {
+  await transaction(async () => {
+    await db.prepare(`DELETE FROM ${name}`).run();
+    for (const item of items) await db.prepare(`INSERT INTO ${name} (id, document) VALUES (?, ?)`).run(item.id, JSON.stringify(item));
+  });
 }
 
 /** Satuan kanvas layout: 1 unit = 0,1 meter. Lapangan padel standar 10 x 20 m = 100 x 200 unit. */
 export const defaultVenue = { width: 600, height: 400, grid: 10 };
 export type VenueLayout = typeof defaultVenue;
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 3").get()) transaction(() => {
-  db.exec(`
-    ALTER TABLE courts ADD COLUMN layout_x INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE courts ADD COLUMN layout_y INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE courts ADD COLUMN layout_w INTEGER NOT NULL DEFAULT 100;
-    ALTER TABLE courts ADD COLUMN layout_h INTEGER NOT NULL DEFAULT 200;
-    CREATE TABLE settings (key TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
-  `);
-  db.prepare("INSERT INTO settings VALUES ('venue', ?)").run(JSON.stringify(defaultVenue));
-
-  // Lapangan yang sudah ada dijajarkan agar langsung terlihat rapi di editor.
-  const placed = db.prepare("SELECT id FROM courts ORDER BY name").all() as { id: string }[];
-  placed.forEach((court, index) => db.prepare("UPDATE courts SET layout_x=?, layout_y=? WHERE id=?").run(40 + index * 140, 60, court.id));
-
-  const stamp = new Date().toISOString();
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "layout")) {
-    // Sisipkan setelah Courts, lalu geser urutan menu administrasi di bawahnya.
-    for (const menu of menus) if (menu.order >= 4) menu.order += 1;
-    menus.push({ id: "layout", name: "Layout Venue", path: "/admin/layout", icon: "LayoutGrid", group: "Workspace", order: 4, active: true, createdAt: stamp });
-    saveCollection("menus", menus);
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("layout")) role.menuIds.push("layout");
-    saveCollection("roles", roles);
-  }
-  db.prepare("INSERT INTO migrations VALUES (3, ?)").run(stamp);
-});
 
 /**
- * Elemen penjelas pada denah: jalan, kantin, tempat duduk, dan sejenisnya.
- * Sifatnya hanya informasi, tidak dapat dipesan, dan tidak memengaruhi jadwal.
- * `kind` sengaja tanpa CHECK agar menambah jenis baru tidak memaksa membangun
- * ulang tabel; daftar jenis yang sah dijaga di lapisan validasi.
+ * Migrasi skema. Versi 1 membuat seluruh tabel sekaligus beserta data bawaannya (menu, role,
+ * denah, bagan akun). Perubahan skema berikutnya ditambahkan sebagai versi baru di `migrations`.
  */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 4").get()) transaction(() => {
-  db.exec(`
-    CREATE TABLE venue_features (
-      id TEXT PRIMARY KEY,
-      kind TEXT NOT NULL,
-      label TEXT NOT NULL DEFAULT '',
-      x INTEGER NOT NULL, y INTEGER NOT NULL,
-      w INTEGER NOT NULL CHECK(w > 0), h INTEGER NOT NULL CHECK(h > 0),
-      created_at TEXT NOT NULL
-    );
-  `);
-  db.prepare("INSERT INTO migrations VALUES (4, ?)").run(new Date().toISOString());
-});
+const migrations: { version: number; up: () => Promise<void> }[] = [
+  {
+    version: 1, async up() {
+      const stamp = new Date().toISOString();
+      for (const statement of schema) await db.exec(statement);
+      for (const menu of defaultMenus(stamp)) await db.prepare("INSERT INTO menus (id, document) VALUES (?, ?)").run(menu.id, JSON.stringify(menu));
+      for (const role of defaultRoles(stamp)) await db.prepare("INSERT INTO roles (id, document) VALUES (?, ?)").run(role.id, JSON.stringify(role));
+      await db.prepare("INSERT INTO settings (`key`, document) VALUES ('venue', ?)").run(JSON.stringify(defaultVenue));
+      await db.prepare("INSERT INTO floors (id, name, position, width, height, created_at) VALUES (?, 'Lantai 1', 0, ?, ?, ?)").run(randomUUID(), defaultVenue.width, defaultVenue.height, stamp);
+      let position = 0;
+      for (const [code, name, type, subtype, isCash, key, description] of accountSeed)
+        await db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)")
+          .run(randomUUID(), code, name, type, subtype, isCash, key, description, position++, stamp);
+      const accountId = async (key: string) => (await db.prepare("SELECT id FROM accounts WHERE system_key=?").get(key) as { id: string }).id;
+      const kas = await accountId("kas"), bank = await accountId("bank");
+      // Pembayaran online masuk ke rekening bank; tunai masuk ke laci kasir. Dapat diubah di panel.
+      await db.prepare("INSERT INTO settings (`key`, document) VALUES ('finance', ?)").run(JSON.stringify({
+        cash_accounts: { cash: kas, transfer: bank, qris: bank, va: bank, ewallet: bank, card: bank },
+        default_cash_account: kas, locked_until: "", updated_at: stamp,
+      }));
+    },
+  },
+];
 
-/**
- * Nama menu bawaan diseragamkan ke Bahasa Indonesia agar sidebar tidak campur bahasa.
- * Nama yang sudah diubah admin tidak disentuh. Grup diganti untuk semua menu, termasuk
- * menu kustom, supaya menu kustom tidak terpisah dari grup asalnya.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 5").get()) transaction(() => {
-  const renames: Record<string, [from: string, to: string]> = {
-    dashboard: ["Overview", "Ringkasan"], bookings: ["Bookings", "Booking"], courts: ["Courts", "Lapangan"],
-    layout: ["Layout Venue", "Denah Venue"], users: ["Users", "Pengguna"], roles: ["Roles", "Role & Akses"],
-    menus: ["Menu Access", "Menu Navigasi"], profile: ["My Profile", "Profil Saya"],
-  };
-  const groups: Record<string, string> = { "Workspace": "Operasional", "Access Control": "Hak Akses", "System": "Akun" };
-  const menus = collection<AccessMenu>("menus");
-  for (const menu of menus) {
-    const rename = renames[menu.id];
-    if (rename && menu.name === rename[0]) menu.name = rename[1];
-    if (groups[menu.group]) menu.group = groups[menu.group];
+async function ensureDatabase() {
+  try {
+    await pool.query("SELECT 1");
+  } catch (error) {
+    if (!(typeof error === "object" && error && "code" in error && error.code === "ER_BAD_DB_ERROR")) throw error;
+    // Database belum ada: buat bila pengguna MySQL punya haknya, lalu sambung ulang.
+    const url = new URL(databaseUrl);
+    const name = decodeURIComponent(url.pathname.slice(1));
+    url.pathname = "/";
+    const admin = await mysql.createConnection({ uri: url.toString() });
+    try { await admin.query(`CREATE DATABASE IF NOT EXISTS \`${name.replace(/`/g, "``")}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin`); }
+    finally { await admin.end(); }
+    await pool.end();
+    pool = createPool();
   }
-  saveCollection("menus", menus);
-  db.prepare("INSERT INTO migrations VALUES (5, ?)").run(new Date().toISOString());
-});
+}
 
-/**
- * Informasi untuk pelanggan: deskripsi dan foto lapangan, serta tarif khusus
- * (jam sibuk, akhir pekan). Profil venue, kebijakan, dan FAQ cukup berupa dokumen
- * di tabel settings. Menu "Info Venue" disisipkan tepat setelah Denah Venue.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 6").get()) transaction(() => {
-  db.exec(`
-    ALTER TABLE courts ADD COLUMN description TEXT NOT NULL DEFAULT '';
-    ALTER TABLE courts ADD COLUMN environment TEXT NOT NULL DEFAULT '' CHECK(environment IN ('','indoor','outdoor'));
-    ALTER TABLE courts ADD COLUMN surface TEXT NOT NULL DEFAULT '';
-    CREATE TABLE court_photos (
-      id TEXT PRIMARY KEY,
-      court_id TEXT NOT NULL REFERENCES courts(id) ON DELETE CASCADE,
-      mime TEXT NOT NULL CHECK(mime IN ('image/jpeg','image/png','image/webp')),
-      data BLOB NOT NULL,
-      bytes INTEGER NOT NULL CHECK(bytes > 0),
-      position INTEGER NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX court_photos_court ON court_photos (court_id, position);
-    CREATE TABLE price_rules (
-      id TEXT PRIMARY KEY,
-      label TEXT NOT NULL,
-      days TEXT NOT NULL CHECK(json_valid(days)),
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      hourly_rate INTEGER NOT NULL CHECK(hourly_rate > 0),
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE price_rule_courts (
-      rule_id TEXT NOT NULL REFERENCES price_rules(id) ON DELETE CASCADE,
-      court_id TEXT NOT NULL REFERENCES courts(id) ON DELETE CASCADE,
-      PRIMARY KEY (rule_id, court_id)
-    );
-  `);
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "info" || menu.path === "/admin/info")) {
-    const anchor = menus.find(menu => menu.id === "layout") ?? menus.find(menu => menu.id === "courts");
-    const order = (anchor?.order ?? 0) + 1;
-    for (const menu of menus) if (menu.order >= order) menu.order += 1;
-    menus.push({ id: "info", name: "Info Venue", path: "/admin/info", icon: "Store", group: anchor?.group ?? "Operasional", order, active: true, createdAt: new Date().toISOString() });
-    saveCollection("menus", menus);
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("info")) role.menuIds.push("info");
-    saveCollection("roles", roles);
+export async function migrate() {
+  await ensureDatabase();
+  await db.exec("CREATE TABLE IF NOT EXISTS migrations (version INT PRIMARY KEY, applied_at VARCHAR(32) NOT NULL)");
+  // GET_LOCK menjaga dua proses API yang menyala bersamaan agar tidak menjalankan migrasi yang sama.
+  const connection = await pool.getConnection();
+  try {
+    const [[lock]] = await connection.query("SELECT GET_LOCK('padelix_migrate', 60) acquired") as unknown as [[{ acquired: number }]];
+    if (lock.acquired !== 1) throw new Error("Tidak bisa mengunci migrasi database. Pastikan tidak ada proses lain yang macet.");
+    const done = new Set((await connection.query("SELECT version FROM migrations") as unknown as [{ version: number }[]])[0].map(row => row.version));
+    for (const migration of migrations) {
+      if (done.has(migration.version)) continue;
+      // DDL MySQL langsung tersimpan (tidak bisa di-rollback), jadi tabel dibuat dulu lalu versinya dicatat.
+      await scope.run({ connection, open: true }, migration.up);
+      await connection.query("INSERT INTO migrations VALUES (?, ?)", [migration.version, new Date().toISOString()]);
+    }
+  } finally {
+    await connection.query("SELECT RELEASE_LOCK('padelix_migrate')").catch(() => undefined);
+    connection.release();
   }
-  db.prepare("INSERT INTO migrations VALUES (6, ?)").run(new Date().toISOString());
-});
+}
+await migrate();
 
-/**
- * Lantai: venue bertingkat punya satu denah per lantai. Setiap lantai menyimpan ukurannya
- * sendiri (lantai atas bisa lebih kecil); kisi tetap satu pengaturan editor di settings.
- * Denah lama menjadi "Lantai 1" dengan ukuran yang sudah ada, jadi tampilannya tidak berubah.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 7").get()) transaction(() => {
-  db.exec(`
-    CREATE TABLE floors (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      position INTEGER NOT NULL,
-      width INTEGER NOT NULL CHECK(width BETWEEN 200 AND 5000),
-      height INTEGER NOT NULL CHECK(height BETWEEN 200 AND 5000),
-      created_at TEXT NOT NULL
-    );
-    ALTER TABLE courts ADD COLUMN floor_id TEXT REFERENCES floors(id);
-    ALTER TABLE venue_features ADD COLUMN floor_id TEXT REFERENCES floors(id);
-  `);
-  const row = db.prepare("SELECT document FROM settings WHERE key = 'venue'").get() as { document: string } | undefined;
-  const venue = row ? JSON.parse(row.document) as VenueLayout : defaultVenue;
-  const id = randomUUID();
-  db.prepare("INSERT INTO floors (id, name, position, width, height, created_at) VALUES (?, 'Lantai 1', 0, ?, ?, ?)").run(id, venue.width, venue.height, new Date().toISOString());
-  db.prepare("UPDATE courts SET floor_id = ?").run(id);
-  db.prepare("UPDATE venue_features SET floor_id = ?").run(id);
-  db.prepare("INSERT INTO migrations VALUES (7, ?)").run(new Date().toISOString());
-});
-
-/**
- * Sewa & tambahan (raket, bola, pelatih, dsb.) yang ditagihkan bersama booking.
- * `bookings.total` tetap total tagihan; `court_total` menyimpan porsi sewa lapangan agar tambahan
- * dapat diubah tanpa menghitung ulang tarif lapangan. Stok barang jual dicatat per mutasi.
- * Menu disisipkan setelah Lapangan dan diberikan ke role yang sudah mengelola lapangan.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 8").get()) transaction(() => {
-  db.exec(`
-    CREATE TABLE addons (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-      category TEXT NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('sewa','jual','layanan')),
-      pricing TEXT NOT NULL CHECK(pricing IN ('per_booking','per_hour')),
-      price INTEGER NOT NULL CHECK(price >= 0),
-      stock INTEGER CHECK(stock IS NULL OR stock >= 0),
-      low_stock INTEGER NOT NULL DEFAULT 0 CHECK(low_stock >= 0),
-      max_per_booking INTEGER NOT NULL CHECK(max_per_booking BETWEEN 1 AND 99),
-      description TEXT NOT NULL DEFAULT '',
-      active INTEGER NOT NULL DEFAULT 1,
-      online INTEGER NOT NULL DEFAULT 1,
-      position INTEGER NOT NULL,
-      photo_id TEXT UNIQUE,
-      photo_mime TEXT CHECK(photo_mime IS NULL OR photo_mime IN ('image/jpeg','image/png','image/webp')),
-      photo_data BLOB,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE booking_addons (
-      id TEXT PRIMARY KEY,
-      booking_id TEXT NOT NULL REFERENCES bookings(id),
-      addon_id TEXT REFERENCES addons(id),
-      name TEXT NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('sewa','jual','layanan','lainnya')),
-      pricing TEXT NOT NULL CHECK(pricing IN ('per_booking','per_hour')),
-      unit_price INTEGER NOT NULL CHECK(unit_price >= 0),
-      quantity INTEGER NOT NULL CHECK(quantity > 0),
-      subtotal INTEGER NOT NULL CHECK(subtotal >= 0),
-      returned_at TEXT,
-      created_by TEXT,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX booking_addons_booking ON booking_addons (booking_id);
-    CREATE INDEX booking_addons_addon ON booking_addons (addon_id);
-    CREATE TABLE addon_stock_moves (
-      id TEXT PRIMARY KEY,
-      addon_id TEXT NOT NULL REFERENCES addons(id) ON DELETE CASCADE,
-      delta INTEGER NOT NULL,
-      reason TEXT NOT NULL CHECK(reason IN ('awal','restok','koreksi','rusak','terpakai','kembali')),
-      note TEXT NOT NULL DEFAULT '',
-      booking_id TEXT REFERENCES bookings(id),
-      stock_after INTEGER NOT NULL,
-      created_by TEXT,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX addon_stock_moves_addon ON addon_stock_moves (addon_id, created_at);
-    ALTER TABLE bookings ADD COLUMN court_total INTEGER;
-    UPDATE bookings SET court_total = total;
-  `);
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "addons" || menu.path === "/admin/addons")) {
-    const anchor = menus.find(menu => menu.id === "courts");
-    const order = (anchor?.order ?? 0) + 1;
-    for (const menu of menus) if (menu.order >= order) menu.order += 1;
-    menus.push({ id: "addons", name: "Sewa & Tambahan", path: "/admin/addons", icon: "ShoppingBag", group: anchor?.group ?? "Operasional", order, active: true, createdAt: new Date().toISOString() });
-    saveCollection("menus", menus);
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if ((role.slug === "admin" || role.menuIds.includes("courts")) && !role.menuIds.includes("addons")) role.menuIds.push("addons");
-    saveCollection("roles", roles);
-  }
-  db.prepare("INSERT INTO migrations VALUES (8, ?)").run(new Date().toISOString());
-});
-/**
- * Pembayaran online lewat Midtrans. Satu baris `payment_intents` mewakili satu halaman pembayaran:
- * `booking` untuk checkout pelanggan, `tagihan` untuk link yang dibuat staf. Pengaturan dan kunci
- * disimpan sebagai dokumen `payment` di tabel settings. Menu Pembayaran hanya untuk admin karena
- * berisi kunci rahasia.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 9").get()) transaction(() => {
-  db.exec(`
-    CREATE TABLE payment_intents (
-      order_id TEXT PRIMARY KEY,
-      booking_id TEXT NOT NULL REFERENCES bookings(id),
-      amount INTEGER NOT NULL CHECK(amount > 0),
-      kind TEXT NOT NULL CHECK(kind IN ('booking','tagihan')),
-      status TEXT NOT NULL CHECK(status IN ('pending','paid','expired','cancelled','failed','refunded')),
-      snap_token TEXT,
-      redirect_url TEXT,
-      payment_type TEXT,
-      transaction_id TEXT,
-      environment TEXT NOT NULL,
-      expires_at INTEGER NOT NULL,
-      raw_status TEXT,
-      created_by TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE INDEX payment_intents_booking ON payment_intents (booking_id, created_at);
-    CREATE INDEX payment_intents_status ON payment_intents (status, expires_at);
-  `);
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "payments" || menu.path === "/admin/payments")) {
-    const anchor = menus.find(menu => menu.id === "bookings");
-    const order = (anchor?.order ?? 0) + 1;
-    for (const menu of menus) if (menu.order >= order) menu.order += 1;
-    menus.push({ id: "payments", name: "Pembayaran", path: "/admin/payments", icon: "CreditCard", group: anchor?.group ?? "Operasional", order, active: true, createdAt: new Date().toISOString() });
-    saveCollection("menus", menus);
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("payments")) role.menuIds.push("payments");
-    saveCollection("roles", roles);
-  }
-  db.prepare("INSERT INTO migrations VALUES (9, ?)").run(new Date().toISOString());
-});
-/**
- * Keranjang: satu pesanan pelanggan dapat berisi beberapa sesi (lapangan/jam berbeda) yang dibayar
- * sekali. `orders` mengelompokkan booking-booking itu dan menjadi alamat halaman status
- * (`/pesanan/<id>`). Pesanan lama tetap bisa dibuka karena id order disamakan dengan id booking-nya.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 10").get()) transaction(() => {
-  db.exec(`
-    CREATE TABLE orders (
-      id TEXT PRIMARY KEY,
-      code TEXT NOT NULL UNIQUE,
-      customer_id TEXT REFERENCES customers(id),
-      customer TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      email TEXT NOT NULL DEFAULT '',
-      notes TEXT NOT NULL DEFAULT '',
-      total INTEGER NOT NULL CHECK(total > 0),
-      created_at TEXT NOT NULL
-    );
-    ALTER TABLE bookings ADD COLUMN order_id TEXT REFERENCES orders(id);
-    ALTER TABLE payment_intents ADD COLUMN order_ref TEXT REFERENCES orders(id);
-    CREATE INDEX bookings_order ON bookings (order_id);
-    CREATE INDEX payment_intents_order ON payment_intents (order_ref);
-
-    INSERT INTO orders (id,code,customer_id,customer,phone,email,notes,total,created_at)
-      SELECT id,upper(substr(id,1,8)),customer_id,customer,phone,'',notes,total,created_at FROM bookings WHERE source='online';
-    UPDATE bookings SET order_id=id WHERE source='online';
-    UPDATE payment_intents SET order_ref=(SELECT order_id FROM bookings WHERE bookings.id=payment_intents.booking_id) WHERE kind='booking';
-  `);
-  db.prepare("INSERT INTO migrations VALUES (10, ?)").run(new Date().toISOString());
-});
-/**
- * Pembukuan venue: pencatatan pengeluaran operasional dan pemasukan lain yang langsung menjadi
- * laporan laba rugi, neraca, buku besar, dan buku besar pembantu. Semua angka berasal dari satu
- * jurnal berpasangan (debit = kredit) sehingga neraca selalu seimbang tanpa perhitungan terpisah.
- * Pendapatan booking dan penerimaan kas dijurnal otomatis; lihat apps/api/src/finance.ts.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 11").get()) transaction(() => {
-  db.exec(`
-    CREATE TABLE accounts (
-      id TEXT PRIMARY KEY,
-      code TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-      type TEXT NOT NULL CHECK(type IN ('aset','liabilitas','ekuitas','pendapatan','beban')),
-      subtype TEXT NOT NULL CHECK(subtype IN ('kas_bank','piutang','persediaan','aset_tetap','utang','modal','pendapatan','beban')),
-      is_cash INTEGER NOT NULL DEFAULT 0 CHECK(is_cash IN (0,1) AND (is_cash=0 OR subtype='kas_bank')),
-      system_key TEXT UNIQUE,
-      description TEXT NOT NULL DEFAULT '',
-      active INTEGER NOT NULL DEFAULT 1,
-      position INTEGER NOT NULL,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE partners (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-      kind TEXT NOT NULL CHECK(kind IN ('pemasok','pelanggan','karyawan','lainnya')),
-      phone TEXT NOT NULL DEFAULT '',
-      note TEXT NOT NULL DEFAULT '',
-      active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL
-    );
-    CREATE TABLE journal_entries (
-      id TEXT PRIMARY KEY,
-      number TEXT NOT NULL UNIQUE,
-      date TEXT NOT NULL,
-      memo TEXT NOT NULL DEFAULT '',
-      source TEXT NOT NULL CHECK(source IN ('manual','catatan','pelunasan','transfer','modal','booking','pembayaran')),
-      ref_id TEXT,
-      created_by TEXT,
-      created_at TEXT NOT NULL
-    );
-    CREATE INDEX journal_entries_date ON journal_entries (date, number);
-    CREATE UNIQUE INDEX journal_entries_ref ON journal_entries (source, ref_id) WHERE ref_id IS NOT NULL;
-    CREATE TABLE journal_lines (
-      id TEXT PRIMARY KEY,
-      entry_id TEXT NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
-      account_id TEXT NOT NULL REFERENCES accounts(id),
-      debit INTEGER NOT NULL DEFAULT 0 CHECK(debit >= 0),
-      credit INTEGER NOT NULL DEFAULT 0 CHECK(credit >= 0),
-      memo TEXT NOT NULL DEFAULT '',
-      partner_id TEXT REFERENCES partners(id),
-      booking_id TEXT REFERENCES bookings(id),
-      position INTEGER NOT NULL,
-      CHECK ((debit = 0) <> (credit = 0))
-    );
-    CREATE INDEX journal_lines_entry ON journal_lines (entry_id, position);
-    CREATE INDEX journal_lines_account ON journal_lines (account_id);
-    CREATE INDEX journal_lines_partner ON journal_lines (partner_id);
-    CREATE INDEX journal_lines_booking ON journal_lines (booking_id);
-    CREATE TABLE finance_records (
-      id TEXT PRIMARY KEY,
-      number TEXT NOT NULL UNIQUE,
-      kind TEXT NOT NULL CHECK(kind IN ('pengeluaran','pemasukan')),
-      date TEXT NOT NULL,
-      account_id TEXT NOT NULL REFERENCES accounts(id),
-      amount INTEGER NOT NULL CHECK(amount > 0),
-      settle TEXT NOT NULL CHECK(settle IN ('tunai','tempo')),
-      cash_account_id TEXT REFERENCES accounts(id),
-      partner_id TEXT REFERENCES partners(id),
-      description TEXT NOT NULL,
-      due_date TEXT,
-      settled_at TEXT,
-      settled_entry_id TEXT REFERENCES journal_entries(id),
-      entry_id TEXT REFERENCES journal_entries(id),
-      photo_id TEXT UNIQUE,
-      photo_mime TEXT CHECK(photo_mime IS NULL OR photo_mime IN ('image/jpeg','image/png','image/webp')),
-      photo_data BLOB,
-      created_by TEXT,
-      created_at TEXT NOT NULL,
-      CHECK ((settle='tunai') = (cash_account_id IS NOT NULL))
-    );
-    CREATE INDEX finance_records_date ON finance_records (date, number);
-    CREATE INDEX finance_records_partner ON finance_records (partner_id);
-  `);
-  const stamp = new Date().toISOString();
-  // Bagan akun bawaan: sudah memakai istilah sehari-hari agar tidak perlu latar belakang akuntansi.
-  const seed: [string, string, string, string, number, string | null, string][] = [
-    ["1-100", "Kas", "aset", "kas_bank", 1, "kas", "Uang tunai di laci kasir."],
-    ["1-200", "Bank", "aset", "kas_bank", 1, "bank", "Saldo rekening bank venue, termasuk hasil pembayaran online."],
-    ["1-300", "Piutang Usaha", "aset", "piutang", 0, "piutang", "Tagihan booking yang belum dibayar pelanggan."],
-    ["1-350", "Piutang Lain-lain", "aset", "piutang", 0, "piutang_lain", "Tagihan di luar booking, misalnya sewa ruang untuk acara."],
-    ["1-400", "Perlengkapan & Persediaan", "aset", "persediaan", 0, null, "Stok bola, minuman, dan barang lain yang belum terpakai."],
-    ["1-500", "Peralatan & Inventaris", "aset", "aset_tetap", 0, null, "Raket, jaring, lampu, dan peralatan yang dipakai bertahun-tahun."],
-    ["1-600", "Akumulasi Penyusutan", "aset", "aset_tetap", 0, null, "Pengurang nilai peralatan karena umur pakai. Saldonya negatif."],
-    ["2-100", "Utang Usaha", "liabilitas", "utang", 0, "utang", "Tagihan pemasok yang belum dibayar."],
-    ["2-200", "Utang Lain-lain", "liabilitas", "utang", 0, null, "Pinjaman dan kewajiban di luar pemasok."],
-    ["3-100", "Modal Pemilik", "ekuitas", "modal", 0, "modal", "Uang yang disetor pemilik ke venue."],
-    ["3-200", "Prive Pemilik", "ekuitas", "modal", 0, "prive", "Uang venue yang diambil pemilik untuk keperluan pribadi."],
-    ["4-100", "Pendapatan Sewa Lapangan", "pendapatan", "pendapatan", 0, "pendapatan_lapangan", "Tarif jam main lapangan."],
-    ["4-200", "Pendapatan Sewa Alat", "pendapatan", "pendapatan", 0, "pendapatan_sewa", "Sewa raket, sepatu, dan alat lain."],
-    ["4-300", "Penjualan Barang", "pendapatan", "pendapatan", 0, "pendapatan_barang", "Bola, minuman, dan barang habis pakai."],
-    ["4-400", "Pendapatan Jasa & Pelatih", "pendapatan", "pendapatan", 0, "pendapatan_jasa", "Jasa pelatih dan layanan lain."],
-    ["4-900", "Pendapatan Lain-lain", "pendapatan", "pendapatan", 0, "pendapatan_lain", "Pemasukan di luar operasional harian."],
-    ["5-100", "Gaji & Upah", "beban", "beban", 0, null, "Gaji staf, honor pelatih, dan lembur."],
-    ["5-200", "Listrik, Air & Internet", "beban", "beban", 0, null, "Tagihan utilitas bulanan."],
-    ["5-300", "Sewa Tempat", "beban", "beban", 0, null, "Sewa lahan atau bangunan venue."],
-    ["5-400", "Perawatan Lapangan & Peralatan", "beban", "beban", 0, null, "Perbaikan karpet, jaring, lampu, dan servis alat."],
-    ["5-500", "Perlengkapan & Bahan Habis Pakai", "beban", "beban", 0, null, "Bola, air minum, dan barang yang dibeli untuk dipakai."],
-    ["5-600", "Pemasaran & Promosi", "beban", "beban", 0, null, "Iklan, endorse, cetak spanduk, dan turnamen."],
-    ["5-700", "Kebersihan & Keamanan", "beban", "beban", 0, null, "Cleaning service, sampah, dan satpam."],
-    ["5-800", "Biaya Bank & Payment Gateway", "beban", "beban", 0, null, "Potongan Midtrans, biaya transfer, dan admin bank."],
-    ["5-900", "Beban Penyusutan", "beban", "beban", 0, null, "Penurunan nilai peralatan yang dicatat tiap periode."],
-    ["5-950", "Beban Lain-lain", "beban", "beban", 0, null, "Pengeluaran yang tidak masuk kategori mana pun."],
-  ];
-  const insertAccount = db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)");
-  seed.forEach(([code, name, type, subtype, isCash, key, description], position) => insertAccount.run(randomUUID(), code, name, type, subtype, isCash, key, description, position, stamp));
-  const accountId = (key: string) => (db.prepare("SELECT id FROM accounts WHERE system_key=?").get(key) as { id: string }).id;
-  const kas = accountId("kas"), bank = accountId("bank");
-  // Pembayaran online masuk ke rekening bank; tunai masuk ke laci kasir. Dapat diubah di panel.
-  db.prepare("INSERT INTO settings (key,document) VALUES ('finance',?)").run(JSON.stringify({
-    cash_accounts: { cash: kas, transfer: bank, qris: bank, va: bank, ewallet: bank, card: bank },
-    default_cash_account: kas, locked_until: "", updated_at: stamp,
-  }));
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "finance" || menu.path === "/admin/keuangan")) {
-    const anchor = menus.find(menu => menu.id === "payments") ?? menus.find(menu => menu.id === "bookings");
-    const order = (anchor?.order ?? 0) + 1;
-    for (const menu of menus) if (menu.order >= order) menu.order += 1;
-    menus.push({ id: "finance", name: "Keuangan", path: "/admin/keuangan", icon: "Wallet", group: anchor?.group ?? "Operasional", order, active: true, createdAt: stamp });
-    saveCollection("menus", menus);
-    // Pembukuan memuat angka sensitif, jadi bawaannya hanya admin. Role lain dapat diberi akses manual.
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("finance")) role.menuIds.push("finance");
-    saveCollection("roles", roles);
-  }
-  db.prepare("INSERT INTO migrations VALUES (11, ?)").run(stamp);
-});
-/**
- * Akun pelanggan: masuk dengan Google lewat Firebase, lalu melengkapi nomor HP.
- * Nomor HP tidak dibuat unik karena tidak diverifikasi SMS; membuatnya unik justru
- * membocorkan nomor mana yang sudah terdaftar. Booking terhubung ke akun lewat
- * `bookings.account_id`: diisi saat checkout sambil login, saat pelanggan mengklaim
- * pesanan dengan kode + nomor HP, atau saat staf menghubungkannya dari panel.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 13").get()) transaction(() => {
-  const stamp = new Date().toISOString();
-  db.exec(`
-    CREATE TABLE customer_accounts (
-      id TEXT PRIMARY KEY,
-      firebase_uid TEXT NOT NULL UNIQUE,
-      email TEXT NOT NULL DEFAULT '',
-      name TEXT NOT NULL,
-      phone TEXT,
-      photo_url TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      last_login_at TEXT NOT NULL
-    );
-    CREATE INDEX customer_accounts_phone ON customer_accounts (phone);
-    ALTER TABLE bookings ADD COLUMN account_id TEXT REFERENCES customer_accounts(id);
-    CREATE INDEX bookings_account ON bookings (account_id, date);
-  `);
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "customers" || menu.path === "/admin/customers")) {
-    const anchor = menus.find(menu => menu.id === "bookings");
-    const order = (anchor?.order ?? 0) + 1;
-    for (const menu of menus) if (menu.order >= order) menu.order += 1;
-    menus.push({ id: "customers", name: "Pelanggan", path: "/admin/customers", icon: "Contact", group: anchor?.group ?? "Operasional", order, active: true, createdAt: stamp });
-    saveCollection("menus", menus);
-    // Berisi data pribadi pelanggan dan pengaturan login, jadi bawaannya hanya admin.
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("customers")) role.menuIds.push("customers");
-    saveCollection("roles", roles);
-  }
-  db.prepare("INSERT INTO migrations VALUES (13, ?)").run(stamp);
-});
-/**
- * Potongan harga, pajak, DP hangus, dan biaya payment gateway.
- * - `discount` dan `tax` adalah bagian dari tagihan: total = lapangan + tambahan − potongan (+ pajak bila
- *   pajaknya di luar harga). Tarif pajak disalin ke booking (`tax_rate` dalam basis poin) agar
- *   mengubah pengaturan tidak mengubah tagihan lama.
- * - `forfeited` adalah bagian pembayaran booking batal yang ditahan venue sebagai denda pembatalan.
- * - `payments.fee` adalah potongan payment gateway atas pembayaran online itu.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 14").get()) transaction(() => {
-  const stamp = new Date().toISOString();
-  db.exec(`
-    ALTER TABLE bookings ADD COLUMN discount INTEGER NOT NULL DEFAULT 0 CHECK(discount >= 0);
-    ALTER TABLE bookings ADD COLUMN discount_note TEXT NOT NULL DEFAULT '';
-    ALTER TABLE bookings ADD COLUMN tax INTEGER NOT NULL DEFAULT 0 CHECK(tax >= 0);
-    ALTER TABLE bookings ADD COLUMN tax_rate INTEGER NOT NULL DEFAULT 0 CHECK(tax_rate >= 0);
-    ALTER TABLE bookings ADD COLUMN tax_inclusive INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE bookings ADD COLUMN tax_label TEXT NOT NULL DEFAULT '';
-    ALTER TABLE bookings ADD COLUMN forfeited INTEGER NOT NULL DEFAULT 0 CHECK(forfeited >= 0);
-    ALTER TABLE bookings ADD COLUMN forfeited_at TEXT;
-    ALTER TABLE payments ADD COLUMN fee INTEGER NOT NULL DEFAULT 0 CHECK(fee >= 0);
-  `);
-  const accounts = db.prepare("SELECT code,name,system_key FROM accounts").all() as { code: string; name: string; system_key: string | null }[];
-  if (accounts.length) {
-    // Kode yang diinginkan bisa saja sudah dipakai akun buatan pengguna; cari nomor kosong berikutnya.
-    const freeCode = (prefix: string, start: number) => {
-      for (let value = start; value < 1000; value += 10) {
-        const code = `${prefix}-${value}`;
-        if (!accounts.some(account => account.code === code)) return code;
-      }
-      return `${prefix}-${Date.now() % 1000}`;
-    };
-    const freeName = (name: string) => accounts.some(account => account.name.toLowerCase() === name.toLowerCase()) ? `${name} (sistem)` : name;
-    const position = () => (db.prepare("SELECT COALESCE(MAX(position),0)+1 value FROM accounts").get() as { value: number }).value;
-    const insert = db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,0,?,?,1,?,?)");
-    const add = (key: string, prefix: string, start: number, name: string, type: string, subtype: string, description: string) => {
-      if (accounts.some(account => account.system_key === key)) return;
-      const code = freeCode(prefix, start);
-      insert.run(randomUUID(), code, freeName(name), type, subtype, key, description, position(), stamp);
-      accounts.push({ code, name, system_key: key });
-    };
-    add("utang_pajak", "2", 300, "Utang Pajak", "liabilitas", "utang", "Pajak yang dipungut dari pelanggan dan belum disetor.");
-    add("potongan_harga", "4", 950, "Potongan Harga", "pendapatan", "pendapatan", "Diskon yang diberikan pada booking. Saldonya mengurangi pendapatan.");
-    add("pendapatan_pembatalan", "4", 800, "Pendapatan Pembatalan", "pendapatan", "pendapatan", "DP atau pembayaran booking batal yang ditahan sebagai denda.");
-    // Akun biaya payment gateway bawaan diberi kunci sistem agar potongan Midtrans tercatat otomatis.
-    const gateway = db.prepare("SELECT id FROM accounts WHERE name='Biaya Bank & Payment Gateway' AND system_key IS NULL AND type='beban'").get() as { id: string } | undefined;
-    if (gateway) db.prepare("UPDATE accounts SET system_key='beban_gateway' WHERE id=?").run(gateway.id);
-    else add("beban_gateway", "5", 850, "Biaya Payment Gateway", "beban", "beban", "Potongan Midtrans atas pembayaran online.");
-  }
-  db.prepare("INSERT INTO migrations VALUES (14, ?)").run(stamp);
-});
-/**
- * Menu admin disusun ulang menurut kegunaannya: pekerjaan harian (Operasional), data venue yang
- * dilihat pelanggan (Venue & Layanan), dan konfigurasi sistem (Pengaturan) seperti Midtrans,
- * login Google pelanggan, serta hak akses staf. Pengaturan login Google pindah dari halaman
- * Pelanggan ke menu "Login Pelanggan"; role yang dulu bisa membuka Pelanggan tetap memegangnya.
- * Menu yang grupnya sudah diganti admin ke nama lain tidak dipindahkan, dan nama yang sudah
- * diubah admin tidak ditimpa.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 15").get()) transaction(() => {
-  const stamp = new Date().toISOString();
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "customer-login" || menu.path === "/admin/customer-login")) {
-    menus.push({ id: "customer-login", name: "Login Pelanggan", path: "/admin/customer-login", icon: "KeyRound", group: "Pengaturan", order: 0, active: true, createdAt: stamp });
-  }
-  const plan: Record<string, [group: string, order: number]> = {
-    dashboard: ["Operasional", 1], bookings: ["Operasional", 2], customers: ["Operasional", 3], finance: ["Operasional", 4],
-    courts: ["Venue & Layanan", 101], addons: ["Venue & Layanan", 102], layout: ["Venue & Layanan", 103], info: ["Venue & Layanan", 104],
-    payments: ["Pengaturan", 201], "customer-login": ["Pengaturan", 202], users: ["Pengaturan", 203], roles: ["Pengaturan", 204], menus: ["Pengaturan", 205],
-    profile: ["Akun", 301],
-  };
-  const defaultGroups = new Set(["Operasional", "Hak Akses", "Akun", "Pengaturan"]);
-  for (const menu of menus) {
-    const target = plan[menu.id];
-    if (!target || !defaultGroups.has(menu.group)) continue;
-    [menu.group, menu.order] = target;
-  }
-  const payments = menus.find(menu => menu.id === "payments");
-  if (payments?.name === "Pembayaran") payments.name = "Pembayaran Online";
-  saveCollection("menus", menus);
-  const roles = collection<AccessRole>("roles");
-  for (const role of roles) if (role.menuIds.includes("customers") && !role.menuIds.includes("customer-login")) role.menuIds.push("customer-login");
-  saveCollection("roles", roles);
-  db.prepare("INSERT INTO migrations VALUES (15, ?)").run(stamp);
-});
-/**
- * Halaman Keuangan dipecah menjadi menu sendiri: Ringkasan, Kas & Transaksi, Jurnal Umum, dan
- * Laporan dalam grup Keuangan, sedangkan daftar akun dan kas pindah ke grup Pengaturan. Role
- * yang sebelumnya bisa membuka Keuangan mendapat semua menu barunya, jadi aksesnya tetap sama.
- * Menu Keuangan yang grupnya sudah diubah admin tidak dipindahkan.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 16").get()) transaction(() => {
-  const stamp = new Date().toISOString();
-  const menus = collection<AccessMenu>("menus");
-  const added: [id: string, name: string, path: string, icon: string, group: string, order: number][] = [
-    ["finance-records", "Kas & Transaksi", "/admin/keuangan/transaksi", "ArrowLeftRight", "Keuangan", 52],
-    ["finance-journal", "Jurnal Umum", "/admin/keuangan/jurnal", "BookOpenText", "Keuangan", 53],
-    ["finance-reports", "Laporan", "/admin/keuangan/laporan", "FileChartColumn", "Keuangan", 54],
-    ["finance-settings", "Pengaturan Keuangan", "/admin/keuangan/pengaturan", "SlidersHorizontal", "Pengaturan", 202],
-  ];
-  const finance = menus.find(menu => menu.id === "finance");
-  for (const [id, name, path, icon, group, order] of added) {
-    if (menus.some(menu => menu.id === id || menu.path === path)) continue;
-    const moved = finance && finance.group !== "Operasional";
-    menus.push({ id, name, path, icon, group: moved && group === "Keuangan" ? finance.group : group, order, active: finance?.active ?? true, createdAt: stamp });
-  }
-  if (finance?.group === "Operasional") Object.assign(finance, { name: finance.name === "Keuangan" ? "Ringkasan Keuangan" : finance.name, icon: finance.icon === "Wallet" ? "ChartPie" : finance.icon, group: "Keuangan", order: 51 });
-  /* Menu pengaturan lain bergeser satu agar Pengaturan Keuangan duduk tepat setelah Pembayaran Online. */
-  const settings: Record<string, number> = { "customer-login": 203, users: 204, roles: 205, menus: 206 };
-  for (const menu of menus) if (menu.group === "Pengaturan" && settings[menu.id] && menu.order === settings[menu.id] - 1) menu.order = settings[menu.id];
-  saveCollection("menus", menus);
-  const roles = collection<AccessRole>("roles");
-  for (const role of roles) if (role.menuIds.includes("finance")) for (const [id] of added) if (!role.menuIds.includes(id)) role.menuIds.push(id);
-  saveCollection("roles", roles);
-  db.prepare("INSERT INTO migrations VALUES (16, ?)").run(stamp);
-});
-/**
- * Pindah jadwal, notifikasi email, dan indeks untuk dashboard.
- * - Trigger bentrok jadwal kini juga menjaga UPDATE lapangan/tanggal/jam, karena booking aktif
- *   dapat dipindah. `reschedule_count` membatasi pindah jadwal oleh pelanggan sendiri.
- * - `bookings.email` menyimpan email pelanggan untuk booking yang dibuat staf (booking online memakai
- *   email pesanan atau akun Google).
- * - `email_outbox` adalah antrean email: ditulis di dalam transaksi yang sama dengan perubahannya,
- *   lalu dikirim oleh proses latar. `key` unik membuat email yang sama tidak terkirim dua kali.
- * - Indeks tanggal booking dan waktu pembayaran dipakai dashboard dan daftar booking per rentang.
- * - Menu "Notifikasi Email" disisipkan di grup Pengaturan, bawaannya hanya untuk admin.
- */
-if (!db.prepare("SELECT 1 FROM migrations WHERE version = 17").get()) transaction(() => {
-  const stamp = new Date().toISOString();
-  db.exec(`
-    ALTER TABLE bookings ADD COLUMN reschedule_count INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE bookings ADD COLUMN email TEXT NOT NULL DEFAULT '';
-    CREATE TRIGGER booking_overlap_move BEFORE UPDATE OF court_id,date,start_time,end_time ON bookings WHEN NEW.status IN ('pending','confirmed','completed') BEGIN${overlapGuard(true)}
-    END;
-    CREATE INDEX bookings_date ON bookings (date, start_time);
-    CREATE INDEX payments_created ON payments (created_at);
-    CREATE TABLE email_outbox (
-      id TEXT PRIMARY KEY,
-      key TEXT NOT NULL UNIQUE,
-      kind TEXT NOT NULL,
-      recipient TEXT NOT NULL,
-      subject TEXT NOT NULL,
-      text TEXT NOT NULL,
-      html TEXT NOT NULL,
-      ref_id TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
-      attempts INTEGER NOT NULL DEFAULT 0,
-      next_attempt_at INTEGER NOT NULL,
-      last_error TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL,
-      sent_at TEXT
-    );
-    CREATE INDEX email_outbox_queue ON email_outbox (status, next_attempt_at);
-    CREATE INDEX email_outbox_created ON email_outbox (created_at);
-  `);
-  const menus = collection<AccessMenu>("menus");
-  if (!menus.some(menu => menu.id === "notifications" || menu.path === "/admin/notifications")) {
-    menus.push({ id: "notifications", name: "Notifikasi Email", path: "/admin/notifications", icon: "Mail", group: "Pengaturan", order: 203, active: true, createdAt: stamp });
-    // Menu pengaturan setelah Pengaturan Keuangan bergeser satu agar Notifikasi Email duduk di antaranya.
-    for (const menu of menus) if (menu.id !== "notifications" && menu.group === "Pengaturan" && menu.order >= 203 && menu.order < 300) menu.order += 1;
-    saveCollection("menus", menus);
-    const roles = collection<AccessRole>("roles");
-    for (const role of roles) if (role.slug === "admin" && !role.menuIds.includes("notifications")) role.menuIds.push("notifications");
-    saveCollection("roles", roles);
-  }
-  db.prepare("INSERT INTO migrations VALUES (17, ?)").run(stamp);
-});
 export const getUsers = () => collection<User>("users");
 export const getRoles = () => collection<AccessRole>("roles");
 export const getMenus = () => collection<AccessMenu>("menus");
 export const saveUsers = (items: User[]) => saveCollection("users", items);
 export const saveRoles = (items: AccessRole[]) => saveCollection("roles", items);
 export const saveMenus = (items: AccessMenu[]) => saveCollection("menus", items);
-export function audit(actor: string, action: string, target: string) {
-  db.prepare("INSERT INTO audit_log(actor_id,action,target_id,created_at) VALUES (?,?,?,?)").run(actor,action,target,new Date().toISOString());
+
+/** Simpan dokumen pengaturan (`settings`), menimpa isi lama bila kuncinya sudah ada. */
+export async function saveSetting(key: string, document: unknown) {
+  await db.prepare("INSERT INTO settings (`key`, document) VALUES (?, ?) AS fresh ON DUPLICATE KEY UPDATE document = fresh.document").run(key, JSON.stringify(document));
+}
+/** Isi dokumen pengaturan, atau undefined bila belum pernah disimpan. */
+export async function readSetting<T = Record<string, unknown>>(key: string): Promise<T | undefined> {
+  const row = await db.prepare("SELECT document FROM settings WHERE `key` = ?").get(key) as { document: string } | undefined;
+  return row ? JSON.parse(row.document) as T : undefined;
 }
 
+/**
+ * Catat aksi staf. `detail` menyimpan nilai sebelum dan sesudah untuk aksi yang menyangkut uang
+ * (potongan harga, refund, denda, jurnal), agar selisih kas bisa ditelusuri dari Log Aktivitas.
+ */
+export async function audit(actor: string, action: string, target: string, detail?: Record<string, unknown>) {
+  await db.prepare("INSERT INTO audit_log (actor_id,action,target_id,detail,created_at) VALUES (?,?,?,?,?)")
+    .run(actor, action, target, detail ? JSON.stringify(detail) : null, new Date().toISOString());
+}

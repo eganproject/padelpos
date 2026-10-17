@@ -1,4 +1,4 @@
-﻿import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { production } from "./config.js";
 import { db, getMenus, getRoles, getUsers } from "./store.js";
@@ -15,53 +15,55 @@ const hash = (token:string) => createHash("sha256").update(token).digest("hex");
 const cookieOptions = { httpOnly:true, secure:production, sameSite:"lax" as const, path:"/" };
 function readCookie(req:Request, name:string) { return req.headers.cookie?.split(";").map(v=>v.trim()).find(v=>v.startsWith(`${name}=`))?.slice(name.length+1); }
 const sessionId = (req:Request) => readCookie(req, cookieName);
-function openSession(res:Response, name:string, subjectId:string, subjectType:"staff"|"customer", ttl:number) {
+async function openSession(res:Response, name:string, subjectId:string, subjectType:"staff"|"customer", ttl:number) {
   const token = randomBytes(32).toString("hex");
-  db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
-  db.prepare("INSERT INTO sessions VALUES (?,?,?,?)").run(hash(token),subjectId,subjectType,Date.now()+ttl);
+  await db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(Date.now());
+  await db.prepare("INSERT INTO sessions (id,subject_id,subject_type,expires_at) VALUES (?,?,?,?)").run(hash(token),subjectId,subjectType,Date.now()+ttl);
   res.cookie(name,token,{...cookieOptions,maxAge:ttl});
 }
-export function createSession(res:Response, subjectId:string) { openSession(res, cookieName, subjectId, "staff", staffTtl); }
-export function endSession(req:Request,res:Response) {
+export async function createSession(res:Response, subjectId:string) { await openSession(res, cookieName, subjectId, "staff", staffTtl); }
+export async function endSession(req:Request,res:Response) {
   const token = sessionId(req);
-  if (token) db.prepare("DELETE FROM sessions WHERE id = ?").run(hash(token));
+  if (token) await db.prepare("DELETE FROM sessions WHERE id = ?").run(hash(token));
   res.clearCookie(cookieName,cookieOptions);
 }
-export function createCustomerSession(res:Response, accountId:string) { openSession(res, customerCookie, accountId, "customer", customerTtl); }
+export async function createCustomerSession(res:Response, accountId:string) { await openSession(res, customerCookie, accountId, "customer", customerTtl); }
 /** Id akun pelanggan dari cookie, atau null bila belum masuk atau sesinya habis. */
-export function customerAccountId(req:Request) {
+export async function customerAccountId(req:Request) {
   const token = readCookie(req, customerCookie);
   if (!token) return null;
-  const row = db.prepare("SELECT subject_id FROM sessions WHERE id = ? AND subject_type = 'customer' AND expires_at > ?").get(hash(token),Date.now()) as {subject_id:string}|undefined;
+  const row = await db.prepare("SELECT subject_id FROM sessions WHERE id = ? AND subject_type = 'customer' AND expires_at > ?").get(hash(token),Date.now()) as {subject_id:string}|undefined;
   return row?.subject_id ?? null;
 }
-export function endCustomerSession(req:Request,res:Response) {
+export async function endCustomerSession(req:Request,res:Response) {
   const token = readCookie(req, customerCookie);
-  if (token) db.prepare("DELETE FROM sessions WHERE id = ? AND subject_type = 'customer'").run(hash(token));
+  if (token) await db.prepare("DELETE FROM sessions WHERE id = ? AND subject_type = 'customer'").run(hash(token));
   res.clearCookie(customerCookie,cookieOptions);
 }
-export function revokeCustomerSessions(accountId:string) { db.prepare("DELETE FROM sessions WHERE subject_id = ? AND subject_type = 'customer'").run(accountId); }
-export function revokeSessions(userId:string) { db.prepare("DELETE FROM sessions WHERE subject_id = ? AND subject_type = 'staff'").run(userId); }
-export function requireAuth(req:AuthRequest,res:Response,next:NextFunction) {
+export async function revokeCustomerSessions(accountId:string) { await db.prepare("DELETE FROM sessions WHERE subject_id = ? AND subject_type = 'customer'").run(accountId); }
+export async function revokeSessions(userId:string) { await db.prepare("DELETE FROM sessions WHERE subject_id = ? AND subject_type = 'staff'").run(userId); }
+export async function requireAuth(req:AuthRequest,res:Response,next:NextFunction) {
   const token = sessionId(req);
-  const session = (token ? db.prepare("SELECT subject_id FROM sessions WHERE id = ? AND subject_type = 'staff' AND expires_at > ?").get(hash(token),Date.now()) : undefined) as {subject_id:string}|undefined;
-  const user = session && getUsers().find(u=>u.id===session.subject_id);
-  if (!user) return res.status(401).json({message:"Sesi berakhir. Silakan masuk kembali."});
+  const session = (token ? await db.prepare("SELECT subject_id FROM sessions WHERE id = ? AND subject_type = 'staff' AND expires_at > ?").get(hash(token),Date.now()) : undefined) as {subject_id:string}|undefined;
+  const user = session && (await getUsers()).find(u=>u.id===session.subject_id);
+  if (!user) { res.status(401).json({message:"Sesi berakhir. Silakan masuk kembali."}); return; }
   req.auth = {sub:user.id,email:user.email,role:user.role}; next();
 }
-export function requireAdmin(req:AuthRequest,res:Response,next:NextFunction) {
-  requireAuth(req,res,()=>{
-    if(req.auth?.role!=="admin") return res.status(403).json({message:"Hanya admin yang dapat mengubah pengguna dan hak akses."});
+export async function requireAdmin(req:AuthRequest,res:Response,next:NextFunction) {
+  await requireAuth(req,res,()=>{
+    if(req.auth?.role!=="admin") { res.status(403).json({message:"Hanya admin yang dapat mengubah pengguna dan hak akses."}); return; }
     next();
   });
 }
 export function requireAnyMenu(ids:string[]) {
-  return (req:AuthRequest,res:Response,next:NextFunction)=>requireAuth(req,res,()=>{
-    const role=getRoles().find(r=>r.slug===req.auth!.role);
-    const active=getMenus().filter(m=>m.active).map(m=>m.id);
-    if(!role || !ids.some(id=>active.includes(id)&&role.menuIds.includes(id))) return res.status(403).json({message:"Anda tidak memiliki akses ke fitur ini."});
+  return async (req:AuthRequest,res:Response,next:NextFunction)=>{
+    let allowed=false;
+    await requireAuth(req,res,()=>{allowed=true});
+    if(!allowed)return;
+    const role=(await getRoles()).find(r=>r.slug===req.auth!.role);
+    const active=(await getMenus()).filter(m=>m.active).map(m=>m.id);
+    if(!role || !ids.some(id=>active.includes(id)&&role.menuIds.includes(id))) { res.status(403).json({message:"Anda tidak memiliki akses ke fitur ini."}); return; }
     next();
-  });
+  };
 }
 export const requireMenu=(id:string)=>requireAnyMenu([id]);
-

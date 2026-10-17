@@ -7,11 +7,13 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/start.js",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && eslint src",
     "test": "node --import tsx --test tests/*.test.ts",
     "backup": "tsx src/backup.ts",
     "seed": "tsx src/seed.ts",
-    "seed:dua-lantai": "tsx src/seed.ts --dua-lantai"
+    "seed:dua-lantai": "tsx src/seed.ts --dua-lantai",
+    "restore": "tsx src/restore.ts",
+    "import:sqlite": "tsx src/import-sqlite.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.0",
@@ -20,6 +22,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.0.0",
     "helmet": "^8.0.0",
+    "mysql2": "^3.24.6",
     "nodemailer": "^7.0.13",
     "zod": "^4.0.0"
   },
@@ -29,8 +32,10 @@
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.2",
+    "eslint": "^9.39.5",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.71.2"
   },
   "engines": {
     "node": ">=24.14.0"

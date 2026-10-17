@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createServer, type Socket } from "node:net";
+import { useTestDatabase } from "./mysql.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "padelix-reschedule-test-"));
 process.env.DATA_DIR = directory;
+await useTestDatabase("reschedule");
 process.env.NODE_ENV = "test";
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.PUBLIC_URL = "https://padelix.contoh";
@@ -63,7 +65,7 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
   const day = (offset: number) => { const value = new Date(localClock().date + "T12:00:00Z"); value.setUTCDate(value.getUTCDate() + offset); return value.toISOString().slice(0, 10); };
   const [d2, d3] = [day(2), day(3)];
   let admin = "", staff = "", courtA = "", courtB = "", raket = "", bookingId = "";
-  const outbox = (kind: string) => db.prepare("SELECT recipient,subject,text,status FROM email_outbox WHERE kind=? ORDER BY created_at").all(kind) as { recipient: string; subject: string; text: string; status: string }[];
+  const outbox = async (kind: string) => await db.prepare("SELECT recipient,subject,text,status FROM email_outbox WHERE kind=? ORDER BY created_at").all(kind) as { recipient: string; subject: string; text: string; status: string }[];
 
   try {
     await t.test("penyiapan: admin, operator, dua lapangan, raket sewa, dan SMTP", async () => {
@@ -129,17 +131,17 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
       assert.equal(booking.reschedule_count, 1);
       const detail = await request(`/operations/bookings/${bookingId}`, "GET", undefined, staff);
       assert.equal(detail.data.addons[0].subtotal, 60000);
-      const entry = db.prepare("SELECT date FROM journal_entries WHERE source='booking' AND ref_id=?").get(bookingId) as { date: string };
+      const entry = await db.prepare("SELECT date FROM journal_entries WHERE source='booking' AND ref_id=?").get(bookingId) as { date: string };
       assert.equal(entry.date, d3, "pendapatan diakui pada tanggal main yang baru");
-      const piutang = db.prepare("SELECT SUM(l.debit) debit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id WHERE e.source='booking' AND e.ref_id=?").get(bookingId) as { debit: number };
+      const piutang = await db.prepare("SELECT SUM(l.debit) debit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id WHERE e.source='booking' AND e.ref_id=?").get(bookingId) as { debit: number };
       assert.equal(piutang.debit, 510000);
 
-      const mail = outbox("reschedule");
+      const mail = await outbox("reschedule");
       assert.equal(mail.length, 1);
       assert.equal(mail[0].recipient, "sinta@contoh.test");
       assert.match(mail[0].text, /Court A/); assert.match(mail[0].text, /Court B/);
       assert.match(mail[0].text, /Sisa tagihan: Rp410\.000/);
-      assert.equal(outbox("staff_new").length, 0, "pemindahan oleh staf tidak mengirim email ke staf");
+      assert.equal((await outbox("staff_new")).length, 0, "pemindahan oleh staf tidak mengirim email ke staf");
 
       // Slot lama terbuka lagi, slot baru terisi.
       const free = await request("/operations/bookings", "POST", { court_id: courtA, customer: "Pengisi", phone: "081200000004", date: d2, start_time: "10:00", end_time: "11:00" }, staff);
@@ -160,12 +162,12 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
 
     await t.test("pelanggan memindah booking miliknya sendiri sesuai kebijakan venue", async () => {
       const accountId = randomUUID(), token = randomBytes(32).toString("hex"), stamp = new Date().toISOString();
-      db.prepare("INSERT INTO customer_accounts (id,firebase_uid,email,name,phone,created_at,last_login_at) VALUES (?,?,?,?,?,?,?)").run(accountId, "uid-rina", "rina@gmail.test", "Rina", "6281200000007", stamp, stamp);
-      db.prepare("INSERT INTO sessions VALUES (?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), accountId, "customer", Date.now() + 3600000);
+      await db.prepare("INSERT INTO customer_accounts (id,firebase_uid,email,name,phone,created_at,last_login_at) VALUES (?,?,?,?,?,?,?)").run(accountId, "uid-rina", "rina@gmail.test", "Rina", "6281200000007", stamp, stamp);
+      await db.prepare("INSERT INTO sessions (id,subject_id,subject_type,expires_at) VALUES (?,?,?,?)").run(createHash("sha256").update(token).digest("hex"), accountId, "customer", Date.now() + 3600000);
       const rina = `padelix_customer=${token}`;
       const own = await request("/operations/bookings", "POST", { court_id: courtA, customer: "Rina", phone: "081200000007", date: d2, start_time: "16:00", end_time: "17:00" }, staff);
       const ownId = own.data.booking.id;
-      db.prepare("UPDATE bookings SET account_id=? WHERE id=?").run(accountId, ownId);
+      await db.prepare("UPDATE bookings SET account_id=? WHERE id=?").run(accountId, ownId);
       const move = (id: string, body: object) => request(`/customer/bookings/${id}/reschedule`, "POST", body, rina);
       const target = { court_id: courtA, date: d3, start_time: "16:00", end_time: "17:00" };
 
@@ -185,8 +187,8 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
       assert.equal(moved.data.booking.date, d3);
       assert.equal(moved.data.booking.reschedule.allowed, false);
       assert.equal((await move(ownId, { ...target, start_time: "17:00", end_time: "18:00" })).status, 409, "pelanggan hanya boleh sekali");
-      assert.equal(outbox("reschedule").at(-1)!.recipient, "rina@gmail.test", "tanpa email isian staf, email akun Google yang dipakai");
-      assert.equal(outbox("staff_new").at(-1)!.recipient, "kasir@venue.test", "staf diberi tahu saat pelanggan sendiri yang memindah");
+      assert.equal((await outbox("reschedule")).at(-1)!.recipient, "rina@gmail.test", "tanpa email isian staf, email akun Google yang dipakai");
+      assert.equal((await outbox("staff_new")).at(-1)!.recipient, "kasir@venue.test", "staf diberi tahu saat pelanggan sendiri yang memindah");
     });
 
     await t.test("pembatalan dan pengingat masuk antrean sekali saja, lalu terkirim", async () => {
@@ -199,14 +201,14 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
         if (end <= "23:00") {
           const created = await request("/operations/bookings", "POST", { court_id: courtA, customer: "Dekat", phone: "081200000008", email: "dekat@contoh.test", date: soon.date, start_time: begin, end_time: end }, staff);
           assert.equal(created.status, 201, JSON.stringify(created.data));
-          assert.ok(queueReminders() >= 1);
-          assert.equal(queueReminders(), 0, "pengingat tidak dobel");
-          assert.ok(outbox("reminder").some(mail => mail.recipient === "dekat@contoh.test"));
+          assert.ok(await queueReminders() >= 1);
+          assert.equal(await queueReminders(), 0, "pengingat tidak dobel");
+          assert.ok((await outbox("reminder")).some(mail => mail.recipient === "dekat@contoh.test"));
         }
       }
       const cancelled = await request(`/operations/bookings/${bookingId}/status`, "PATCH", { status: "cancelled", reason: "Lampu lapangan rusak" }, staff);
       assert.equal(cancelled.status, 200, JSON.stringify(cancelled.data));
-      const mail = outbox("cancelled");
+      const mail = await outbox("cancelled");
       assert.equal(mail.length, 1);
       assert.match(mail[0].text, /Lampu lapangan rusak/);
       assert.match(mail[0].text, /Pembayaran diterima: Rp100\.000/);
@@ -226,18 +228,18 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
       await request(`/operations/bookings/${created.data.booking.id}/status`, "PATCH", { status: "cancelled", reason: "Uji gagal kirim" }, staff);
       const first = await deliverDue();
       assert.equal(first.failed, 1);
-      const row = db.prepare("SELECT id,status,attempts,last_error FROM email_outbox WHERE recipient='gagal@contoh.test'").get() as { id: string; status: string; attempts: number; last_error: string };
+      const row = await db.prepare("SELECT id,status,attempts,last_error FROM email_outbox WHERE recipient='gagal@contoh.test'").get() as { id: string; status: string; attempts: number; last_error: string };
       assert.equal(row.status, "pending"); assert.equal(row.attempts, 1); assert.ok(row.last_error);
       assert.equal((await deliverDue()).failed, 0, "belum jatuh tempo, tidak dicoba lagi");
-      db.prepare("UPDATE email_outbox SET status='failed' WHERE id=?").run(row.id);
+      await db.prepare("UPDATE email_outbox SET status='failed' WHERE id=?").run(row.id);
       await request("/operations/notifications/settings", "PUT", { enabled: true, host: "127.0.0.1", port: smtpPort, from_email: "booking@venue.test", staff_recipients: [] }, admin);
       assert.equal((await request(`/operations/notifications/${row.id}/retry`, "POST", {}, admin)).status, 200);
       await deliverDue();
-      assert.equal((db.prepare("SELECT status FROM email_outbox WHERE id=?").get(row.id) as { status: string }).status, "sent");
+      assert.equal((await db.prepare("SELECT status FROM email_outbox WHERE id=?").get(row.id) as { status: string }).status, "sent");
     });
 
     await t.test("daftar booking per rentang, pencarian, dan dashboard tanpa membaca seluruh riwayat", async () => {
-      db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,source,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,'completed','staff',?,?)")
+      await db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,source,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,'completed','staff',?,?)")
         .run(randomUUID(), courtA, "Arsip Lama", "081299999999", day(-200), "10:00", "11:00", 200000, 200000, "x", new Date().toISOString());
       const recent = await request("/operations/bookings?window=recent", "GET", undefined, staff);
       assert.equal(recent.status, 200);
@@ -253,7 +255,7 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
       const summary = await request("/dashboard/summary", "GET", undefined, admin);
       assert.equal(summary.status, 200);
       assert.equal(summary.data.daily.length, 7);
-      const expected = (db.prepare(`SELECT b.*,COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid FROM bookings b`).all() as { status: string; total: number; paid: number; forfeited: number }[])
+      const expected = (await db.prepare(`SELECT b.*,COALESCE((SELECT SUM(CASE kind WHEN 'payment' THEN amount ELSE -amount END) FROM payments WHERE booking_id=b.id),0) paid FROM bookings b`).all() as { status: string; total: number; paid: number; forfeited: number }[])
         .reduce((sum, b) => sum + (b.status === "confirmed" || b.status === "completed" ? Math.max(0, b.total - b.paid) : 0), 0);
       assert.equal(summary.data.receivable, expected);
       assert.equal(summary.data.revenueWeek, 100000 + 300000 - 100000, "pembayaran dan refund minggu ini");
@@ -261,7 +263,7 @@ test("pindah jadwal, notifikasi email, dan daftar booking per rentang", async t 
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     smtp.close();
-    db.close();
+    await db.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });
