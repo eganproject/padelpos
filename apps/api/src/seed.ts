@@ -14,16 +14,16 @@ import { createEquity, createTransfer, savePartner, saveRecord, syncBooking } fr
  */
 const twoFloors = process.argv.includes("--dua-lantai");
 const force = process.argv.includes("--force");
-const existing = db.prepare("SELECT count(*) n FROM courts").get() as { n: number };
+const existing = await db.prepare("SELECT count(*) n FROM courts").get() as { n: number };
 if (existing.n && (twoFloors || !force)) {
   console.log(twoFloors
-    ? `Sudah ada ${existing.n} lapangan. Contoh dua lantai hanya dibuat di database kosong. Jalankan dengan DATA_DIR baru (lihat README).`
+    ? `Sudah ada ${existing.n} lapangan. Contoh dua lantai hanya dibuat di database kosong. Jalankan dengan DATABASE_URL ke database baru (lihat README).`
     : `Sudah ada ${existing.n} lapangan. Jalankan dengan --force untuk menambah data contoh lagi.`);
-  db.close();
+  await db.close();
   process.exit(0);
 }
 
-const actor = (db.prepare("SELECT id FROM users LIMIT 1").get() as { id: string } | undefined)?.id ?? "seed";
+const actor = (await db.prepare("SELECT id FROM users LIMIT 1").get() as { id: string } | undefined)?.id ?? "seed";
 const clock = localClock();
 const day = (offset: number) => {
   const date = new Date(clock.date + "T12:00:00Z");
@@ -177,68 +177,72 @@ const twoFloorBuilding: Scenario = {
 
 const scenario = twoFloors ? twoFloorBuilding : oneFloor;
 
-transaction(() => {
+await transaction(async () => {
   // Lantai pertama dibuat oleh migrasi; di database kosong nama dan ukurannya disesuaikan.
-  const present = floors();
-  const floorIds = scenario.floors.map((floor, index) => {
+  const present = await floors();
+  const floorIds: string[] = [];
+  for (const [index, floor] of scenario.floors.entries()) {
     const current = present[index];
     if (current) {
-      if (!existing.n) db.prepare("UPDATE floors SET name=?,width=?,height=? WHERE id=?").run(floor.name, floor.width, floor.height, current.id);
-      return current.id;
+      if (!existing.n) await db.prepare("UPDATE floors SET name=?,width=?,height=? WHERE id=?").run(floor.name, floor.width, floor.height, current.id);
+      floorIds.push(current.id);
+      continue;
     }
     const id = randomUUID();
-    db.prepare("INSERT INTO floors (id,name,position,width,height,created_at) VALUES (?,?,?,?,?,?)").run(id, floor.name, index, floor.width, floor.height, new Date().toISOString());
-    return id;
-  });
-  if (!existing.n) db.prepare("UPDATE settings SET document=? WHERE key='venue'").run(JSON.stringify({ width: scenario.floors[0].width, height: scenario.floors[0].height, grid: 10 }));
+    await db.prepare("INSERT INTO floors (id,name,position,width,height,created_at) VALUES (?,?,?,?,?,?)").run(id, floor.name, index, floor.width, floor.height, new Date().toISOString());
+    floorIds.push(id);
+  }
+  if (!existing.n) await db.prepare("UPDATE settings SET document=? WHERE `key`='venue'").run(JSON.stringify({ width: scenario.floors[0].width, height: scenario.floors[0].height, grid: 10 }));
 
-  const ids = scenario.courts.map(court => {
+  const ids: (SeedCourt & { id: string })[] = [];
+  for (const court of scenario.courts) {
     const id = randomUUID();
-    db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at,layout_x,layout_y,layout_w,layout_h,description,environment,surface,floor_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    await db.prepare("INSERT INTO courts (id,name,hourly_rate,opens_at,closes_at,active,created_at,layout_x,layout_y,layout_w,layout_h,description,environment,surface,floor_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(id, court.name, court.hourly_rate, court.opens_at, court.closes_at, 1, new Date().toISOString(), court.x, court.y, 100, 200, court.description, court.environment, court.surface, floorIds[court.floor]);
-    return { id, ...court };
-  });
+    ids.push({ id, ...court });
+  }
 
   for (const [label, days, start, end, rate, targets] of scenario.rules) {
     const id = randomUUID();
-    db.prepare("INSERT INTO price_rules (id,label,days,start_time,end_time,hourly_rate,created_at) VALUES (?,?,?,?,?,?,?)").run(id, label, JSON.stringify(days), start, end, rate, new Date().toISOString());
-    for (const index of targets) db.prepare("INSERT INTO price_rule_courts (rule_id,court_id) VALUES (?,?)").run(id, ids[index].id);
+    await db.prepare("INSERT INTO price_rules (id,label,days,start_time,end_time,hourly_rate,created_at) VALUES (?,?,?,?,?,?,?)").run(id, label, JSON.stringify(days), start, end, rate, new Date().toISOString());
+    for (const index of targets) await db.prepare("INSERT INTO price_rule_courts (rule_id,court_id) VALUES (?,?)").run(id, ids[index].id);
   }
 
   // Katalog tambahan hanya diisi bila masih kosong, agar --force tidak membuat item ganda.
-  const hasCatalog = (db.prepare("SELECT count(*) n FROM addons").get() as { n: number }).n > 0;
-  const addonIds = hasCatalog ? [] : catalog.map(([name, category, type, pricing, price, stock, lowStock, max, description, online], position) => {
+  const hasCatalog = (await db.prepare("SELECT count(*) n FROM addons").get() as { n: number }).n > 0;
+  const addonIds: string[] = [];
+  if (!hasCatalog) for (const [position, [name, category, type, pricing, price, stock, lowStock, max, description, online]] of catalog.entries()) {
     const id = randomUUID(), stamp = new Date().toISOString();
-    db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)")
+    await db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?)")
       .run(id, name, category, type, pricing, price, stock, lowStock, max, description, Number(online), position, stamp);
-    if (stock !== null) db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,stock_after,created_by,created_at) VALUES (?,?,?,'awal','',?,?,?)").run(randomUUID(), id, stock, stock, actor, stamp);
-    return id;
-  });
+    if (stock !== null) await db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,stock_after,created_by,created_at) VALUES (?,?,?,'awal','',?,?,?)").run(randomUUID(), id, stock, stock, actor, stamp);
+    addonIds.push(id);
+  }
 
-  const activeRules = priceRules();
+  const activeRules = await priceRules();
   for (const item of scenario.reservations) {
     const court = ids[item.court], id = randomUUID();
     const total = quote(court, activeRules, day(item.day), item.start, item.end);
-    db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    await db.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,court_total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(id, court.id, item.customer, item.phone, day(item.day), item.start, item.end, total, total, "confirmed", "", actor, new Date().toISOString());
     if (addonIds.length && item.addons)
-      applyLines({ id, date: day(item.day), start_time: item.start, end_time: item.end, paid: 0, court_total: total, discount: 0, tax_rate: 0, tax_inclusive: 0 }, item.addons.map(([index, quantity]) => ({ addon_id: addonIds[index], quantity })), actor);
+      await applyLines({ id, date: day(item.day), start_time: item.start, end_time: item.end, paid: 0, court_total: total, discount: 0, tax_rate: 0, tax_inclusive: 0 }, item.addons.map(([index, quantity]) => ({ addon_id: addonIds[index], quantity })), actor);
     // Booking di sini ditulis langsung ke tabel, jadi jurnal pendapatannya dibuat menyusul.
-    syncBooking(id);
+    await syncBooking(id);
   }
 
   const care = scenario.maintenance;
-  db.prepare("INSERT INTO maintenance (id,court_id,date,start_time,end_time,reason) VALUES (?,?,?,?,?,?)")
+  await db.prepare("INSERT INTO maintenance (id,court_id,date,start_time,end_time,reason) VALUES (?,?,?,?,?,?)")
     .run(randomUUID(), ids[care.court].id, day(care.day), care.start, care.end, care.reason);
 
   // Elemen penjelas denah: hanya informasi, tidak memengaruhi jadwal.
   for (const [floor, kind, label, x, y, w, h] of scenario.features) {
-    db.prepare("INSERT INTO venue_features (id,kind,label,x,y,w,h,floor_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+    await db.prepare("INSERT INTO venue_features (id,kind,label,x,y,w,h,floor_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(randomUUID(), kind, label, x, y, w, h, floorIds[floor], new Date().toISOString());
   }
 
   // Info venue contoh. Alamat dan nomor sengaja berbentuk contoh agar tidak tertukar dengan data asli.
-  // INSERT OR IGNORE: info yang sudah diisi admin tidak pernah ditimpa, termasuk saat --force.
+  // ON DUPLICATE KEY UPDATE document=settings.document: info yang sudah diisi admin tidak pernah ditimpa, termasuk saat --force.
   const stamp = new Date().toISOString();
   const documents: Record<string, object> = {
     info: {
@@ -257,19 +261,19 @@ transaction(() => {
     faqs: { items: scenario.faqs.map(([question, answer]) => ({ id: randomUUID(), question, answer })), updated_at: stamp },
   };
   for (const [key, document] of Object.entries(documents))
-    db.prepare("INSERT OR IGNORE INTO settings (key, document) VALUES (?, ?)").run(key, JSON.stringify(document));
+    await db.prepare("INSERT INTO settings (`key`, document) VALUES (?, ?) AS fresh ON DUPLICATE KEY UPDATE document=settings.document").run(key, JSON.stringify(document));
 
   console.log(`Data contoh ${scenario.label} dibuat: ${scenario.floors.length} lantai, ${ids.length} lapangan, ${scenario.rules.length} tarif khusus, ${scenario.reservations.length} booking, ${addonIds.length} item sewa & tambahan, ${scenario.features.length} elemen denah, info venue, kebijakan, dan FAQ.`);
   console.log(`Tanggal yang terisi: ${day(0)} (hari ini), ${day(1)}, ${day(2)}.`);
 });
 // Contoh pembukuan: setoran modal, biaya operasional dua bulan terakhir, satu tagihan pemasok yang
 // belum dibayar, dan satu pemasukan di luar booking, supaya laporan keuangan langsung ada isinya.
-if (!(db.prepare("SELECT 1 FROM finance_records LIMIT 1").get())) {
-  const account = (code: string) => (db.prepare("SELECT id FROM accounts WHERE code=?").get(code) as { id: string }).id;
-  const kas = account("1-100"), bank = account("1-200");
-  const supplier = savePartner({ name: "Toko Olahraga Sentosa", kind: "pemasok", phone: "081200001111", note: "Bola, grip, dan perlengkapan lapangan.", active: true }, actor);
-  createEquity({ date: day(-40), direction: "setor", cash_account_id: bank, amount: 20000000, memo: "Setoran modal awal pemilik" }, actor);
-  createTransfer({ date: day(-38), from_account_id: bank, to_account_id: kas, amount: 3000000, memo: "Isi kas kasir dari rekening venue" }, actor);
+if (!(await db.prepare("SELECT 1 FROM finance_records LIMIT 1").get())) {
+  const account = async (code: string) => (await db.prepare("SELECT id FROM accounts WHERE code=?").get(code) as { id: string }).id;
+  const kas = await account("1-100"), bank = await account("1-200");
+  const supplier = await savePartner({ name: "Toko Olahraga Sentosa", kind: "pemasok", phone: "081200001111", note: "Bola, grip, dan perlengkapan lapangan.", active: true }, actor);
+  await createEquity({ date: day(-40), direction: "setor", cash_account_id: bank, amount: 20000000, memo: "Setoran modal awal pemilik" }, actor);
+  await createTransfer({ date: day(-38), from_account_id: bank, to_account_id: kas, amount: 3000000, memo: "Isi kas kasir dari rekening venue" }, actor);
   const samples: [number, "pengeluaran" | "pemasukan", string, number, string | null, string][] = [
     [-35, "pengeluaran", "5-300", 4000000, bank, "Sewa tempat bulan lalu"],
     [-32, "pengeluaran", "5-100", 3500000, bank, "Gaji staf bulan lalu"],
@@ -283,12 +287,12 @@ if (!(db.prepare("SELECT 1 FROM finance_records LIMIT 1").get())) {
     [-1, "pemasukan", "4-900", 2500000, bank, "Sewa venue untuk turnamen komunitas"],
   ];
   for (const [offset, kind, code, amount, cash, description] of samples) {
-    saveRecord({
-      kind, date: day(offset), account_id: account(code), amount, description,
+    await saveRecord({
+      kind, date: day(offset), account_id: await account(code), amount, description,
       settle: cash ? "tunai" : "tempo", cash_account_id: cash,
       partner_id: cash ? null : supplier.id, due_date: cash ? "" : day(10),
     }, actor);
   }
   console.log(`Contoh pembukuan dibuat: ${samples.length} catatan keuangan, 1 pemasok, dan setoran modal awal.`);
 }
-db.close();
+await db.close();

@@ -4,9 +4,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { useTestDatabase } from "./mysql.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "padelix-customer-test-"));
 process.env.DATA_DIR = directory;
+await useTestDatabase("customer");
 process.env.NODE_ENV = "test";
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.PUBLIC_URL = "https://padelix.contoh";
@@ -126,7 +128,7 @@ test("akun pelanggan: login Google lewat Firebase, profil, riwayat, klaim, dan p
       await refused(unsigned);
       await refused(idToken({ firebase: { sign_in_provider: "password" } }), 403);
       assert.equal((await request("/customer/session", "POST", { id_token: "bukan token" })).status, 400);
-      assert.equal(db.prepare("SELECT count(*) n FROM customer_accounts").get()!.n, 0, "tidak ada akun yang tercipta dari token yang ditolak");
+      assert.equal((await db.prepare("SELECT count(*) n FROM customer_accounts").get())!.n, 0, "tidak ada akun yang tercipta dari token yang ditolak");
     });
 
     await t.test("login pertama membuat akun, login berikutnya memakai akun yang sama", async () => {
@@ -210,7 +212,7 @@ test("akun pelanggan: login Google lewat Firebase, profil, riwayat, klaim, dan p
         customer: "Tamu", phone: "081234500009", email: "", notes: "",
       });
       assert.equal(guest.status, 201);
-      assert.equal(db.prepare("SELECT account_id FROM bookings WHERE order_id=?").get(guest.data.order_id)!.account_id, null, "tanpa login tidak terhubung ke akun mana pun");
+      assert.equal((await db.prepare("SELECT account_id FROM bookings WHERE order_id=?").get(guest.data.order_id))!.account_id, null, "tanpa login tidak terhubung ke akun mana pun");
     });
 
     await t.test("riwayat dibagi: akan datang, selesai, dibatalkan", async () => {
@@ -232,11 +234,11 @@ test("akun pelanggan: login Google lewat Firebase, profil, riwayat, klaim, dan p
     });
 
     await t.test("hapus akun: booking tetap ada, kaitannya dilepas, sesi berakhir", async () => {
-      const before = db.prepare("SELECT count(*) n FROM bookings").get()!.n;
+      const before = (await db.prepare("SELECT count(*) n FROM bookings").get())!.n;
       assert.equal((await request("/customer/me", "DELETE", undefined, budi)).status, 204);
       assert.equal((await request("/customer/me", "GET", undefined, budi)).status, 401);
-      assert.equal(db.prepare("SELECT count(*) n FROM bookings").get()!.n, before);
-      assert.equal(db.prepare("SELECT count(*) n FROM customer_accounts").get()!.n, 1);
+      assert.equal((await db.prepare("SELECT count(*) n FROM bookings").get())!.n, before);
+      assert.equal((await db.prepare("SELECT count(*) n FROM customer_accounts").get())!.n, 1);
     });
 
     await t.test("keluar mengakhiri sesi di server, bukan hanya menghapus cookie", async () => {
@@ -245,7 +247,7 @@ test("akun pelanggan: login Google lewat Firebase, profil, riwayat, klaim, dan p
     });
   } finally {
     server.close();
-    db.close();
+    await db.close();
     rmSync(directory, { recursive: true, force: true });
   }
 });

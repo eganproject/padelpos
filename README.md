@@ -1,14 +1,15 @@
 # Padelix
 
 Aplikasi administrasi penyewaan lapangan padel: Next.js (frontend) dan Express.js (API)
-dengan penyimpanan SQLite bawaan Node (`node:sqlite`).
+dengan database MySQL 8.
 
 ## Menjalankan proyek
 
-1. Salin `.env.example` menjadi `.env`.
-2. Jalankan `npm install`.
-3. Jalankan `npm run dev`.
-4. Buka `http://localhost:3000`.
+1. Siapkan MySQL 8.0.19 atau lebih baru (lihat [Database](#database)).
+2. Salin `.env.example` menjadi `.env`, lalu isi `DATABASE_URL`.
+3. Jalankan `npm install`.
+4. Jalankan `npm run dev`. Tabel dibuat otomatis saat API pertama kali menyala.
+5. Buka `http://localhost:3000`.
 
 Frontend berjalan di port `3000`, API di port `4000`. Frontend mem-proxy `/api/*` ke API,
 jadi tidak ada permintaan lintas-origin dari browser.
@@ -25,11 +26,13 @@ pada `.env`. Hapus variabel itu setelah admin pertama dibuat.
 ## Perintah
 
 - `npm run dev` — menjalankan frontend dan API bersamaan
-- `npm run lint` — memeriksa TypeScript seluruh workspace
-- `npm run test` — menjalankan test integrasi API
+- `npm run lint` — memeriksa TypeScript seluruh workspace dan aturan async di API
+- `npm run test` — menjalankan test integrasi API (butuh MySQL, lihat [Database](#database))
 - `npm run build` — membuat production build
 - `npm run start` — menjalankan production build
-- `npm run backup -w apps/api` — menyalin database ke `apps/api/data/backups/`
+- `npm run backup -w apps/api` — membuat berkas backup di folder backup (lihat [Cadangan data](#cadangan-data))
+- `npm run restore -w apps/api -- <berkas>` — memulihkan database dari berkas backup
+- `npm run import:sqlite -w apps/api` — memindahkan data dari versi SQLite lama ke MySQL
 
 ## Data contoh
 
@@ -41,12 +44,12 @@ pada `.env`. Hapus variabel itu setelah admin pertama dibuat.
   pada kedua lantai.
 
 Seeder hanya mengisi database yang belum punya lapangan. Untuk mencoba contoh dua lantai tanpa
-menyentuh data Anda, pakai folder data terpisah (path absolut), lalu jalankan aplikasi dengan
-folder yang sama:
+menyentuh data Anda, pakai database terpisah (dibuat otomatis bila pengguna MySQL punya hak
+`CREATE`), lalu jalankan aplikasi dengan database yang sama:
 
 ```powershell
-$env:DATA_DIR="C:\padelix-contoh"; npm run seed:dua-lantai -w apps/api
-$env:DATA_DIR="C:\padelix-contoh"; npm run dev
+$env:DATABASE_URL="mysql://padelix:password@127.0.0.1:3306/padelix_contoh"; npm run seed:dua-lantai -w apps/api
+$env:DATABASE_URL="mysql://padelix:password@127.0.0.1:3306/padelix_contoh"; npm run dev
 ```
 
 ## Venue bertingkat
@@ -178,6 +181,37 @@ lain dan melihat jadwal mainnya. Booking masuk ke riwayat akun lewat tiga jalan:
 Menghapus akun tidak menghapus booking. Jadwal dan pembayarannya tetap milik venue; yang hilang
 hanya kaitannya ke akun dan data login Google.
 
+## Pindah jadwal
+
+Booking aktif dapat dipindah ke lapangan, tanggal, atau jam lain dari detail booking (tombol
+**Pindah jadwal**). Pembayaran, tambahan, dan potongan ikut pindah. Harga sewa memakai tarif slot
+baru, tambahan per jam mengikuti durasi baru, dan stok raket sewa diperiksa di jam baru. Bila
+jadwal baru lebih murah dari yang sudah dibayar, kelebihannya tampil sebagai "Perlu pengembalian".
+Jurnal pendapatan ikut pindah ke tanggal main yang baru, sehingga kedua tanggal harus berada di
+luar periode yang dikunci.
+
+Pelanggan yang masuk dengan Google dapat memindah booking miliknya sendiri dari **Akun → Pesanan**
+bila kebijakan venue (Info Venue → Kebijakan) mengizinkan pindah jadwal. Batasnya: sekali per
+booking, paling lambat sesuai "batas jam pindah jadwal", dengan durasi yang sama, dan tagihan baru
+tidak boleh lebih kecil dari yang sudah dibayar.
+
+## Notifikasi email
+
+Menu **Pengaturan → Notifikasi Email** menyambungkan server SMTP (Gmail atau Google Workspace dengan
+App Password, Zoho, Mailgun, SendGrid, dan sejenisnya). Email yang dikirim:
+
+- konfirmasi saat pembayaran online diterima,
+- pemberitahuan saat jadwal dipindah dan saat booking dibatalkan staf,
+- pengingat sebelum main (bawaan 24 jam sebelumnya),
+- pemberitahuan ke email staf untuk booking online baru dan pindah jadwal oleh pelanggan.
+
+Pelanggan menerima email bila alamatnya diketahui: isian kasir saat membuat booking, email saat
+checkout online, atau email akun Google. Email ditulis ke antrean (`email_outbox`) di transaksi
+yang sama dengan perubahannya, lalu dikirim proses latar API setiap 30 detik. Bila SMTP gagal,
+email dicoba ulang sampai 5 kali dan dapat dikirim ulang dari panel. Pengaturan SMTP juga dapat
+diisi lewat environment (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`,
+`MAIL_FROM`); nilai environment mengalahkan isian panel.
+
 ## Pembukuan & laporan keuangan
 
 Menu **Keuangan** mencatat pengeluaran operasional dan pemasukan di luar booking, lalu menyusunnya
@@ -285,26 +319,89 @@ penuh; bila belum, kolom kanan diisi gambar lapangan yang digambar dengan CSS su
 punya suasana. Kepekatan lapisan gelap di atas foto ditentukan dari pengukuran: tulisan paling tipis
 di hero tetap di atas 5:1 walau fotonya terang.
 
-## Penyimpanan data
+## Database
 
-Data tersimpan pada `apps/api/data/padelix.sqlite` (mode WAL) dan dibuat otomatis saat
-API pertama kali dijalankan. Lokasi dapat diubah melalui `DATA_DIR`.
+Padelix memakai MySQL 8.0.19 atau lebih baru (MariaDB tidak didukung). Buat database dan pengguna
+sekali, misalnya lewat `mysql -u root -p`:
 
-Berkas `users.json`, `roles.json`, dan `menus.json` yang lama hanya dibaca **satu kali**
-sebagai sumber migrasi awal, lalu diabaikan. Berkas aslinya tidak dihapus.
+```sql
+CREATE DATABASE padelix CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+CREATE USER 'padelix'@'localhost' IDENTIFIED BY 'ganti-password';
+GRANT ALL PRIVILEGES ON padelix.* TO 'padelix'@'localhost';
+```
+
+Lalu isi `.env`:
+
+```
+DATABASE_URL=mysql://padelix:ganti-password@127.0.0.1:3306/padelix
+```
+
+Bila password mengandung karakter seperti `@` atau `/`, pakai `MYSQL_HOST`, `MYSQL_PORT`,
+`MYSQL_USER`, `MYSQL_PASSWORD`, dan `MYSQL_DATABASE` sebagai gantinya. Tabel dan data bawaan
+(menu, role, bagan akun) dibuat otomatis saat API pertama kali menyala; perubahan skema berikutnya
+tercatat di tabel `migrations` dan dijalankan sekali saja walau beberapa proses API menyala bersamaan.
+
+Semua penulisan berjalan berurutan dalam transaksi, jadi pemeriksaan seperti bentrok jadwal, stok
+sewa, dan nomor jurnal tetap aman walau API dijalankan lebih dari satu proses atau server.
+
+**Test** memakai database `padelix_test_*` yang dibuat ulang setiap kali dijalankan. Bawaannya
+menyambung ke `mysql://padelix:padelix@127.0.0.1:3306`; ubah lewat `TEST_DATABASE_URL` (tanpa nama
+database). Pengguna itu perlu hak membuat dan menghapus database:
+
+```sql
+GRANT ALL PRIVILEGES ON `padelix\_test\_%`.* TO 'padelix'@'localhost';
+```
+
+### Pindah dari versi SQLite
+
+Data versi sebelumnya (`apps/api/data/padelix.sqlite`) dipindahkan sekali dengan:
+
+1. Jalankan dulu versi SQLite terakhir sekali agar migrasinya lengkap, lalu hentikan aplikasinya.
+2. Siapkan MySQL dan `DATABASE_URL` seperti di atas, lalu perbarui kode ke versi ini.
+3. Jalankan `npm run import:sqlite -w apps/api` (atau tambahkan path berkas SQLite lain di belakangnya).
+
+Impor berjalan dalam satu transaksi: bila ada yang gagal, MySQL kembali kosong seperti semula.
+Setelah selesai, jumlah baris tiap tabel dicocokkan dan rujukan antartabel diperiksa. Berkas SQLite
+tidak diubah, jadi simpan sebagai cadangan sampai Anda yakin. Sesi login tidak ikut dipindah, jadi
+staf masuk ulang sekali. Bila MySQL sudah berisi data, impor menolak kecuali ditambah `--yes`.
+
+## Cadangan data
+
+Menu **Pengaturan → Cadangan Data** (bawaannya hanya admin) menampilkan backup yang tersimpan.
+
+- **Otomatis**: setiap hari mulai jam yang dipilih (bawaan 02.00 waktu venue), API membuat satu berkas
+  berisi seluruh data, termasuk foto. Backup dibaca dari satu snapshot, jadi kasir tetap bisa bekerja.
+- **Penyimpanan**: berkas `.json.gz` di `DATA_DIR/backups`, atau di `BACKUP_DIR` bila diisi. Berkas
+  terlama dihapus bila jumlahnya melebihi batas (bawaan 14). Arahkan `BACKUP_DIR` ke disk lain atau
+  folder yang disinkron ke Google Drive/OneDrive, atau unduh berkas dari panel secara berkala.
+- **Pemulihan**: hentikan API, lalu jalankan
+  `npm run restore -w apps/api -- padelix-20261017-020000-auto.json.gz --yes`. Seluruh isi database
+  diganti isi berkas dalam satu transaksi; berkas rusak ditolak tanpa mengubah apa pun. Sesi login dan
+  kode OTP tidak dicadangkan, jadi semua orang masuk ulang setelah pemulihan.
+
+## Log aktivitas
+
+Menu **Pengaturan → Log Aktivitas** (bawaannya hanya admin) menampilkan siapa melakukan apa dan kapan:
+booking, pindah jadwal, pembayaran, refund, potongan harga, denda, jurnal, catatan kas, pengaturan,
+backup, dan perubahan pengguna. Aksi yang menyangkut uang menyimpan nilai sebelum dan sesudahnya.
+Log dapat disaring per tanggal, pelaku, dan jenis aksi, serta dicari berdasarkan isinya.
 
 ## Catatan produksi
 
 - Sesi memakai cookie `httpOnly` berisi token acak yang disimpan ter-hash di database,
   berlaku 8 jam. Aktifkan HTTPS agar atribut `secure` pada cookie berfungsi.
-- Jadwalkan `npm run backup -w apps/api` secara berkala; salin hasilnya ke luar server.
-- Rate limit membaca IP pengunjung. Rewrite Next.js tidak menambahkan IP asli, sehingga tanpa
-  reverse proxy semua pengunjung berbagi satu kuota. Pasang nginx (atau sejenisnya) di depan
-  Next.js dengan `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`, lalu isi
-  `TRUST_PROXY=loopback`. Jangan isi `TRUST_PROXY` tanpa reverse proxy: header dari browser
-  dapat dipalsukan.
-- Foto lapangan tersimpan di dalam database, jadi ikut tercadang oleh `npm run backup`.
+- Backup harian berjalan otomatis (lihat [Cadangan data](#cadangan-data)); pastikan salinannya juga
+  ada di luar server.
+- Rate limit (login, daftar, OTP, checkout) dihitung per IP pengunjung. Frontend dijalankan oleh
+  `apps/web/server.mjs`, yang meneruskan IP asli ke API dalam header bertanda tangan HMAC. Kuncinya
+  `INTERNAL_PROXY_SECRET`; bila kosong, API membuat kunci acak di `DATA_DIR/proxy-secret` dan
+  frontend membacanya, jadi web dan API di satu mesin langsung jalan. Isi variabel itu dengan nilai
+  yang sama bila web dan API berada di mesin berbeda. Header palsu dari browser selalu dibuang.
+- Bila ada reverse proxy (nginx, Cloudflare) di depan Next.js, isi `TRUST_PROXY=loopback` (atau jumlah
+  proxy) agar IP diambil dari `X-Forwarded-For` buatan proxy itu. Jangan isi tanpa reverse proxy.
+- Login juga dibatasi per email: 10 percobaan gagal per 15 menit dari IP yang sama.
+- Foto lapangan dan bukti pengeluaran tersimpan di dalam database, jadi ikut tercadang.
 - Menjalankan server Next.js kedua dari folder yang sama (mis. pratinjau) membutuhkan folder build
   sendiri: isi `NEXT_DIST_DIR=.next-pratinjau` agar tidak bentrok dengan `npm run dev`.
-- SQLite di sini mengandalkan satu proses API. Bila nanti API dijalankan lebih dari satu
-  proses atau lebih dari satu server, pindahkan penyimpanan ke PostgreSQL.
+- API boleh dijalankan lebih dari satu proses di atas database yang sama: migrasi dan backup otomatis
+  dikunci di MySQL agar hanya satu proses yang menjalankannya.

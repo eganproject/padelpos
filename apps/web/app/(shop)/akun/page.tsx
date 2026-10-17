@@ -67,6 +67,7 @@ export default function AccountHome() {
               </button>
             )}
             {next.order_id && <Link className="shop-btn outline sm" href={`/pesanan/${next.order_id}`}>Lihat pesanan</Link>}
+            {next.reschedule?.allowed && <Link className="shop-btn outline sm" href="/akun/pesanan">Ubah jadwal</Link>}
             {venue?.info.whatsapp && (
               <a className="shop-btn outline sm" target="_blank" rel="noopener"
                 href={whatsappLink(venue.info.whatsapp, `Halo, saya ${data.account.name}. Saya ingin menanyakan jadwal ${next.court_name} ${formatFull(next.date)} pukul ${next.start_time}.`)}>
@@ -105,7 +106,7 @@ export default function AccountHome() {
             <h2 id="judul-mendatang">Jadwal lain yang akan datang</h2>
             {data.upcoming_count > others.length + 1 && <Link className="text-link" href="/akun/pesanan">Semua {data.upcoming_count} jadwal <ArrowRight size={14} aria-hidden="true" /></Link>}
           </div>
-          <div className="acct-list">{others.map(item => <BookingCard key={item.id} item={item} venue={place} />)}</div>
+          <div className="acct-list">{others.map(item => <BookingCard key={item.id} item={item} venue={place} onChanged={() => void load()} />)}</div>
         </section>
       )}
 

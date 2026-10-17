@@ -11,14 +11,14 @@ import { db } from "./store.js";
 export interface TaxSettings { enabled: boolean; label: string; rate: number; inclusive: boolean }
 export interface TaxSnapshot { tax_rate: number; tax_inclusive: number; tax_label: string }
 
-export function taxSettings(): TaxSettings {
-  const row = db.prepare("SELECT document FROM settings WHERE key='finance'").get() as { document: string } | undefined;
+export async function taxSettings(): Promise<TaxSettings> {
+  const row = await db.prepare("SELECT document FROM settings WHERE `key`='finance'").get() as { document: string } | undefined;
   const stored = row ? (JSON.parse(row.document) as { tax?: Partial<TaxSettings> }).tax ?? {} : {};
   return { enabled: !!stored.enabled, label: stored.label || "Pajak", rate: stored.rate ?? 0, inclusive: !!stored.inclusive };
 }
 /** Tarif pajak yang berlaku untuk booking baru. */
-export function taxSnapshot(): TaxSnapshot {
-  const config = taxSettings();
+export async function taxSnapshot(): Promise<TaxSnapshot> {
+  const config = await taxSettings();
   return config.enabled && config.rate > 0
     ? { tax_rate: Math.round(config.rate * 100), tax_inclusive: config.inclusive ? 1 : 0, tax_label: config.label }
     : { tax_rate: 0, tax_inclusive: 0, tax_label: "" };

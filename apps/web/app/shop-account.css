@@ -172,3 +172,10 @@
   .shop .help-card{flex-direction:row;align-items:center;justify-content:space-between}
 }
 .shop .acct-filter button{padding:0 8px}
+
+/* Pindah jadwal di kartu booking. */
+.shop .acct-move{margin:12px 0;padding:14px;border-radius:14px;background:var(--bg-2,#f4f6f3);border:1px solid var(--rule)}
+.shop .acct-move-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.shop .acct-move select{min-height:44px;width:100%;padding:0 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:15px;font-weight:500}
+.shop .acct-move select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px #0f33261a}
+@media (max-width:560px){.shop .acct-move-row{grid-template-columns:1fr}}

@@ -48,7 +48,7 @@ function History() {
           {tab !== "cancelled" && <Link className="shop-btn primary sm" href="/ketersediaan">Cari jadwal <ArrowRight size={16} aria-hidden="true" /></Link>}
         </div>
       ) : (
-        <div className="acct-list">{data.items.map(item => <BookingCard key={item.id} item={item} venue={place} />)}</div>
+        <div className="acct-list">{data.items.map(item => <BookingCard key={item.id} item={item} venue={place} onChanged={() => void load()} />)}</div>
       )}
 
       <ClaimCard onClaimed={() => { if (tab !== "upcoming") router.replace("/akun/pesanan", { scroll: false }); else void load(); }} />

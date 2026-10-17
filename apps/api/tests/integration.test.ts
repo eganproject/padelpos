@@ -1,14 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
+import { useTestDatabase } from "./mysql.js";
 
 const directory = mkdtempSync(path.join(tmpdir(), "padelix-api-test-"));
 process.env.DATA_DIR = directory;
+await useTestDatabase("integration");
 process.env.NODE_ENV = "test";
 process.env.CLIENT_URL = "http://localhost:3000";
 process.env.VENUE_TIMEZONE = "Asia/Jakarta";
@@ -119,13 +120,14 @@ test("operational workflow, concurrency, permissions and durable storage", async
       const summary=await request("/dashboard/summary","GET",undefined,admin);
       assert.equal(summary.status,200);assert.equal(summary.data.revenueToday,0);assert.equal(summary.data.refundsDue,0);
       assert.equal(summary.data.bookingsToday,0);assert.equal(summary.data.daily.length,7);assert.equal(summary.data.courts.length,1);
-      const child=spawnSync(process.execPath,["--input-type=module","-e","import {DatabaseSync} from 'node:sqlite';const db=new DatabaseSync(process.env.TEST_DB);console.log(db.prepare('SELECT count(*) n FROM bookings').get().n);db.close();"],{env:{...process.env,TEST_DB:path.join(directory,"padelix.sqlite")},encoding:"utf8"});
+      // Koneksi baru dari proses lain melihat data yang sama: tidak ada yang tertahan di transaksi terbuka.
+      const child=spawnSync(process.execPath,["--input-type=module","-e","import mysql from 'mysql2/promise';const c=await mysql.createConnection(process.env.DATABASE_URL);const [[r]]=await c.query('SELECT count(*) n FROM bookings');console.log(r.n);await c.end();"],{env:process.env,encoding:"utf8"});
       assert.equal(child.status,0,child.stderr);assert.equal(Number(child.stdout.trim()),3);
     });
     await t.test("completion requires elapsed time and full payment",async()=>{
       const result=await request("/operations/bookings","POST",booking({start_time:"15:00",end_time:"16:00"}),staff),id=result.data.booking.id;
       const yesterday=new Date(localClock().date+"T12:00:00Z");yesterday.setUTCDate(yesterday.getUTCDate()-1);
-      db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),id);
+      await db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),id);
       assert.equal((await request(`/operations/bookings/${id}/status`,"PATCH",{status:"completed"},staff)).status,409);
       assert.equal((await request(`/operations/bookings/${id}/payments`,"POST",payment(400000),staff)).status,201);
       assert.equal((await request(`/operations/bookings/${id}/status`,"PATCH",{status:"completed"},staff)).status,200);
@@ -371,7 +373,7 @@ test("operational workflow, concurrency, permissions and durable storage", async
       const rent=laterLines.find(l=>l.addon_id===raket.id)!,coach=laterLines.find(l=>l.addon_id===pelatih.id)!;
       assert.equal((await request(`/operations/bookings/${laterId}/addons/returned`,"PATCH",{line_ids:[coach.id],returned:true},staff)).status,400,"hanya barang sewa yang dikembalikan");
       const yesterday=new Date(localClock().date+"T12:00:00Z");yesterday.setUTCDate(yesterday.getUTCDate()-1);
-      db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),laterId);
+      await db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),laterId);
       assert.ok((await request("/operations/addons","GET",undefined,admin)).data.summary.unreturned.some((l:{id:string})=>l.id===rent.id),"raket dari jadwal yang sudah lewat masuk daftar belum kembali");
       const returned=await request(`/operations/bookings/${laterId}/addons/returned`,"PATCH",{line_ids:[rent.id],returned:true},staff);
       assert.equal(returned.status,200);
@@ -427,145 +429,8 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request("/auth/me","GET",undefined,admin)).status,401);
     });
   } finally {
-    await new Promise<void>(resolve=>server.close(()=>resolve()));db.close();
+    await new Promise<void>(resolve=>server.close(()=>resolve()));await db.close();
     assert.ok(path.resolve(directory).startsWith(path.resolve(tmpdir())+path.sep+"padelix-api-test-"));
     rmSync(directory,{recursive:true,force:true});
-  }
-});
-
-test("nama menu bawaan diterjemahkan tanpa menimpa nama yang sudah diubah admin",()=>{
-  const legacy=mkdtempSync(path.join(tmpdir(),"padelix-menu-test-"));
-  const stamp="2026-01-01T00:00:00Z";
-  const menus=[
-    {id:"dashboard",name:"Overview",path:"/admin",icon:"LayoutDashboard",group:"Workspace",order:1,active:true,createdAt:stamp},
-    {id:"bookings",name:"Jadwal Lapangan",path:"/admin/bookings",icon:"CalendarDays",group:"Workspace",order:2,active:true,createdAt:stamp},
-    {id:"users",name:"Users",path:"/admin/users",icon:"UsersRound",group:"Access Control",order:5,active:true,createdAt:stamp},
-    {id:"laporan",name:"Laporan",path:"/admin/laporan",icon:"Circle",group:"Workspace",order:9,active:true,createdAt:stamp},
-  ];
-  writeFileSync(path.join(legacy,"menus.json"),JSON.stringify(menus));
-  const script="const {getMenus,db}=await import('./src/store.ts');console.log(JSON.stringify(getMenus()));db.close();";
-  try {
-    const run=spawnSync(process.execPath,["--import","tsx","--input-type=module","-e",script],{env:{...process.env,DATA_DIR:legacy},encoding:"utf8"});
-    assert.equal(run.status,0,run.stderr);
-    const byId=Object.fromEntries((JSON.parse(run.stdout.trim()) as {id:string;name:string;group:string}[]).map(menu=>[menu.id,menu]));
-    assert.equal(byId.dashboard.name,"Ringkasan");
-    assert.equal(byId.users.name,"Pengguna");
-    assert.equal(byId.layout.name,"Denah Venue","menu yang ditambahkan migrasi 3 ikut diterjemahkan");
-    assert.equal(byId.bookings.name,"Jadwal Lapangan","nama yang sudah diubah admin harus dipertahankan");
-    assert.equal(byId.users.group,"Pengaturan","hak akses staf termasuk pengaturan sistem");
-    assert.equal(byId.payments.group,"Pengaturan","Midtrans dipisah dari menu operasional");
-    assert.equal(byId.payments.name,"Pembayaran Online");
-    assert.equal(byId["customer-login"].group,"Pengaturan");
-    assert.equal(byId.layout.group,"Venue & Layanan");
-    assert.equal(byId.dashboard.group,"Operasional");
-    assert.equal(byId.finance.group,"Keuangan","Keuangan punya grup sendiri");
-    assert.equal(byId.finance.name,"Ringkasan Keuangan");
-    for(const id of ["finance-records","finance-journal","finance-reports"]) assert.equal(byId[id].group,"Keuangan",id);
-    assert.equal(byId["finance-settings"].group,"Pengaturan","pengaturan keuangan tidak dicampur dengan menu harian");
-    assert.equal(byId.laporan.group,"Operasional","menu kustom tetap satu grup dengan menu bawaan");
-  } finally {
-    assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-menu-test-"));
-    rmSync(legacy,{recursive:true,force:true});
-  }
-});
-
-test("legacy JSON is migrated once and original files are preserved",()=>{
-  const legacy=mkdtempSync(path.join(tmpdir(),"padelix-migration-test-"));
-  const user={id:"legacy-user",name:"Legacy",email:"legacy@example.test",phone:"081234567890",passwordHash:"existing-hash",role:"admin",createdAt:"2026-01-01T00:00:00Z"};
-  const original=JSON.stringify([user]);writeFileSync(path.join(legacy,"users.json"),original);
-  const script="const {getUsers,db}=await import('./src/store.ts');console.log(JSON.stringify(getUsers()));db.close();";
-  try {
-    const run=()=>spawnSync(process.execPath,["--import","tsx","--input-type=module","-e",script],{env:{...process.env,DATA_DIR:legacy},encoding:"utf8"});
-    const first=run();assert.equal(first.status,0,first.stderr);assert.deepEqual(JSON.parse(first.stdout.trim()),[user]);
-    writeFileSync(path.join(legacy,"users.json"),"[]");
-    const second=run();assert.equal(second.status,0,second.stderr);assert.deepEqual(JSON.parse(second.stdout.trim()),[user]);
-  } finally {
-    assert.ok(path.resolve(legacy).startsWith(path.resolve(tmpdir())+path.sep+"padelix-migration-test-"));
-    rmSync(legacy,{recursive:true,force:true});
-  }
-});
-
-const schemaV1 = `
-  CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
-  CREATE TABLE users (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
-  CREATE TABLE roles (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
-  CREATE TABLE menus (id TEXT PRIMARY KEY, document TEXT NOT NULL CHECK(json_valid(document)));
-  CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
-  CREATE TABLE courts (id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, hourly_rate INTEGER NOT NULL CHECK(hourly_rate > 0), opens_at TEXT NOT NULL, closes_at TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL);
-  CREATE TABLE bookings (id TEXT PRIMARY KEY, court_id TEXT NOT NULL REFERENCES courts(id), customer TEXT NOT NULL, phone TEXT NOT NULL, date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, total INTEGER NOT NULL CHECK(total > 0), status TEXT NOT NULL CHECK(status IN ('confirmed','completed','cancelled')), notes TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL, cancel_reason TEXT NOT NULL DEFAULT '');
-  CREATE INDEX bookings_schedule ON bookings(court_id,date,start_time,end_time);
-  CREATE TABLE maintenance (id TEXT PRIMARY KEY, court_id TEXT NOT NULL REFERENCES courts(id), date TEXT NOT NULL, start_time TEXT NOT NULL, end_time TEXT NOT NULL, reason TEXT NOT NULL);
-  CREATE TABLE payments (id TEXT PRIMARY KEY, booking_id TEXT NOT NULL REFERENCES bookings(id), amount INTEGER NOT NULL CHECK(amount > 0), kind TEXT NOT NULL CHECK(kind IN ('payment','refund')), method TEXT NOT NULL CHECK(method IN ('cash','transfer','qris')), note TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL);
-  CREATE INDEX payments_booking ON payments(booking_id);
-  CREATE TABLE audit_log (id INTEGER PRIMARY KEY, actor_id TEXT NOT NULL, action TEXT NOT NULL, target_id TEXT NOT NULL, created_at TEXT NOT NULL);
-  CREATE TRIGGER maintenance_overlap BEFORE INSERT ON maintenance BEGIN
-    SELECT RAISE(ABORT, 'schedule_conflict') WHERE EXISTS(SELECT 1 FROM bookings WHERE court_id=NEW.court_id AND date=NEW.date AND status <> 'cancelled' AND start_time < NEW.end_time AND end_time > NEW.start_time);
-  END;
-  INSERT INTO migrations VALUES (1, '2026-01-01T00:00:00Z');
-`;
-
-test("migrasi v1 ke v2 mempertahankan data lama dan memberlakukan aturan hold", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "padelix-v2-test-"));
-  const file = path.join(directory, "padelix.sqlite");
-  const stamp = "2026-01-01T00:00:00Z";
-  const legacy = new DatabaseSync(file);
-  legacy.exec(schemaV1);
-  legacy.prepare("INSERT INTO courts VALUES (?,?,?,?,?,?,?)").run("c1", "Court A", 300000, "06:00", "24:00", 1, stamp);
-  legacy.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-    .run("b1", "c1", "Budi", "081234567890", "2030-01-10", "09:00", "10:00", 300000, "confirmed", "catatan lama", "staff-1", stamp);
-  legacy.prepare("INSERT INTO payments VALUES (?,?,?,?,?,?,?,?)").run("p1", "b1", 150000, "payment", "cash", "DP", "staff-1", stamp);
-  legacy.close();
-
-  try {
-    const run = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", "const {db}=await import('./src/store.ts');db.close();"], { env: { ...process.env, DATA_DIR: directory }, encoding: "utf8" });
-    assert.equal(run.status, 0, run.stderr);
-
-    const db2 = new DatabaseSync(file);
-    db2.exec("PRAGMA foreign_keys = ON");
-    const one = (sql: string) => db2.prepare(sql).get() as Record<string, unknown>;
-    const rejects = (work: () => void, fragment: string) => {
-      try { work(); return `tidak menolak apa pun (harapan: ${fragment})`; }
-      catch (error) { const message = (error as Error).message; return message.includes(fragment) ? "" : `pesan tidak sesuai: ${message}`; }
-    };
-    const insert = (id: string, start: string, end: string, status: string, extra: { hold?: number; source?: string; createdBy?: string | null; customerId?: string } = {}) => () =>
-      db2.prepare("INSERT INTO bookings (id,court_id,customer,phone,date,start_time,end_time,total,status,notes,created_by,created_at,hold_expires_at,source,customer_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .run(id, "c1", "X", "081234567890", "2030-02-01", start, end, 300000, status, "", extra.createdBy === undefined ? "staff-1" : extra.createdBy, stamp, extra.hold ?? null, extra.source ?? "staff", extra.customerId ?? null);
-
-    assert.equal(one("SELECT version FROM migrations WHERE version=2").version, 2, "migrasi 2 harus tercatat");
-    const kept = one("SELECT * FROM bookings WHERE id='b1'");
-    assert.equal(kept.notes, "catatan lama");
-    assert.equal(kept.status, "confirmed");
-    assert.equal(kept.source, "staff", "booking lama harus dianggap dibuat staf");
-    assert.equal(kept.customer_id, null);
-    assert.equal(kept.hold_expires_at, null);
-    assert.equal(one("SELECT * FROM payments WHERE id='p1'").amount, 150000);
-    assert.equal(one("SELECT * FROM payments WHERE id='p1'").source, "staff");
-    assert.equal(db2.prepare("PRAGMA foreign_key_check").all().length, 0, "migrasi tidak boleh menyisakan foreign key menggantung");
-    assert.equal(one("SELECT count(*) n FROM floors").n, 1, "denah lama menjadi satu lantai");
-    assert.ok(one("SELECT floor_id FROM courts WHERE id='c1'").floor_id, "lapangan lama masuk ke lantai pertama");
-
-    const active = Math.floor(Date.now() / 1000) + 600, lapsed = Math.floor(Date.now() / 1000) - 1;
-    insert("h1", "09:00", "10:00", "pending", { hold: active })();
-    assert.equal(rejects(insert("h2", "09:30", "10:30", "confirmed"), "schedule_conflict"), "", "hold yang masih aktif harus memblokir booking lain");
-    insert("h3", "11:00", "12:00", "pending", { hold: lapsed })();
-    insert("h4", "11:00", "12:00", "confirmed")();
-    assert.equal(rejects(() => db2.prepare("UPDATE bookings SET status='confirmed' WHERE id='h3'").run(), "schedule_conflict"), "", "hold kedaluwarsa yang slotnya sudah direbut tidak boleh dikonfirmasi");
-    db2.prepare("UPDATE bookings SET status='confirmed' WHERE id='h1'").run();
-    assert.equal(one("SELECT status FROM bookings WHERE id='h1'").status, "confirmed", "hold yang masih sah harus bisa dikonfirmasi");
-
-    insert("e1", "13:00", "14:00", "expired")();
-    insert("e2", "13:00", "14:00", "confirmed")();
-
-    assert.equal(rejects(insert("x1", "15:00", "16:00", "pending"), "CHECK"), "", "pending wajib punya hold_expires_at");
-    assert.equal(rejects(insert("x2", "16:00", "17:00", "confirmed", { source: "online", createdBy: null }), "CHECK"), "", "booking online wajib punya customer_id");
-    assert.equal(rejects(insert("x3", "17:00", "18:00", "menunggu"), "CHECK"), "", "status di luar daftar harus ditolak");
-
-    const gateway = (id: string, ref: string) => () => db2.prepare("INSERT INTO payments (id,booking_id,amount,kind,method,source,gateway_ref,note,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, "b1", 1000, "payment", "ewallet", "gateway", ref, "", null, stamp);
-    gateway("pg1", "MID-123")();
-    assert.equal(rejects(gateway("pg2", "MID-123"), "UNIQUE"), "", "gateway_ref ganda harus ditolak demi idempotensi webhook");
-    db2.close();
-  } finally {
-    assert.ok(path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep + "padelix-v2-test-"));
-    rmSync(directory, { recursive: true, force: true });
   }
 });
