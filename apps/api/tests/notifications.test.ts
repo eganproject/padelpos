@@ -135,7 +135,7 @@ test("notifikasi tagihan, kwitansi, WhatsApp, dan kotak masuk pelanggan", async 
       const expired = await whatsapp("expired");
       assert.equal(expired.length, 1);
       assert.match(expired[0].text, /sudah dilepas/);
-      assert.match(expired[0].text, /ketersediaan\?tanggal=/);
+      assert.match(expired[0].text, /ketersediaan\?date=/);
       const inbox = await request("/customer/notifications", "GET", undefined, rina);
       assert.deepEqual(inbox.data.items.map((item: { kind: string }) => item.kind), ["expired", "payment_due", "bill"]);
       assert.equal(inbox.data.unread, 3);

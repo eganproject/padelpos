@@ -284,7 +284,7 @@ export async function notifyExpired(orderId: string) {
     heading: "Waktu pembayaran sudah habis",
     intro: `Halo ${order.customer}, pesanan ${order.code} belum dibayar sampai batas waktu, jadi jadwal berikut sudah dilepas. Bila jamnya masih kosong, Anda bisa memesannya lagi.`,
     sessions, tone: "danger",
-    link: { label: "Pesan lagi", url: `${publicUrl}/ketersediaan?tanggal=${sessions[0].date}` },
+    link: { label: "Pesan lagi", url: `${publicUrl}/ketersediaan?date=${sessions[0].date}` },
     outro: "Bila Anda sudah membayar tetapi menerima pesan ini, hubungi venue dengan menyebut kode pesanan.",
   }, orderId);
 }

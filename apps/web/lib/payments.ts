@@ -35,6 +35,8 @@ export type OrderView = {
     total: number; paid: number; notes: string; created_at: string;
     sessions: OrderSession[];
   };
+  /** Uang masuk (payment) dan keluar (refund) untuk kwitansi, urut waktu. */
+  payments?: { id: string; session_code: string; amount: number; kind: "payment" | "refund"; method: string; source: "staff" | "gateway"; created_at: string }[];
   payment: { order_id: string; status: IntentStatus; amount: number; kind: "booking" | "tagihan"; redirect_url: string | null; snap_token?: string | null; expires_at: number; payment_type: string | null; updated_at: string } | null;
 };
 

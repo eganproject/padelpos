@@ -36,11 +36,12 @@ export function statusOf(item: Pick<HistoryItem, "status" | "phase">) {
   return { label: "Terkonfirmasi", tone: "on" };
 }
 
-export function downloadCalendar(item: HistoryItem, venue: { name: string; address: string }) {
+export function downloadCalendar(item: Parameters<typeof calendarFile>[0], venue: { name: string; address: string }) {
   const url = URL.createObjectURL(calendarFile(item, venue));
   const link = document.createElement("a");
   link.href = url;
-  link.download = `padel-${item.date}-${item.start_time.replace(":", "")}.ics`;
+  const first = Array.isArray(item) ? item[0] : item;
+  link.download = `padel-${first.date}-${first.start_time.replace(":", "")}.ics`;
   document.body.appendChild(link);
   link.click();
   link.remove();
