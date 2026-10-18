@@ -1,0 +1,38 @@
+/* Panel Member di admin. Kartu member di halaman akun pelanggan ada di shop-account.css. */
+.member-card{display:flex;justify-content:space-between;gap:var(--s3);padding:var(--s4);border-radius:var(--r-lg);background:var(--panel2);border:1px solid var(--line)}
+.member-card small{font-size:var(--fs-xs);color:var(--muted);text-transform:uppercase;letter-spacing:var(--track-label)}
+.member-card h3{margin:2px 0;font-size:var(--fs-xl);font-weight:600;color:var(--text)}
+.member-card p{margin:0;font-size:var(--fs-sm);color:var(--muted)}
+.member-card-side{display:flex;flex-direction:column;align-items:flex-end;gap:var(--s2)}
+.member-card code{font-size:var(--fs-sm);font-weight:600;color:var(--text);letter-spacing:.04em}
+.member-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s3);margin:0}
+.member-facts div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.member-facts dt{font-size:var(--fs-xs);color:var(--muted)}
+.member-facts dd{margin:0;font-size:var(--fs-md);color:var(--text);font-weight:500}
+.member-actions{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.member-actions button[aria-pressed=true]{outline:2px solid var(--text);outline-offset:1px}
+.member-cost{display:flex;flex-direction:column}
+.member-settings{display:flex;flex-direction:column;gap:var(--s4);max-width:720px}
+.member-settings h2{margin:0;font-size:var(--fs-lg);font-weight:600}
+@media(max-width:560px){
+  .member-card{flex-direction:column}
+  .member-card-side{flex-direction:row;align-items:center;justify-content:space-between}
+  .member-facts{grid-template-columns:1fr}
+}
+
+/* Pilihan member di dialog booking */
+.member-picker{display:flex;flex-direction:column;gap:var(--s2)}
+.member-search{position:relative;display:block}
+.member-search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none}
+.member-search input{width:100%;padding-left:30px}
+.member-results{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.member-results li+li{border-top:1px solid var(--line)}
+.member-results button{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);width:100%;padding:var(--s2) 10px;border:0;background:var(--panel);color:var(--text);text-align:left;cursor:pointer;font-size:var(--fs-md)}
+.member-results button:hover:not(:disabled){background:var(--subtle)}
+.member-results button:disabled{cursor:not-allowed;opacity:.6}
+.member-results span{display:flex;flex-direction:column;min-width:0}
+.member-results small{font-size:var(--fs-xs);color:var(--muted)}
+.member-picked>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.member-picked b{display:inline-flex;align-items:center;gap:4px}
+.member-picked small{font-size:var(--fs-xs);color:var(--muted)}
+.member-picked .member-invalid,.member-invalid{color:var(--red-text)}

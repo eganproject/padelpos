@@ -6,7 +6,7 @@ import { api } from "@/lib/api";
 import { ErrorBox } from "./operation-ui";
 
 /** Sama dengan API (apps/api/src/notify-events.ts). */
-const eventKeys=["bill","payment_due","confirmed","expired","receipt","reschedule","cancelled","reminder","staff_new"] as const;
+const eventKeys=["bill","payment_due","confirmed","expired","receipt","reschedule","cancelled","reminder","member_bill","member_active","member_expiring","member_expired","staff_new"] as const;
 type EventKey=typeof eventKeys[number];
 type Events=Record<EventKey,boolean>;
 const eventLabels:Record<EventKey,[string,string]>={
@@ -18,9 +18,13 @@ const eventLabels:Record<EventKey,[string,string]>={
   reschedule:["Jadwal dipindah","Setiap kali booking dipindah, oleh staf maupun pelanggan."],
   cancelled:["Booking dibatalkan","Saat staf membatalkan booking, beserta alasannya."],
   reminder:["Pengingat sebelum main","Sekali per jadwal, sesuai jam di atas."],
+  member_bill:["Tagihan member","Saat pelanggan mendaftar atau memperpanjang member online. Berisi nominal dan tombol bayar."],
+  member_active:["Member aktif","Bukti iuran diterima, kode member, dan masa berlakunya. Juga saat pendaftar disetujui."],
+  member_expiring:["Member segera berakhir","Sekali per periode, sesuai jumlah hari di pengaturan Member."],
+  member_expired:["Member berakhir","Sekali setelah masa berlaku habis, dengan ajakan memperpanjang."],
   staff_new:["Pemberitahuan untuk staf","Ke penerima staf: booking online baru dan pindah jadwal oleh pelanggan."],
 };
-const kindLabel:Record<string,string>={bill:"Tagihan",payment_due:"Pengingat bayar",confirmed:"Pembayaran diterima",expired:"Waktu bayar habis",receipt:"Kwitansi",reschedule:"Pindah jadwal",cancelled:"Pembatalan",reminder:"Pengingat main",staff_new:"Untuk staf"};
+const kindLabel:Record<string,string>={bill:"Tagihan",payment_due:"Pengingat bayar",confirmed:"Pembayaran diterima",expired:"Waktu bayar habis",receipt:"Kwitansi",reschedule:"Pindah jadwal",cancelled:"Pembatalan",reminder:"Pengingat main",member_bill:"Tagihan member",member_active:"Member aktif",member_expiring:"Member segera berakhir",member_expired:"Member berakhir",staff_new:"Untuk staf"};
 const statusLabel={pending:"Antre",sent:"Terkirim",failed:"Gagal"};
 const statusTone={pending:"wait",sent:"on",failed:"off"};
 

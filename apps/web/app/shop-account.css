@@ -229,3 +229,38 @@
 .shop .acct-pref input[role=switch]:disabled{opacity:.6}
 .shop .acct-pref-note{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-3)}
 .shop .acct-inbox .acct-section-head{flex-wrap:wrap;gap:8px}
+
+/* --- Member ------------------------------------------------------------- */
+.shop .member-pass{display:flex;flex-direction:column;gap:6px;padding:20px;border-radius:22px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff;box-shadow:0 14px 34px #0f332640}
+.shop .member-pass.expired,.shop .member-pass.frozen,.shop .member-pass.pending_approval{background:radial-gradient(120% 120% at 100% 0,#4b524a,#262b26)}
+.shop .member-pass-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.shop .member-pass-top span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--lime)}
+.shop .member-pass code{padding:4px 10px;border-radius:999px;background:#ffffff1f;font-size:13px;font-weight:800;letter-spacing:.06em;color:#fff}
+.shop .member-pass h2{margin:6px 0 0;font-size:26px;color:#fff}
+.shop .member-pass-perk{font-size:15px;font-weight:700;color:#e3ffa3}
+.shop .member-pass dl{display:flex;flex-wrap:wrap;gap:10px 24px;margin:8px 0 4px}
+.shop .member-pass dt{font-size:12px;color:#c9d7cd}
+.shop .member-pass dd{margin:0;font-size:15px;font-weight:700}
+.shop .member-pass small{font-size:12.5px;line-height:1.5;color:#c9d7cd}
+.shop .member-plans{display:grid;gap:10px;margin-bottom:14px}
+.shop .member-plan{position:relative;display:flex;flex-direction:column;gap:4px;padding:14px 14px 14px 44px;border-radius:14px;border:1.5px solid var(--rule);background:var(--card);cursor:pointer}
+.shop .member-plan[data-checked=true]{border-color:var(--green);background:var(--green-wash)}
+.shop .member-plan input{position:absolute;left:14px;top:16px;width:18px;height:18px;accent-color:var(--green)}
+.shop .member-plan-head{display:flex;justify-content:space-between;gap:10px;font-size:15px}
+.shop .member-plan-head strong{white-space:nowrap}
+.shop .member-plan-head small{font-weight:500;color:var(--ink-3)}
+.shop .member-plan-perk{font-size:14px;font-weight:700;color:var(--lime-deep)}
+.shop .member-plan>small{font-size:13px;color:var(--ink-3)}
+.shop .acct-form .member-agree{flex-direction:row;align-items:flex-start;gap:10px;font-weight:500}
+.shop .member-agree input{width:18px;height:18px;margin-top:2px;flex:none;accent-color:var(--green)}
+.shop .member-fine{font-size:12.5px;color:var(--ink-3);text-align:center}
+.shop .member-row-actions{display:flex;flex-wrap:wrap;gap:8px}
+.shop .member-claim-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.shop .member-invoices{list-style:none;margin:0;padding:0}
+.shop .member-invoices li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--rule);font-size:14px}
+.shop .member-invoices li:first-child{border-top:0}
+.shop .member-invoices span{display:flex;flex-direction:column;min-width:0}
+.shop .member-invoices small{font-size:12.5px;color:var(--ink-3)}
+.shop .member-terms summary{cursor:pointer;font-size:15px;font-weight:700}
+.shop .member-terms p{margin-top:10px;white-space:pre-line;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
+@media (max-width:519px){.shop .member-claim-fields{grid-template-columns:1fr}}

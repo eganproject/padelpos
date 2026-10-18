@@ -259,3 +259,18 @@ export const saveNotifyPreferences = async (body: { email: boolean; whatsapp: bo
   setAccount(result.account);
   return result.account;
 };
+
+/** Keanggotaan pelanggan yang sedang masuk (apps/api/src/membership.ts#customerMembership). */
+export type MyMembership = {
+  settings: { open: boolean; approval: boolean; terms: string; online_payment: boolean };
+  plans: import("./members").PublicPlan[];
+  membership: import("./members").Member | null;
+  invoices: import("./members").MemberInvoice[];
+  totals: { bookings: number; saved: number } | null;
+};
+export type MemberCheckout = { invoice_id: string; redirect_url: string; token: string; amount: number };
+export const fetchMembership = (refresh = false) => member(api<MyMembership>("/customer/membership" + (refresh ? "/refresh" : ""), refresh ? { method: "POST", body: "{}" } : undefined));
+export const joinMembership = (body: { plan_id: string; name: string; phone: string; agree: boolean }) => member(api<MemberCheckout>("/customer/membership", { method: "POST", body: JSON.stringify(body) }));
+export const renewMembership = (planId: string) => member(api<MemberCheckout>("/customer/membership/renew", { method: "POST", body: JSON.stringify({ plan_id: planId }) }));
+export const payMembership = (invoiceId: string) => member(api<MemberCheckout>(`/customer/membership/invoices/${invoiceId}/pay`, { method: "POST", body: "{}" }));
+export const claimMembership = (body: { code: string; phone: string }) => member(api<MyMembership>("/customer/membership/claim", { method: "POST", body: JSON.stringify(body) }));

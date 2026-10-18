@@ -58,7 +58,7 @@ export default function CartPage() {
         .finally(() => { if (active) setChecking(false); });
     }, 300);
     return () => { active = false; window.clearTimeout(timer); setChecking(false); };
-  }, [items]);
+  }, [items, account?.id]);
 
   const info = venue?.info;
   const payment = venue?.payment;
@@ -75,13 +75,17 @@ export default function CartPage() {
       lineTotals: new Map(matches ? checked.addons.map(line => [line.addon_id, line.subtotal]) : []),
       problem: matches && !checked.ok ? checked.reason || "Sesi ini tidak dapat dipesan." : "",
       matches: !!matches,
+      memberCut: matches ? checked.member_discount ?? 0 : 0,
+      memberPlan: matches ? checked.member_plan ?? "" : "",
     };
   }), [items, quote, payment?.tax]);
   const valid = priced.filter(entry => !entry.problem);
   const total = valid.reduce((sum, entry) => sum + entry.total, 0);
   const tax = valid.reduce((sum, entry) => sum + entry.tax, 0);
   const inclusive = quote ? quote.tax_inclusive : !!payment?.tax?.tax_inclusive;
-  const subtotal = valid.reduce((sum, entry) => sum + entry.total - (inclusive ? 0 : entry.tax), 0);
+  const memberCut = valid.reduce((sum, entry) => sum + entry.memberCut, 0);
+  const memberPlan = valid.find(entry => entry.memberPlan)?.memberPlan ?? "";
+  const subtotal = valid.reduce((sum, entry) => sum + entry.total - (inclusive ? 0 : entry.tax), 0) + memberCut;
   const blocked = priced.some(entry => entry.problem);
   // DP dibulatkan per sesi oleh server, jadi nominalnya dijumlah per sesi, bukan dari total keranjang.
   const payNow = quote && priced.every(entry => entry.matches)
@@ -223,6 +227,7 @@ export default function CartPage() {
             <h2 className="card-title">Rincian pembayaran</h2>
             <dl className="bill">
               <div><dt>Subtotal ({valid.length} sesi)</dt><dd>{money(subtotal)}</dd></div>
+              {memberCut > 0 && <div className="member-cut"><dt>Potongan member · {memberPlan}</dt><dd>−{money(memberCut)}</dd></div>}
               {tax > 0 && payment?.tax && <div><dt>{taxName(payment.tax)}</dt><dd>{money(tax)}</dd></div>}
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
