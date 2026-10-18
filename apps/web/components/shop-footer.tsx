@@ -26,7 +26,7 @@ export function ShopFooter({ info, hasFaq, hasPolicies }: { info: VenueInfo | nu
             {info.whatsapp && <a href={whatsappLink(info.whatsapp)} target="_blank" rel="noopener"><MessageCircle size={16} aria-hidden="true" /> {formatWhatsapp(info.whatsapp)}</a>}
             {info.phone && <a href={`tel:${info.phone.replace(/[^0-9+]/g, "")}`}><Phone size={16} aria-hidden="true" /> {info.phone}</a>}
             {info.email && <a href={`mailto:${info.email}`}><Mail size={16} aria-hidden="true" /> {info.email}</a>}
-            {info.instagram && <a href={`https://instagram.com/${info.instagram}`} target="_blank" rel="noopener"><AtSign size={16} aria-hidden="true" /> {info.instagram}</a>}
+            {info.instagram && <a href={`https://instagram.com/${info.instagram}`} target="_blank" rel="noopener"><AtSign size={16} aria-hidden="true" /> @{info.instagram}</a>}
           </div>
         )}
       </div>
