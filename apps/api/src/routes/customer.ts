@@ -3,6 +3,7 @@ import { limiter } from "../ratelimit.js";
 import { createCustomerSession, customerAccountId, endCustomerSession } from "../auth.js";
 import { claim, deleteAccount, history, overview, publicAccount, rescheduleOwn, signIn, getAccount, updateProfile } from "../customers.js";
 import { inbox, markRead, savePreferences, unreadCount } from "../inbox.js";
+import { claimMembership, customerMembership, payAgain, refreshMine, renewOnline, signup } from "../membership.js";
 
 /** Area akun pelanggan. Terpisah dari sesi staf: cookie, batas permintaan, dan hak aksesnya sendiri. */
 const router = Router();
@@ -58,5 +59,15 @@ router.put("/me/notifications", requireCustomer, async (req: CustomerRequest, re
 });
 router.post("/claim", requireCustomer, limit(15, 10, "Terlalu banyak percobaan klaim. Coba lagi dalam 15 menit."),
   async (req: CustomerRequest, res) => res.json(await claim(req.accountId!, req.body)));
+
+/** Keanggotaan: daftar, perpanjang, bayar ulang tagihan, dan hubungkan kartu member dari kasir. */
+router.get("/membership", requireCustomer, async (req: CustomerRequest, res) => res.json(await customerMembership(req.accountId!)));
+const memberLimit = limit(15, 15, "Terlalu banyak percobaan. Coba lagi dalam 15 menit.");
+router.post("/membership", requireCustomer, memberLimit, async (req: CustomerRequest, res) => res.status(201).json(await signup(req.accountId!, req.body)));
+router.post("/membership/renew", requireCustomer, memberLimit, async (req: CustomerRequest, res) => res.status(201).json(await renewOnline(req.accountId!, req.body)));
+router.post("/membership/invoices/:id/pay", requireCustomer, memberLimit, async (req: CustomerRequest, res) => res.json(await payAgain(req.accountId!, String(req.params.id))));
+router.post("/membership/refresh", requireCustomer, async (req: CustomerRequest, res) => res.json(await refreshMine(req.accountId!)));
+router.post("/membership/claim", requireCustomer, limit(15, 10, "Terlalu banyak percobaan klaim. Coba lagi dalam 15 menit."),
+  async (req: CustomerRequest, res) => res.json(await claimMembership(req.accountId!, req.body)));
 
 export default router;

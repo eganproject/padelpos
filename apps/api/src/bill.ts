@@ -47,3 +47,16 @@ export function allocate(amount: number, weights: number[]) {
   for (let left = amount - shares.reduce((value, share) => value + share, 0), i = 0; left > 0; left--, i++) shares[order[i % order.length].index]++;
   return shares;
 }
+
+/**
+ * Potongan harga member: tarif lapangan dan tarif tambahan dalam basis poin (1000 = 10%), disalin
+ * ke booking saat dipesan. Biaya lain yang diketik kasir ("lainnya") tidak ikut didiskon.
+ */
+export interface MemberRates { member_court_rate: number; member_addon_rate: number }
+export function memberCut(courtTotal: number, addonsTotal: number, rates: MemberRates) {
+  return Math.round(courtTotal * rates.member_court_rate / 10000) + Math.round(addonsTotal * rates.member_addon_rate / 10000);
+}
+/** Jumlah tambahan yang ikut diskon member pada sebuah booking. */
+export async function discountableAddons(bookingId: string) {
+  return Number((await db.prepare("SELECT COALESCE(SUM(subtotal),0) n FROM booking_addons WHERE booking_id=? AND type<>'lainnya'").get(bookingId) as { n: number }).n);
+}

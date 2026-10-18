@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { audit, db, saveSetting, transaction } from "./store.js";
 import { check } from "./errors.js";
-import { localClock } from "./clock.js";
+import { localClock, shiftMonths } from "./clock.js";
 import { checkImage } from "./photos.js";
 import { allocate, taxSettings, type TaxSettings } from "./bill.js";
 
@@ -23,7 +23,7 @@ import { allocate, taxSettings, type TaxSettings } from "./bill.js";
 
 export type AccountType = "aset" | "liabilitas" | "ekuitas" | "pendapatan" | "beban";
 export type AccountSubtype = "kas_bank" | "piutang" | "persediaan" | "aset_tetap" | "utang" | "modal" | "pendapatan" | "beban";
-export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran";
+export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan";
 export interface Account { id: string; code: string; name: string; type: AccountType; subtype: AccountSubtype; is_cash: number; system_key: string | null; description: string; active: number; position: number; created_at: string }
 export interface Partner { id: string; name: string; kind: "pemasok" | "pelanggan" | "karyawan" | "lainnya"; phone: string; note: string; active: number; created_at: string }
 export interface JournalLine { id: string; account_id: string; account_code: string; account_name: string; debit: number; credit: number; memo: string; partner_id: string | null; partner_name: string | null; booking_id: string | null }
@@ -149,20 +149,20 @@ const addonAccountKey: Record<string, string> = { sewa: "pendapatan_sewa", jual:
  * atau selesai, dan dihapus lagi bila booking batal atau kedaluwarsa. Dipanggil dari operations.ts
  * dan payments.ts di dalam transaksi yang sudah berjalan, jadi fungsi ini tidak membuka transaksi.
  *
- * Jurnal pendapatan: Dr Piutang (total tagihan) + Dr Potongan Harga (diskon)
+ * Jurnal pendapatan: Dr Piutang (total tagihan) + Dr Potongan Harga (diskon) + Dr Potongan Member
  *                    = Cr pendapatan per jenis (tanpa pajak) + Cr Utang Pajak.
  * Booking batal yang pembayarannya ditahan sebagai denda: Dr Piutang, Cr Pendapatan Pembatalan.
  */
 export async function syncBooking(bookingId: string) {
-  const booking = await db.prepare("SELECT id,customer,date,status,total,court_total,discount,tax,forfeited,forfeited_at FROM bookings WHERE id=?").get(bookingId) as
-    { id: string; customer: string; date: string; status: string; total: number; court_total: number | null; discount: number; tax: number; forfeited: number; forfeited_at: string | null } | undefined;
+  const booking = await db.prepare("SELECT id,customer,date,status,total,court_total,discount,member_discount,member_plan,tax,forfeited,forfeited_at FROM bookings WHERE id=?").get(bookingId) as
+    { id: string; customer: string; date: string; status: string; total: number; court_total: number | null; discount: number; member_discount: number; member_plan: string; tax: number; forfeited: number; forfeited_at: string | null } | undefined;
   if (!booking) return;
   const receivable = { account_id: (await systemAccount("piutang")).id, booking_id: booking.id, memo: booking.customer };
   if (booking.status === "confirmed" || booking.status === "completed") {
     const extras = await db.prepare("SELECT type,SUM(subtotal) amount FROM booking_addons WHERE booking_id=? GROUP BY type").all(bookingId) as { type: string; amount: number }[];
     const extrasTotal = extras.reduce((sum, row) => sum + row.amount, 0);
     // Pendapatan bersih pajak; berlaku untuk pajak di luar maupun sudah termasuk harga.
-    const revenue = booking.total + booking.discount - booking.tax;
+    const revenue = booking.total + booking.discount + booking.member_discount - booking.tax;
     const parts = [{ key: "pendapatan_lapangan", amount: booking.court_total ?? booking.total - extrasTotal }];
     for (const row of extras) parts.push({ key: addonAccountKey[row.type] ?? "pendapatan_lain", amount: row.amount });
     const shares = allocate(revenue, parts.map(part => Math.max(0, part.amount)));
@@ -176,6 +176,7 @@ export async function syncBooking(bookingId: string) {
       lines: [
         { ...receivable, debit: booking.total },
         { account_id: (await systemAccount("potongan_harga")).id, debit: booking.discount, memo: "Potongan harga" },
+        ...(booking.member_discount ? [{ account_id: (await systemAccount("potongan_member")).id, debit: booking.member_discount, memo: `Potongan member ${booking.member_plan}`.trim() }] : []),
         ...revenueLines,
         { account_id: (await systemAccount("utang_pajak")).id, credit: booking.tax, memo: booking.customer },
       ],
@@ -206,6 +207,96 @@ export async function syncBooking(bookingId: string) {
         : [{ ...cash, debit: payment.amount - fee }, { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" }, { ...receivable, credit: payment.amount }],
     });
   }
+}
+
+// --- Penjurnalan keanggotaan ------------------------------------------------
+
+interface MemberInvoiceRow {
+  id: string; number: string; membership_id: string; status: string; months: number; dues: number; registration_fee: number; tax: number; amount: number;
+  method: string | null; fee: number; paid_at: string | null; period_start: string | null; member_name: string; member_status: string;
+}
+/** Bagian iuran dan biaya daftar dari tagihan, tanpa pajak. */
+function memberShares(invoice: Pick<MemberInvoiceRow, "amount" | "tax" | "dues" | "registration_fee">) {
+  const [dues, registration] = allocate(invoice.amount - invoice.tax, [invoice.dues, invoice.registration_fee]);
+  return { dues, registration: registration ?? 0 };
+}
+const recognitionRef = (invoiceId: string, month: number) => `${invoiceId}:${month}`;
+
+/**
+ * Samakan jurnal sebuah tagihan member dengan keadaannya. Dipanggil di dalam transaksi pemanggil.
+ *
+ * Saat lunas:   Dr Kas/Bank (bersih potongan gateway) + Dr Beban Gateway
+ *             = Cr Pendapatan Keanggotaan (biaya daftar) + Cr Pendapatan Diterima di Muka (iuran) + Cr Utang Pajak.
+ * Tiap bulan:   Dr Pendapatan Diterima di Muka = Cr Pendapatan Keanggotaan, bertanggal awal tiap bulan masa
+ *               berlaku. Semua jurnal bulanan dibuat sekaligus begitu periodenya diketahui (lunas, atau disetujui
+ *               admin), jadi laba rugi dan neraca tiap periode langsung benar tanpa proses tutup buku.
+ * Seperti pembayaran booking, jurnal penerimaan tidak pernah ditulis ulang setelah dibuat.
+ */
+export async function syncMembershipInvoice(invoiceId: string) {
+  const invoice = await db.prepare(`SELECT i.id,i.number,i.membership_id,i.status,i.months,i.dues,i.registration_fee,i.tax,i.amount,i.method,i.fee,i.paid_at,i.period_start,
+      m.name member_name,m.status member_status FROM membership_invoices i JOIN memberships m ON m.id=i.membership_id WHERE i.id=?`).get(invoiceId) as MemberInvoiceRow | undefined;
+  if (!invoice || invoice.status !== "paid" || !invoice.method || !invoice.paid_at) return;
+  const shares = memberShares(invoice);
+  const deferred = (await systemAccount("pendapatan_dimuka")).id, income = (await systemAccount("pendapatan_keanggotaan")).id;
+  if (!await db.prepare("SELECT 1 FROM journal_entries WHERE source='keanggotaan' AND ref_id=?").get(invoice.id)) {
+    const fee = Math.min(invoice.fee, invoice.amount);
+    await putEntry({
+      date: localClock(new Date(invoice.paid_at)).date, source: "keanggotaan", ref_id: invoice.id, actor: null,
+      memo: `Iuran member ${invoice.member_name} · ${invoice.number}`,
+      lines: [
+        { account_id: await cashAccountFor(invoice.method), debit: invoice.amount - fee, memo: invoice.number },
+        { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" },
+        { account_id: income, credit: shares.registration, memo: "Biaya pendaftaran member" },
+        { account_id: deferred, credit: shares.dues, memo: `Iuran ${invoice.months} bulan` },
+        { account_id: (await systemAccount("utang_pajak")).id, credit: invoice.tax, memo: invoice.member_name },
+      ],
+    });
+  }
+  // Keanggotaan yang sudah dibatalkan tidak lagi mengakui iuran bulan berikutnya (lihat closeMembershipBooks).
+  if (!invoice.period_start || invoice.member_status === "cancelled") return;
+  const monthly = allocate(shares.dues, Array.from({ length: invoice.months }, () => 1));
+  for (const [month, amount] of monthly.entries()) {
+    if (!amount || await db.prepare("SELECT 1 FROM journal_entries WHERE source='keanggotaan' AND ref_id=?").get(recognitionRef(invoice.id, month))) continue;
+    await putEntry({
+      date: shiftMonths(invoice.period_start, month), source: "keanggotaan", ref_id: recognitionRef(invoice.id, month), actor: null,
+      memo: `Iuran member ${invoice.member_name} bulan ke-${month + 1} dari ${invoice.months} · ${invoice.number}`,
+      lines: [{ account_id: deferred, debit: amount, memo: invoice.number }, { account_id: income, credit: amount, memo: invoice.member_name }],
+    });
+  }
+}
+
+/** Iuran member yang sudah dibayar tetapi belum diakui sebagai pendapatan per tanggal itu. */
+export async function unearnedDues(membershipId: string, asOf: string) {
+  // Jurnal bulan-bulan berikutnya sudah dibuat di muka; yang bertanggal setelah `asOf` belum berlaku.
+  const row = await db.prepare(`SELECT COALESCE(SUM(l.credit-l.debit),0) n FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
+    WHERE e.source='keanggotaan' AND a.system_key='pendapatan_dimuka' AND e.date<=?
+      AND (e.ref_id=CONCAT(?,':batal') OR EXISTS (SELECT 1 FROM membership_invoices i WHERE i.membership_id=? AND (e.ref_id=i.id OR e.ref_id LIKE CONCAT(i.id,':%'))))`)
+    .get(asOf, membershipId, membershipId) as { n: number };
+  return Number(row.n);
+}
+
+/**
+ * Keanggotaan dibatalkan pada `date`: jurnal pengakuan iuran setelah tanggal itu dihapus, lalu sisa iuran
+ * yang belum terpakai dikembalikan (`refund`) atau, bila tidak dikembalikan, diakui sebagai pendapatan.
+ *   Dr Pendapatan Diterima di Muka (sisa) = Cr Kas/Bank (dikembalikan) + Cr Pendapatan Keanggotaan (sisanya).
+ */
+export async function closeMembershipBooks(membershipId: string, date: string, refund: number, method: string, actor: string, name: string) {
+  const future = await db.prepare(`SELECT e.id FROM journal_entries e JOIN membership_invoices i ON e.ref_id LIKE CONCAT(i.id,':%')
+    WHERE e.source='keanggotaan' AND i.membership_id=? AND e.date>?`).all(membershipId, date) as { id: string }[];
+  for (const entry of future) await db.prepare("DELETE FROM journal_entries WHERE id=?").run(entry.id);
+  const left = await unearnedDues(membershipId, date);
+  check(refund <= left, 400, `Iuran yang belum terpakai hanya ${left.toLocaleString("id-ID")}; pengembalian tidak boleh lebih dari itu.`);
+  if (left <= 0) return { unearned: 0 };
+  await putEntry({
+    date, source: "keanggotaan", ref_id: `${membershipId}:batal`, actor,
+    memo: `Pembatalan member ${name}`,
+    lines: [
+      { account_id: (await systemAccount("pendapatan_dimuka")).id, debit: left, memo: "Sisa iuran belum terpakai" },
+      { account_id: await cashAccountFor(method), credit: refund, memo: "Pengembalian iuran" },
+      { account_id: (await systemAccount("pendapatan_keanggotaan")).id, credit: left - refund, memo: "Sisa iuran tidak dikembalikan" },
+    ],
+  });
+  return { unearned: left };
 }
 
 // Versi SQLite dulu membukukan ulang booking lama sekali (migrasi 12). Di MySQL tidak perlu: booking baru

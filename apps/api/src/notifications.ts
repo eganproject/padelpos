@@ -412,6 +412,83 @@ export async function queueReminders(now = new Date()) {
   return queued;
 }
 
+// --- Keanggotaan --------------------------------------------------------------
+
+export interface MemberContact { id: string; code: string; name: string; email: string; phone: string; account_id: string | null }
+const memberTarget = (member: MemberContact): Target => ({ email: member.email, phone: waNumber(member.phone), account_id: member.account_id });
+const memberLink = (label: string) => ({ label, url: `${publicUrl}/akun/member` });
+
+/** Tagihan iuran online menunggu dibayar. */
+export async function notifyMemberBill(input: { member: MemberContact; invoice_id: string; number: string; plan: string; months: number; amount: number; expires_at: number; pay_url: string }) {
+  return await dispatch(`member-bill:${input.invoice_id}:${input.expires_at}`, "member_bill", memberTarget(input.member), {
+    subject: `Selesaikan pembayaran member ${input.plan}`, title: "Tagihan member",
+    heading: "Satu langkah lagi untuk menjadi member",
+    intro: `Halo ${input.member.name}, selesaikan pembayaran berikut agar keanggotaan ${input.plan} Anda aktif.`,
+    rows: [["Nomor tagihan", input.number], ["Paket", `${input.plan} · ${input.months} bulan`], ["Tagihan", rupiah(input.amount)], ["Bayar sebelum", deadline(input.expires_at)]],
+    link: { label: "Bayar sekarang", url: input.pay_url }, tone: "warning",
+    outro: "Abaikan pesan ini bila Anda sudah membayar.",
+  }, input.member.id);
+}
+
+/** Iuran lunas: keanggotaan aktif, atau menunggu persetujuan venue. Staf diberi tahu untuk pembayaran online. */
+export async function notifyMemberPaid(input: { member: MemberContact; invoice_id: string; number: string; plan: string; amount: number; renewal: boolean; waiting: boolean; starts_on: string | null; ends_on: string | null; online: boolean }) {
+  const rows: [string, string][] = [["Kode member", input.member.code], ["Paket", input.plan], ["Dibayar", rupiah(input.amount)]];
+  if (input.starts_on && input.ends_on) rows.push(["Berlaku", `${longDate(input.starts_on)} s.d. ${longDate(input.ends_on)}`]);
+  await dispatch(`member-paid:${input.invoice_id}`, "member_active", memberTarget(input.member), {
+    subject: input.waiting ? `Pembayaran member ${input.plan} diterima` : input.renewal ? `Keanggotaan ${input.plan} diperpanjang` : `Selamat, Anda member ${input.plan}`,
+    title: input.waiting ? "Menunggu persetujuan venue" : input.renewal ? "Keanggotaan diperpanjang" : "Keanggotaan aktif",
+    heading: input.waiting ? "Pembayaran diterima, menunggu persetujuan venue" : input.renewal ? "Keanggotaan Anda sudah diperpanjang" : "Keanggotaan Anda sudah aktif",
+    intro: input.waiting
+      ? `Halo ${input.member.name}, terima kasih. Pembayaran iuran sudah kami terima. Keanggotaan aktif setelah disetujui venue, dan masa berlakunya dihitung sejak tanggal disetujui.`
+      : `Halo ${input.member.name}, terima kasih. Harga member langsung berlaku saat Anda memesan lewat akun ini atau menyebut kode member di kasir.`,
+    rows, link: memberLink("Lihat kartu member"), tone: "success",
+  }, input.member.id);
+  if (input.online) await notifyStaff(`staff-member:${input.invoice_id}`, {
+    subject: `${input.renewal ? "Perpanjangan" : "Pendaftaran"} member online: ${input.member.name}`,
+    heading: input.waiting ? "Pendaftar member baru menunggu persetujuan" : input.renewal ? "Member memperpanjang lewat situs" : "Member baru mendaftar lewat situs",
+    intro: `${input.member.name} membayar iuran ${input.plan} lewat situs.`,
+    rows: [["Kode member", input.member.code], ["Nomor tagihan", input.number], ["Dibayar", rupiah(input.amount)]],
+  }, input.member.id);
+}
+
+/** Admin menyetujui pendaftar yang sudah membayar. */
+export async function notifyMemberApproved(input: { member: MemberContact; plan: string; starts_on: string; ends_on: string }) {
+  return await dispatch(`member-approved:${input.member.id}:${input.starts_on}`, "member_active", memberTarget(input.member), {
+    subject: `Selamat, Anda member ${input.plan}`, title: "Keanggotaan aktif", heading: "Keanggotaan Anda sudah aktif",
+    intro: `Halo ${input.member.name}, venue sudah menyetujui pendaftaran Anda. Harga member langsung berlaku.`,
+    rows: [["Kode member", input.member.code], ["Paket", input.plan], ["Berlaku", `${longDate(input.starts_on)} s.d. ${longDate(input.ends_on)}`]],
+    link: memberLink("Lihat kartu member"), tone: "success",
+  }, input.member.id);
+}
+
+/**
+ * Pengingat masa berlaku: sekali beberapa hari sebelum berakhir, dan sekali setelah berakhir (paling lama
+ * seminggu setelahnya). Kuncinya memuat tanggal berakhir, jadi perpanjangan mendapat pengingat baru.
+ */
+export async function queueMemberReminders(now = new Date()) {
+  const settings = await readSetting<{ reminder_days?: number }>("membership");
+  const lead = settings?.reminder_days ?? 7;
+  const today = localClock(now).date;
+  const shift = (days: number) => { const value = new Date(today + "T12:00:00Z"); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10); };
+  const rows = await db.prepare(`SELECT m.id,m.code,m.name,m.email,m.phone,m.account_id,m.ends_on,p.name plan FROM memberships m JOIN membership_plans p ON p.id=m.plan_id
+    WHERE m.status='active' AND m.ends_on BETWEEN ? AND ?`).all(shift(-7), shift(lead)) as (MemberContact & { ends_on: string; plan: string })[];
+  let queued = 0;
+  for (const row of rows) {
+    const ended = row.ends_on < today;
+    if (!ended && lead <= 0) continue;
+    queued += await dispatch(`member-${ended ? "expired" : "expiring"}:${row.id}:${row.ends_on}`, ended ? "member_expired" : "member_expiring", memberTarget(row), ended ? {
+      subject: `Keanggotaan ${row.plan} sudah berakhir`, title: "Keanggotaan berakhir", heading: "Masa member Anda sudah berakhir",
+      intro: `Halo ${row.name}, keanggotaan ${row.plan} berakhir pada ${longDate(row.ends_on)}. Booking berikutnya memakai harga umum sampai Anda memperpanjang.`,
+      rows: [["Kode member", row.code]], link: memberLink("Perpanjang member"), tone: "danger",
+    } : {
+      subject: `Keanggotaan ${row.plan} berakhir ${longDate(row.ends_on)}`, title: "Keanggotaan segera berakhir", heading: "Masa member Anda segera berakhir",
+      intro: `Halo ${row.name}, keanggotaan ${row.plan} berlaku sampai ${longDate(row.ends_on)}. Perpanjang sebelum tanggal itu agar harga member tetap berlaku tanpa jeda; masa barunya disambung dari tanggal berakhir.`,
+      rows: [["Kode member", row.code], ["Berakhir", longDate(row.ends_on)]], link: memberLink("Perpanjang member"), tone: "warning",
+    }, row.id);
+  }
+  return queued;
+}
+
 // --- Pengiriman ---------------------------------------------------------------
 
 let cached: { signature: string; transport: Transporter } | null = null;
@@ -472,6 +549,7 @@ export function startMailer(holdMinutes: () => Promise<number>, intervalMs = 300
   const tick = async () => {
     try { await queueReminders(); } catch (error) { console.error("Gagal menyiapkan pengingat:", (error as Error).message); }
     try { await queuePaymentDue(await holdMinutes()); } catch (error) { console.error("Gagal menyiapkan pengingat bayar:", (error as Error).message); }
+    try { await queueMemberReminders(); } catch (error) { console.error("Gagal menyiapkan pengingat member:", (error as Error).message); }
     await deliverDue().catch(error => console.error("Gagal mengirim email:", (error as Error).message));
     await deliverDueWhatsApp().catch(error => console.error("Gagal mengirim WhatsApp:", (error as Error).message));
   };
