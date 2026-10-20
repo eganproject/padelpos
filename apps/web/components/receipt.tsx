@@ -61,7 +61,8 @@ export const Receipt = forwardRef<HTMLElement, { data: ReceiptData }>(function R
           ))}
         </tbody>
         <tfoot>
-          {(booking.discount > 0 || booking.tax > 0) && <tr><td>Subtotal</td><td className="num">{money(subtotal)}</td></tr>}
+          {(booking.discount > 0 || (booking.member_discount ?? 0) > 0 || booking.tax > 0) && <tr><td>Subtotal</td><td className="num">{money(subtotal)}</td></tr>}
+          {(booking.member_discount ?? 0) > 0 && <tr><td>Potongan member{booking.member_plan ? ` (${booking.member_plan})` : ""}</td><td className="num">−{money(booking.member_discount!)}</td></tr>}
           {booking.discount > 0 && <tr><td>Potongan{booking.discount_note ? ` (${booking.discount_note})` : ""}</td><td className="num">−{money(booking.discount)}</td></tr>}
           {booking.tax > 0 && <tr><td>{taxName(booking)}</td><td className="num">{booking.tax_inclusive ? "" : "+"}{money(booking.tax)}</td></tr>}
           <tr className="total"><td>Total</td><td className="num">{money(booking.total)}</td></tr>
