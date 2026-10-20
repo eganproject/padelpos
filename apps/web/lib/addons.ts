@@ -36,17 +36,23 @@ export type BookingAddon = {
 };
 export type StockMove = {
   id: string; delta: number; reason: "awal" | "restok" | "koreksi" | "rusak" | "terpakai" | "kembali"; note: string;
-  booking_id: string | null; booking_customer: string | null; stock_after: number; actor: string; created_at: string;
+  booking_id: string | null; sale_id?: string | null; sale_number?: string | null; booking_customer: string | null; stock_after: number; actor: string; created_at: string;
 };
 export type AddonSummary = {
   since: string; revenue: number; today: number;
   top: { addon_id: string | null; name: string; type: AddonType | "lainnya"; quantity: number; revenue: number; bookings: number }[];
-  unreturned: { id: string; name: string; quantity: number; booking_id: string; customer: string; phone: string; date: string; start_time: string; end_time: string; court_name: string }[];
   low_stock: { id: string; name: string; type: AddonType; stock: number; low_stock: number }[];
 };
 
-export const unitLabel = (type: AddonType | "lainnya", pricing: AddonPricing) =>
-  pricing === "per_hour" ? "per jam" : type === "jual" || type === "lainnya" ? "per pcs" : "per booking";
+/** Barang sewa yang sedang dibawa pelanggan, dari booking (`booking`) atau transaksi kasir (`kasir`). */
+export type UnreturnedRental = {
+  id: string; source: "booking" | "kasir"; ref_id: string; name: string; quantity: number; customer: string; phone: string;
+  date: string; start_time: string; end_time: string; court_name: string | null; sale_number: string;
+};
+
+/** `walkIn`: transaksi kasir tanpa booking, sewa sekali bayar disebut "per sewa". */
+export const unitLabel = (type: AddonType | "lainnya", pricing: AddonPricing, walkIn = false) =>
+  pricing === "per_hour" ? "per jam" : type === "jual" || type === "lainnya" ? "per pcs" : walkIn ? "per sewa" : "per booking";
 
 /** Sama dengan server: harga per jam dikali durasi main. */
 export const lineTotal = (price: number, quantity: number, pricing: AddonPricing, duration: number) =>

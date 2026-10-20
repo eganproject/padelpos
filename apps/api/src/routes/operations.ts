@@ -18,6 +18,7 @@ import { auditFilters, auditLog } from "../auditlog.js";
 import * as backups from "../backups.js";
 import * as receipts from "../receipts.js";
 import * as members from "../membership.js";
+import * as counter from "../counter.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 const router=Router();
@@ -143,6 +144,16 @@ router.put("/bookings/:id/discount",requireMenu("bookings"),async (req:AuthReque
 router.put("/bookings/:id/forfeit",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({booking:await ops.forfeitBooking(String(req.params.id),req.body,req.auth!.sub)}));
 router.put("/bookings/:id/addons",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await ops.updateBookingAddons(String(req.params.id),req.body,req.auth!.sub)));
 router.patch("/bookings/:id/addons/returned",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await ops.returnBookingAddons(String(req.params.id),req.body,req.auth!.sub)));
+// Barang sewa yang belum kembali, dari booking maupun sewa langsung, ditampilkan di halaman Booking.
+router.get("/rentals/unreturned",requireMenu("bookings"),async (_req,res)=>res.json(await addons.unreturnedRentals()));
+// Transaksi langsung di kasir tanpa booking lapangan: sewa raket, beli bola, minuman, dan sejenisnya.
+router.get("/counter",requireMenu("bookings"),async (req,res)=>res.json(await counter.listSales(req.query)));
+router.get("/counter/options",requireMenu("bookings"),async (req,res)=>res.json(await counter.saleOptions(req.query)));
+router.post("/counter",requireMenu("bookings"),async (req:AuthRequest,res)=>res.status(201).json(await counter.createSale(req.body,req.auth!.sub)));
+router.get("/counter/:id",requireMenu("bookings"),async (req,res)=>res.json({sale:await counter.getSale(String(req.params.id)),lines:await counter.saleLines(String(req.params.id))}));
+router.get("/counter/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await receipts.saleReceipt(String(req.params.id),req.auth!.sub)));
+router.patch("/counter/:id/returned",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.returnSaleLines(String(req.params.id),req.body,req.auth!.sub)));
+router.post("/counter/:id/void",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.voidSale(String(req.params.id),req.body,req.auth!.sub)));
 // --- Keuangan --------------------------------------------------------------
 // Keuangan dipecah menjadi beberapa menu; tiap menu hanya membuka endpoint yang dipakainya.
 const money=requireMenu("finance"),records=requireMenu("finance-records"),journal=requireMenu("finance-journal"),reports=requireMenu("finance-reports"),books=requireMenu("finance-settings");

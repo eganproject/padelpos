@@ -374,11 +374,11 @@ test("operational workflow, concurrency, permissions and durable storage", async
       assert.equal((await request(`/operations/bookings/${laterId}/addons/returned`,"PATCH",{line_ids:[coach.id],returned:true},staff)).status,400,"hanya barang sewa yang dikembalikan");
       const yesterday=new Date(localClock().date+"T12:00:00Z");yesterday.setUTCDate(yesterday.getUTCDate()-1);
       await db.prepare("UPDATE bookings SET date=? WHERE id=?").run(yesterday.toISOString().slice(0,10),laterId);
-      assert.ok((await request("/operations/addons","GET",undefined,admin)).data.summary.unreturned.some((l:{id:string})=>l.id===rent.id),"raket dari jadwal yang sudah lewat masuk daftar belum kembali");
+      assert.ok((await request("/operations/rentals/unreturned","GET",undefined,staff)).data.unreturned.some((l:{id:string})=>l.id===rent.id),"raket dari jadwal yang sudah lewat masuk daftar belum kembali");
       const returned=await request(`/operations/bookings/${laterId}/addons/returned`,"PATCH",{line_ids:[rent.id],returned:true},staff);
       assert.equal(returned.status,200);
       assert.ok(returned.data.addons.find((l:{id:string})=>l.id===rent.id).returned_at);
-      assert.ok(!(await request("/operations/addons","GET",undefined,admin)).data.summary.unreturned.some((l:{id:string})=>l.id===rent.id));
+      assert.ok(!(await request("/operations/rentals/unreturned","GET",undefined,staff)).data.unreturned.some((l:{id:string})=>l.id===rent.id));
       assert.equal((await request("/dashboard/summary","GET",undefined,admin)).data.addons.unreturned,0);
 
       assert.equal((await request(`/operations/addons/${bola.id}`,"DELETE",undefined,admin)).status,409,"item yang sudah dipakai tidak boleh dihapus");

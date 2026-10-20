@@ -576,6 +576,64 @@ export const schemaV4: string[] = [
     ADD KEY bookings_membership (membership_id),
     ADD CONSTRAINT bookings_membership_fk FOREIGN KEY (membership_id) REFERENCES memberships(id)`,
 ];
+/**
+ * Versi 5: transaksi langsung di kasir tanpa booking lapangan (walk-in), mis. sewa raket untuk
+ * latihan sendiri atau membeli bola dan minuman. Langsung dibayar lunas saat dicatat.
+ * - Barang sewa memakai rentang jam `start_time`–`end_time` pada `date`, sama seperti booking,
+ *   sehingga stok raket dihitung bersama booking lapangan. Unit kembali tersedia begitu ditandai kembali.
+ * - Transaksi tidak pernah dihapus; pembatalan menandai `void` dan membuat jurnal balik.
+ */
+export const schemaV5: string[] = [
+  `CREATE TABLE counter_sales (
+    id ${id} PRIMARY KEY,
+    number VARCHAR(32) NOT NULL,
+    customer VARCHAR(255) NOT NULL,
+    phone VARCHAR(32) NOT NULL DEFAULT '',
+    date ${date} NOT NULL,
+    start_time ${time} NOT NULL,
+    end_time ${time} NOT NULL,
+    subtotal BIGINT NOT NULL CHECK(subtotal >= 0),
+    discount BIGINT NOT NULL DEFAULT 0 CHECK(discount >= 0),
+    discount_note TEXT NOT NULL DEFAULT (''),
+    tax BIGINT NOT NULL DEFAULT 0 CHECK(tax >= 0),
+    tax_rate INT NOT NULL DEFAULT 0 CHECK(tax_rate >= 0),
+    tax_inclusive TINYINT NOT NULL DEFAULT 0,
+    tax_label VARCHAR(64) NOT NULL DEFAULT '',
+    total BIGINT NOT NULL CHECK(total > 0),
+    method VARCHAR(16) NOT NULL CHECK(method IN ('cash','transfer','qris','va','ewallet','card')),
+    tendered BIGINT CHECK(tendered IS NULL OR tendered >= 0),
+    status VARCHAR(16) NOT NULL CHECK(status IN ('paid','void')),
+    notes TEXT NOT NULL DEFAULT (''),
+    void_reason TEXT NOT NULL DEFAULT (''),
+    voided_at ${stamp},
+    voided_by ${id},
+    created_by ${id} NOT NULL,
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY counter_sales_number (number),
+    KEY counter_sales_date (date, start_time)
+  )`,
+  `CREATE TABLE counter_sale_lines (
+    seq BIGINT NOT NULL AUTO_INCREMENT UNIQUE,
+    id ${id} PRIMARY KEY,
+    sale_id ${id} NOT NULL,
+    addon_id ${id},
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(16) NOT NULL CHECK(type IN ('sewa','jual','layanan','lainnya')),
+    pricing VARCHAR(16) NOT NULL CHECK(pricing IN ('per_booking','per_hour')),
+    unit_price BIGINT NOT NULL CHECK(unit_price >= 0),
+    quantity INT NOT NULL CHECK(quantity > 0),
+    subtotal BIGINT NOT NULL CHECK(subtotal >= 0),
+    returned_at ${stamp},
+    created_at ${stamp} NOT NULL,
+    KEY counter_sale_lines_sale (sale_id),
+    KEY counter_sale_lines_addon (addon_id),
+    CONSTRAINT counter_sale_lines_sale_fk FOREIGN KEY (sale_id) REFERENCES counter_sales(id),
+    CONSTRAINT counter_sale_lines_addon_fk FOREIGN KEY (addon_id) REFERENCES addons(id)
+  )`,
+  `ALTER TABLE addon_stock_moves
+    ADD COLUMN sale_id ${id} NULL,
+    ADD CONSTRAINT addon_stock_moves_sale_fk FOREIGN KEY (sale_id) REFERENCES counter_sales(id)`,
+];
 /** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
 export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
   [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],
@@ -588,7 +646,7 @@ export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
   "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts",
   "membership_plans", "memberships", "membership_invoices", "orders",
-  "bookings", "payments", "addons", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
+  "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
 ];
 

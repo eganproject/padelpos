@@ -4,6 +4,7 @@ import { getBooking, payments } from "./operations.js";
 import { bookingAddons } from "./addons.js";
 import { bookingCode } from "./payments.js";
 import { getInfo } from "./content.js";
+import { getSale, saleLines } from "./counter.js";
 
 /**
  * Nota yang dicetak kasir dari panel admin, untuk booking di kasir maupun booking online.
@@ -40,19 +41,32 @@ export async function saveReceiptSettings(input: unknown, actor: string) {
   return await receiptSettings();
 }
 
-/** Semua yang dibutuhkan satu nota: booking, rincian tambahan, pembayaran, profil venue, dan pengaturan nota. */
-export async function bookingReceipt(id: string, actor: string) {
-  const booking = await getBooking(id);
-  const order = booking.order_id ? await db.prepare("SELECT code FROM orders WHERE id=?").get(booking.order_id) as { code: string } | undefined : undefined;
+/** Profil venue, pengaturan nota, dan nama kasir yang mencetak: sama untuk semua jenis nota. */
+async function receiptFrame(actor: string) {
   const cashier = await db.prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(document,'$.name')) name FROM users WHERE id=?").get(actor) as { name: string | null } | undefined;
   const info = await getInfo();
   return {
-    booking: { ...booking, code: bookingCode(booking.id), order_code: order?.code ?? null },
-    addons: await bookingAddons(booking.id),
-    payments: await payments(booking.id),
     venue: { name: info.name, address: info.address, phone: info.phone, whatsapp: info.whatsapp, email: info.email, instagram: info.instagram },
     settings: await receiptSettings(),
     cashier: cashier?.name ?? "",
     printed_at: new Date().toISOString(),
   };
+}
+
+/** Semua yang dibutuhkan satu nota: booking, rincian tambahan, pembayaran, profil venue, dan pengaturan nota. */
+export async function bookingReceipt(id: string, actor: string) {
+  const booking = await getBooking(id);
+  const order = booking.order_id ? await db.prepare("SELECT code FROM orders WHERE id=?").get(booking.order_id) as { code: string } | undefined : undefined;
+  return {
+    booking: { ...booking, code: bookingCode(booking.id), order_code: order?.code ?? null },
+    addons: await bookingAddons(booking.id),
+    payments: await payments(booking.id),
+    ...await receiptFrame(actor),
+  };
+}
+
+/** Nota transaksi langsung di kasir (sewa atau beli barang tanpa booking lapangan). */
+export async function saleReceipt(id: string, actor: string) {
+  const sale = await getSale(id);
+  return { sale, lines: await saleLines(id), ...await receiptFrame(actor) };
 }

@@ -23,7 +23,7 @@ import { allocate, taxSettings, type TaxSettings } from "./bill.js";
 
 export type AccountType = "aset" | "liabilitas" | "ekuitas" | "pendapatan" | "beban";
 export type AccountSubtype = "kas_bank" | "piutang" | "persediaan" | "aset_tetap" | "utang" | "modal" | "pendapatan" | "beban";
-export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan";
+export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan" | "kasir";
 export interface Account { id: string; code: string; name: string; type: AccountType; subtype: AccountSubtype; is_cash: number; system_key: string | null; description: string; active: number; position: number; created_at: string }
 export interface Partner { id: string; name: string; kind: "pemasok" | "pelanggan" | "karyawan" | "lainnya"; phone: string; note: string; active: number; created_at: string }
 export interface JournalLine { id: string; account_id: string; account_code: string; account_name: string; debit: number; credit: number; memo: string; partner_id: string | null; partner_name: string | null; booking_id: string | null }
@@ -207,6 +207,40 @@ export async function syncBooking(bookingId: string) {
         : [{ ...cash, debit: payment.amount - fee }, { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" }, { ...receivable, credit: payment.amount }],
     });
   }
+}
+
+// --- Penjurnalan transaksi langsung di kasir --------------------------------
+
+/**
+ * Transaksi kasir tanpa booking langsung lunas, jadi tidak melewati piutang:
+ *   Dr Kas/Bank (total) + Dr Potongan Harga = Cr pendapatan per jenis (tanpa pajak) + Cr Utang Pajak.
+ * Bila dibatalkan, jurnal balik dibuat pada tanggal pembatalan; jurnal asal tetap ada agar
+ * periode yang sudah dilaporkan tidak berubah. Keduanya hanya dibuat sekali.
+ */
+export async function syncCounterSale(saleId: string) {
+  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,voided_at FROM counter_sales WHERE id=?").get(saleId) as
+    { id: string; number: string; customer: string; date: string; status: "paid" | "void"; total: number; discount: number; tax: number; method: string; voided_at: string | null } | undefined;
+  if (!sale) return;
+  const parts = await db.prepare("SELECT type,SUM(subtotal) amount FROM counter_sale_lines WHERE sale_id=? GROUP BY type ORDER BY type").all(saleId) as { type: string; amount: number }[];
+  const revenue = sale.total + sale.discount - sale.tax;
+  const shares = allocate(revenue, parts.map(part => Math.max(0, Number(part.amount))));
+  const merged = new Map<string, number>();
+  parts.forEach((part, index) => { const key = addonAccountKey[part.type] ?? "pendapatan_lain"; merged.set(key, (merged.get(key) ?? 0) + shares[index]); });
+  const lines = async (sign: 1 | -1): Promise<LineInput[]> => {
+    const side = (amount: number, debit: boolean) => (debit === (sign === 1) ? { debit: amount } : { credit: amount });
+    const result: LineInput[] = [
+      { account_id: await cashAccountFor(sale.method), ...side(sale.total, true), memo: sale.number },
+      { account_id: (await systemAccount("potongan_harga")).id, ...side(sale.discount, true), memo: "Potongan harga" },
+    ];
+    for (const [key, amount] of merged) result.push({ account_id: (await systemAccount(key)).id, ...side(amount, false), memo: sale.customer });
+    result.push({ account_id: (await systemAccount("utang_pajak")).id, ...side(sale.tax, false), memo: sale.customer });
+    return result;
+  };
+  if (!await db.prepare("SELECT 1 FROM journal_entries WHERE source='kasir' AND ref_id=?").get(sale.id))
+    await putEntry({ date: sale.date, source: "kasir", ref_id: sale.id, actor: null, memo: `Transaksi kasir ${sale.number} · ${sale.customer}`, lines: await lines(1) });
+  const reversal = `${sale.id}:batal`;
+  if (sale.status === "void" && !await db.prepare("SELECT 1 FROM journal_entries WHERE source='kasir' AND ref_id=?").get(reversal))
+    await putEntry({ date: localClock(new Date(sale.voided_at ?? Date.now())).date, source: "kasir", ref_id: reversal, actor: null, memo: `Pembatalan transaksi kasir ${sale.number} · ${sale.customer}`, lines: await lines(-1) });
 }
 
 // --- Penjurnalan keanggotaan ------------------------------------------------

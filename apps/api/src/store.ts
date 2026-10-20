@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5 } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -207,6 +207,17 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
         const role = admin ? JSON.parse(admin.document) as AccessRole : null;
         if (role && !role.menuIds.includes(menuId)) await db.prepare("UPDATE roles SET document=? WHERE id='admin'").run(JSON.stringify({ ...role, menuIds: [...role.menuIds, menuId] }));
       }
+    },
+  },
+  {
+    version: 5, async up() {
+      for (const statement of schemaV5) await db.exec(statement);
+      // Sumber jurnal baru `kasir` untuk transaksi langsung di kasir.
+      const checks = await db.prepare(`SELECT c.CONSTRAINT_NAME name FROM information_schema.CHECK_CONSTRAINTS c
+        JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME=c.CONSTRAINT_NAME
+        WHERE c.CONSTRAINT_SCHEMA=DATABASE() AND t.TABLE_NAME='journal_entries' AND c.CHECK_CLAUSE LIKE '%pembayaran%'`).all() as { name: string }[];
+      for (const row of checks) await db.exec(`ALTER TABLE journal_entries DROP CHECK \`${row.name.replace(/`/g, "``")}\``);
+      await db.exec("ALTER TABLE journal_entries ADD CONSTRAINT journal_entries_source CHECK (source IN ('manual','catatan','pelunasan','transfer','modal','booking','pembayaran','keanggotaan','kasir'))");
     },
   },
 ];

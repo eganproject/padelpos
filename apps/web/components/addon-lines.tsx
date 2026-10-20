@@ -29,8 +29,10 @@ export const clampDrafts = (drafts: Draft[], options: AddonOption[]) => drafts.m
   return option ? { ...draft, quantity: Math.min(draft.quantity, maxFor(option)) } : draft;
 }).filter(draft => draft.id || draft.quantity > 0);
 
-export function AddonLinesEditor({ options, drafts, onChange, duration, allowCustom = false }: {
+export function AddonLinesEditor({ options, drafts, onChange, duration, allowCustom = false, walkIn = false }: {
   options: AddonOption[] | null; drafts: Draft[]; onChange: (drafts: Draft[]) => void; duration: number; allowCustom?: boolean;
+  /** Transaksi kasir tanpa booking: sebutan satuan dan catatan stok tanpa kata "booking". */
+  walkIn?: boolean;
 }) {
   const [custom, setCustom] = useState({ name: "", price: "" });
   if (!options) return <p className="ops-muted" role="status">Memeriksa stok tambahan…</p>;
@@ -70,7 +72,7 @@ export function AddonLinesEditor({ options, drafts, onChange, duration, allowCus
               <AddonThumb category={option.category} photoId={option.photo_id} />
               <div className="info">
                 <b>{option.name}</b>
-                <small>{typeLabel[option.type]} · {money(value)} {unitLabel(option.type, pricing)}{option.online === false ? " · khusus kasir" : ""}</small>
+                <small>{typeLabel[option.type]} · {money(value)} {unitLabel(option.type, pricing, walkIn)}{option.online === false ? " · khusus kasir" : ""}</small>
                 {note && <em className={option.available === 0 ? "out" : ""}>{note}</em>}
               </div>
               <QtyStepper value={quantity} max={maxFor(option, draft?.initial ?? 0)} onChange={value => setCatalog(option, value)} label={option.name} />
@@ -81,7 +83,7 @@ export function AddonLinesEditor({ options, drafts, onChange, duration, allowCus
         {inactive.map(draft => (
           <li key={draft.key} className={draft.quantity ? "chosen" : ""}>
             <AddonThumb category="lainnya" photoId={null} />
-            <div className="info"><b>{draft.name}</b><small>{money(draft.unit_price)} {unitLabel(draft.type, draft.pricing)}</small><em>Item sudah nonaktif, jumlahnya hanya dapat dikurangi</em></div>
+            <div className="info"><b>{draft.name}</b><small>{money(draft.unit_price)} {unitLabel(draft.type, draft.pricing, walkIn)}</small><em>Item sudah nonaktif, jumlahnya hanya dapat dikurangi</em></div>
             <QtyStepper value={draft.quantity} max={draft.initial} onChange={value => update(draft.key, value)} label={draft.name} />
             <strong>{subtotal(draft.unit_price, draft.quantity, draft.pricing)}</strong>
           </li>
