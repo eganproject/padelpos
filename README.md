@@ -237,6 +237,16 @@ Halaman pesanan (`/pesanan/<id>`) menampilkan riwayat pembayaran dan tautan ke
 atau disimpan sebagai PDF lewat dialog cetak browser. Setelah terkonfirmasi, halaman pesanan juga
 menawarkan simpan ke kalender, bagikan jadwal ke teman main, dan petunjuk arah.
 
+### Nota kasir
+
+Detail booking di panel admin punya tombol **Cetak nota**, untuk booking di kasir maupun online. Tombol
+itu membuka `/cetak/nota/<id>` di tab baru dan langsung memanggil dialog cetak browser. Ukuran kertas:
+thermal 58 mm, thermal 80 mm, A5, A4, atau lebar lain (40–216 mm). Kertas thermal dan lebar lain
+dicetak sebagai kertas gulung yang panjangnya mengikuti isi nota; di dialog cetak atur Margin ke None
+dan Skala 100%. Ukuran bawaan, teks kepala/kaki, serta tampil-tidaknya rincian pembayaran dan nama
+kasir diatur di **Pengaturan → Nota & Cetak** (bawaannya hanya Super Admin; kasir tetap bisa memilih
+ukuran lain untuk satu cetakan).
+
 ## Pembukuan & laporan keuangan
 
 Menu **Keuangan** mencatat pengeluaran operasional dan pemasukan di luar booking, lalu menyusunnya
