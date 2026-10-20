@@ -54,17 +54,17 @@ async function getAddon(id:string){
   check(addon,404,"Item tambahan tidak ditemukan.");
   return addon;
 }
-const usedInBooking=async(id:string)=>!!await db.prepare("SELECT 1 FROM booking_addons WHERE addon_id=? LIMIT 1").get(id);
+const usedInBooking=async(id:string)=>!!await db.prepare("SELECT 1 FROM booking_addons WHERE addon_id=? UNION ALL SELECT 1 FROM counter_sale_lines WHERE addon_id=? LIMIT 1").get(id,id);
 /** Katalog untuk admin. `in_use` menandai item yang sudah tercatat di booking sehingga tidak dapat dihapus. */
 export async function manageAddons(){
-  const used=new Set((await db.prepare("SELECT DISTINCT addon_id FROM booking_addons WHERE addon_id IS NOT NULL").all() as {addon_id:string}[]).map(row=>row.addon_id));
+  const used=new Set((await db.prepare("SELECT DISTINCT addon_id FROM booking_addons WHERE addon_id IS NOT NULL UNION SELECT DISTINCT addon_id FROM counter_sale_lines WHERE addon_id IS NOT NULL").all() as {addon_id:string}[]).map(row=>row.addon_id));
   return (await addons()).map(addon=>({...addon,in_use:used.has(addon.id)}));
 }
 const managed=async(id:string)=>(await manageAddons()).find(addon=>addon.id===id)!;
 
-async function recordMove(addonId:string,delta:number,reason:StockReason,stockAfter:number,actor:string,note="",bookingId:string|null=null){
-  await db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,booking_id,stock_after,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
-    .run(randomUUID(),addonId,delta,reason,note,bookingId,stockAfter,actor,new Date().toISOString());
+export async function recordMove(addonId:string,delta:number,reason:StockReason,stockAfter:number,actor:string,note="",bookingId:string|null=null,saleId:string|null=null){
+  await db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,booking_id,sale_id,stock_after,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+    .run(randomUUID(),addonId,delta,reason,note,bookingId,saleId,stockAfter,actor,new Date().toISOString());
 }
 
 export async function saveAddon(input:unknown,actor:string,id?:string){
@@ -158,16 +158,23 @@ export async function adjustStock(id:string,input:unknown,actor:string){
 export async function stockMoves(id:string){
   await getAddon(id);
   const names=new Map((await getUsers()).map(user=>[user.id,user.name]));
-  const rows=await db.prepare("SELECT m.id,m.delta,m.reason,m.note,m.booking_id,m.stock_after,m.created_by,m.created_at,b.customer booking_customer,b.date booking_date FROM addon_stock_moves m LEFT JOIN bookings b ON b.id=m.booking_id WHERE m.addon_id=? ORDER BY m.created_at DESC,m.seq DESC LIMIT 60").all(id) as {created_by:string|null}[];
+  const rows=await db.prepare("SELECT m.id,m.delta,m.reason,m.note,m.booking_id,m.sale_id,s.number sale_number,m.stock_after,m.created_by,m.created_at,COALESCE(b.customer,s.customer) booking_customer,COALESCE(b.date,s.date) booking_date FROM addon_stock_moves m LEFT JOIN bookings b ON b.id=m.booking_id LEFT JOIN counter_sales s ON s.id=m.sale_id WHERE m.addon_id=? ORDER BY m.created_at DESC,m.seq DESC LIMIT 60").all(id) as {created_by:string|null}[];
   return rows.map(row=>({...row,actor:row.created_by?names.get(row.created_by)??"":""}));
 }
 
 // --- Ketersediaan -----------------------------------------------------------
 export type AddonWindow={date:string;start:string;end:string};
-/** Unit yang dipakai booking lain pada slot 30 menit tersibuk di dalam rentang. */
-async function peakUse(addonId:string,window:AddonWindow,excludeBooking:string){
-  const rows=await db.prepare(`SELECT b.start_time,b.end_time,SUM(l.quantity) quantity FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE l.addon_id=? AND b.date=? AND ${holding} AND b.start_time<? AND b.end_time>? AND b.id<>? GROUP BY b.id`)
-    .all(addonId,window.date,window.end,window.start,excludeBooking) as {start_time:string;end_time:string;quantity:number}[];
+/**
+ * Unit yang dipakai booking lain dan sewa langsung di kasir pada slot 30 menit tersibuk di dalam rentang.
+ * Sewa langsung yang sudah ditandai kembali tidak lagi memegang unit, walau jamnya belum habis.
+ */
+export async function peakUse(addonId:string,window:AddonWindow,excludeBooking:string){
+  const rows=[
+    ...await db.prepare(`SELECT b.start_time,b.end_time,SUM(l.quantity) quantity FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE l.addon_id=? AND b.date=? AND ${holding} AND b.start_time<? AND b.end_time>? AND b.id<>? GROUP BY b.id`)
+      .all(addonId,window.date,window.end,window.start,excludeBooking),
+    ...await db.prepare("SELECT s.start_time,s.end_time,SUM(l.quantity) quantity FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id WHERE l.addon_id=? AND s.date=? AND s.status='paid' AND l.returned_at IS NULL AND s.start_time<? AND s.end_time>? GROUP BY s.id")
+      .all(addonId,window.date,window.end,window.start),
+  ] as {start_time:string;end_time:string;quantity:number}[];
   let peak=0;
   for(let value=minutes(window.start);value<minutes(window.end);value+=30){
     const at=clockLabel(value);
@@ -347,11 +354,31 @@ export async function addonSummary(){
   const start=new Date(now.date+"T12:00:00Z");start.setUTCDate(start.getUTCDate()-29);
   const since=start.toISOString().slice(0,10);
   const counted="b.status IN ('confirmed','completed')";
-  const top=await db.prepare(`SELECT l.addon_id,l.name,l.type,SUM(l.quantity) quantity,SUM(l.subtotal) revenue,COUNT(DISTINCT l.booking_id) bookings FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ? GROUP BY COALESCE(l.addon_id,CONCAT('lain:',lower(l.name))) ORDER BY revenue DESC,quantity DESC LIMIT 10`).all(since,now.date);
-  const sum=async(from:string,to:string)=>(await db.prepare(`SELECT COALESCE(SUM(l.subtotal),0) n FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ?`).get(from,to) as {n:number}).n;
-  // Barang sewa dianggap sedang dibawa pelanggan sejak jam main dimulai.
-  const unreturned=await db.prepare(`SELECT l.id,l.name,l.quantity,b.id booking_id,b.customer,b.phone,b.date,b.start_time,b.end_time,c.name court_name FROM booking_addons l JOIN bookings b ON b.id=l.booking_id JOIN courts c ON c.id=b.court_id WHERE l.type='sewa' AND l.returned_at IS NULL AND ${counted} AND (b.date<? OR (b.date=? AND b.start_time<=?)) ORDER BY b.date,b.start_time LIMIT 100`).all(now.date,now.date,now.time);
+  // Tambahan dari booking digabung dengan transaksi langsung di kasir yang tidak dibatalkan.
+  const lines=(from:string,to:string)=>[`SELECT l.addon_id,l.name,l.type,l.quantity,l.subtotal,l.booking_id ref FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE ${counted} AND b.date BETWEEN ? AND ?
+    UNION ALL SELECT l.addon_id,l.name,l.type,l.quantity,l.subtotal,l.sale_id ref FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id WHERE s.status='paid' AND s.date BETWEEN ? AND ?`,[from,to,from,to]] as const;
+  const [recent,recentParams]=lines(since,now.date);
+  const top=await db.prepare(`SELECT ANY_VALUE(addon_id) addon_id,ANY_VALUE(name) name,ANY_VALUE(type) type,SUM(quantity) quantity,SUM(subtotal) revenue,COUNT(DISTINCT ref) bookings FROM (${recent}) x GROUP BY COALESCE(addon_id,CONCAT('lain:',lower(name))) ORDER BY revenue DESC,quantity DESC LIMIT 10`).all(...recentParams);
+  const sum=async(from:string,to:string)=>{const [sql,params]=lines(from,to);return Number((await db.prepare(`SELECT COALESCE(SUM(subtotal),0) n FROM (${sql}) x`).get(...params) as {n:number}).n)};
   const lowStock=(await addons()).filter(addon=>addon.active&&addon.stock!==null&&(addon.stock===0||(addon.type==="jual"&&addon.stock<=addon.low_stock)))
     .map(addon=>({id:addon.id,name:addon.name,type:addon.type,stock:addon.stock,low_stock:addon.low_stock}));
-  return {since,revenue:await sum(since,now.date),today:await sum(now.date,now.date),top,unreturned,low_stock:lowStock};
+  return {since,revenue:await sum(since,now.date),today:await sum(now.date,now.date),top,low_stock:lowStock};
+}
+
+/**
+ * Barang sewa yang sedang dibawa pelanggan: dari booking yang jam mainnya sudah dimulai, dan dari
+ * sewa langsung di kasir. Ditampilkan di halaman Booking agar kasir menagihnya saat pelanggan pulang.
+ */
+export async function unreturnedRentals(){
+  const now=localClock();
+  const rows=await db.prepare(`SELECT * FROM (
+      SELECT l.id,'booking' source,b.id ref_id,l.name,l.quantity,b.customer,b.phone,b.date,b.start_time,b.end_time,c.name court_name,'' sale_number
+        FROM booking_addons l JOIN bookings b ON b.id=l.booking_id JOIN courts c ON c.id=b.court_id
+        WHERE l.type='sewa' AND l.returned_at IS NULL AND b.status IN ('confirmed','completed') AND (b.date<? OR (b.date=? AND b.start_time<=?))
+      UNION ALL
+      SELECT l.id,'kasir' source,s.id ref_id,l.name,l.quantity,s.customer,s.phone,s.date,s.start_time,s.end_time,NULL court_name,s.number sale_number
+        FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id
+        WHERE l.type='sewa' AND l.returned_at IS NULL AND s.status='paid'
+    ) x ORDER BY date,start_time LIMIT 200`).all(now.date,now.date,now.time) as {id:string;source:"booking"|"kasir";ref_id:string;name:string;quantity:number;customer:string;phone:string;date:string;start_time:string;end_time:string;court_name:string|null;sale_number:string}[];
+  return {unreturned:rows,...now};
 }

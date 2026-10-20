@@ -100,3 +100,17 @@
   .addon-custom button{grid-column:1/-1}
   .addon-alert .ops-link{margin-left:0}
 }
+
+/* Transaksi kasir tanpa booking (Booking › Sewa & jual langsung) */
+@media(min-width:992px){.metric-grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.counter-window{align-self:end;margin:0 0 6px}
+.counter-discount-toggle{align-self:flex-start;font-size:var(--fs-sm)}
+.counter-grand strong{font-size:var(--fs-2xl)}
+.counter-cash{display:flex;flex-direction:column;gap:var(--s2)}
+.counter-change{margin:0;font-size:var(--fs-lg);font-weight:600;color:var(--green-text)}
+.counter-change.short{color:var(--red-text,var(--orange-text))}
+.cms-tabs .tab-count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--orange-bg);color:var(--orange-text);font-size:var(--fs-xs);font-style:normal;font-weight:600}
+.addon-moved{margin:0}
+.counter-metrics{margin-bottom:var(--s4)}
+.ops-row-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s2)}
+@media(max-width:991px){.ops-row-buttons{justify-content:flex-start}}

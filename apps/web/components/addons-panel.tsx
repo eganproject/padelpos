@@ -1,6 +1,7 @@
 "use client";
 import { useCallback,useEffect,useRef,useState } from "react";
-import { ArrowDown,ArrowUp,Boxes,CircleDollarSign,Eye,EyeOff,ImagePlus,PackageCheck,Pencil,Plus,ShoppingBag,Trash2,TriangleAlert } from "lucide-react";
+import { ArrowDown,ArrowUp,Boxes,CircleDollarSign,Eye,EyeOff,ImagePlus,Pencil,Plus,ShoppingBag,Trash2,TriangleAlert } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Addon,type AddonCategory,type AddonPricing,type AddonSummary,type AddonType,type StockMove,addonCategories,categoryLabel,isLowStock,lineTotal,stockLabel,typeHint,typeLabel,unitLabel } from "@/lib/addons";
@@ -51,26 +52,19 @@ export function AddonsPanel(){
     try{await api(`/operations/addons/${addon.id}`,{method:"DELETE"});toast.success(`${addon.name} dihapus`);await load()}
     catch(e){toast.error((e as Error).message)}finally{setBusy("")}
   }
-  async function returned(line:AddonSummary["unreturned"][number]){
-    setBusy(line.id);
-    try{
-      await api(`/operations/bookings/${line.booking_id}/addons/returned`,{method:"PATCH",body:JSON.stringify({line_ids:[line.id],returned:true})});
-      toast.success(`${line.quantity}× ${line.name} dari ${line.customer} sudah kembali`);await load();
-    }catch(e){toast.error((e as Error).message)}finally{setBusy("")}
-  }
 
   const summary=data?.summary;
   const metrics=data&&summary?[
     {label:"Item aktif",value:String(data.addons.filter(a=>a.active).length),hint:`${data.addons.filter(a=>a.active&&a.online).length} tampil di halaman pelanggan`,Icon:ShoppingBag,tone:"violet"},
-    {label:"Pendapatan tambahan",value:money(summary.revenue),hint:`30 hari terakhir · hari ini ${money(summary.today)}`,Icon:CircleDollarSign,tone:"lime"},
-    {label:"Barang sewa belum kembali",value:String(summary.unreturned.reduce((sum,l)=>sum+l.quantity,0)),hint:summary.unreturned.length?`Dari ${new Set(summary.unreturned.map(l=>l.booking_id)).size} booking`:"Semua sudah kembali",Icon:PackageCheck,tone:"cyan"},
+    {label:"Pendapatan tambahan",value:money(summary.revenue),hint:`30 hari terakhir, termasuk kasir · hari ini ${money(summary.today)}`,Icon:CircleDollarSign,tone:"lime"},
     {label:"Stok menipis",value:String(summary.low_stock.length),hint:summary.low_stock.length?summary.low_stock.map(a=>`${a.name} (${a.stock})`).slice(0,2).join(", "):"Stok aman",Icon:TriangleAlert,tone:"orange"},
   ]:[];
 
   return <>{error&&<ErrorBox message={error} retry={load}/>}
     <div className="ops-actions"><p>Perubahan harga hanya berlaku untuk booking baru. Tambahan yang sudah tercatat tetap memakai harga saat dipesan.</p><button className="ops-primary" onClick={()=>setEditing(null)}><Plus size={16}/> Tambah item</button></div>
     {!data||!summary?<p className="empty-state">Memuat katalog…</p>:<>
-    <div className="metric-grid addon-metrics">{metrics.map(({label,value,hint,Icon,tone})=><article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon/></span></div><p>{label}</p><h2>{value}</h2><small>{hint}</small></article>)}</div>
+    <p className="ops-muted addon-moved">Barang sewa yang belum kembali kini ada di <Link className="ops-link" href="/admin/bookings?tab=belum-kembali">Booking › Belum kembali</Link>.</p>
+    <div className="metric-grid addon-metrics metric-grid-3">{metrics.map(({label,value,hint,Icon,tone})=><article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon/></span></div><p>{label}</p><h2>{value}</h2><small>{hint}</small></article>)}</div>
 
     <div className="ops-section-title"><div><h2>Katalog</h2><p>Urutan di sini sama dengan urutan yang dilihat kasir dan pelanggan.</p></div></div>
     {data.addons.length>0&&<div className="ops-filters"><label>Cari item<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nama, kategori, atau deskripsi"/></label><label>Jenis<Select value={type} onChange={e=>setType(e.target.value as AddonType|"")}><option value="">Semua jenis</option>{types.map(t=><option key={t} value={t}>{typeLabel[t]}</option>)}</Select></label></div>}
@@ -94,14 +88,8 @@ export function AddonsPanel(){
       {!data.addons.length?<div className="ops-empty"><h2>Belum ada item</h2><p>Tambahkan sewa raket, bola, sepatu, atau layanan pelatih agar bisa dipilih saat booking.</p></div>:!list.length&&<p className="empty-state">Tidak ada item yang cocok.</p>}
     </div>
 
-    <div className="ops-section-title"><div><h2>Barang sewa belum kembali</h2><p>Dari booking yang jam mainnya sudah dimulai. Tandai setelah barang diterima kembali di resepsionis.</p></div></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Jadwal</th><th>Barang</th><th>Aksi</th></tr></thead><tbody>{summary.unreturned.map(l=>{
-      const over=l.date<data.date||l.end_time<=data.time;
-      return <tr key={l.id}><td className="wide" data-label="Pelanggan"><b>{l.customer}</b><small className="table-description">{l.phone}</small></td><td data-label="Jadwal">{l.court_name}<small className="table-description">{formatShortDay(l.date)} · {l.start_time} – {l.end_time}{over?<span className="addon-overdue"> · jam main sudah selesai</span>:" · sedang dipakai"}</small></td><td data-label="Barang"><b>{l.quantity}× {l.name}</b></td><td className="actions"><button className="ops-secondary" disabled={busy===l.id} onClick={()=>void returned(l)}><PackageCheck size={14}/> Sudah kembali</button></td></tr>;
-    })}</tbody></table>{!summary.unreturned.length&&<p className="empty-state">Semua barang sewa sudah kembali.</p>}</div>
-
-    <div className="ops-section-title"><div><h2>Terlaris 30 hari terakhir</h2><p>Dari booking aktif dan selesai sejak {formatShortDay(summary.since)}, termasuk biaya lain di luar katalog.</p></div></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Item</th><th>Jumlah</th><th>Booking</th><th>Pendapatan</th></tr></thead><tbody>{summary.top.map(t=><tr key={t.addon_id??t.name}><td className="wide" data-label="Item"><b>{t.name}</b><small className="table-description">{t.type==="lainnya"?"Biaya lain":typeLabel[t.type]}</small></td><td data-label="Jumlah">{t.quantity}</td><td data-label="Booking">{t.bookings}</td><td data-label="Pendapatan">{money(t.revenue)}</td></tr>)}</tbody></table>{!summary.top.length&&<p className="empty-state">Belum ada tambahan yang tercatat dalam 30 hari terakhir.</p>}</div>
+    <div className="ops-section-title"><div><h2>Terlaris 30 hari terakhir</h2><p>Dari booking aktif dan selesai serta transaksi kasir sejak {formatShortDay(summary.since)}, termasuk biaya lain di luar katalog.</p></div></div>
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Item</th><th>Jumlah</th><th>Transaksi</th><th>Pendapatan</th></tr></thead><tbody>{summary.top.map(t=><tr key={t.addon_id??t.name}><td className="wide" data-label="Item"><b>{t.name}</b><small className="table-description">{t.type==="lainnya"?"Biaya lain":typeLabel[t.type]}</small></td><td data-label="Jumlah">{t.quantity}</td><td data-label="Transaksi">{t.bookings}</td><td data-label="Pendapatan">{money(t.revenue)}</td></tr>)}</tbody></table>{!summary.top.length&&<p className="empty-state">Belum ada tambahan yang tercatat dalam 30 hari terakhir.</p>}</div>
 
     {editing!==undefined&&<AddonFormModal addon={editing} close={closeForm} done={()=>{closeForm();void load()}}/>}
     {stockOf&&<StockModal addon={stockOf} close={closeStock} changed={reload}/>}
@@ -160,6 +148,8 @@ function AddonFormModal({addon,close,done}:{addon:Addon|null;close:()=>void;done
 }
 
 const moveLabel:Record<StockMove["reason"],string>={awal:"Stok awal",restok:"Restok",koreksi:"Hitung ulang",rusak:"Rusak / hilang",terpakai:"Dipakai booking",kembali:"Kembali dari booking"};
+/** Gerakan stok dari transaksi kasir memakai sebutan kasir, bukan booking. */
+const moveName=(m:StockMove)=>m.sale_id?(m.reason==="terpakai"?"Terjual di kasir":m.reason==="kembali"?"Batal di kasir":moveLabel[m.reason]):moveLabel[m.reason];
 const stockReasons=[["restok","Restok","Barang masuk"],["rusak","Rusak / hilang","Barang keluar"],["koreksi","Hitung ulang","Sesuai hitungan fisik"]] as const;
 function StockModal({addon,close,changed}:{addon:Addon;close:()=>void;changed:()=>void}){
   const [current,setCurrent]=useState(addon);
@@ -188,6 +178,6 @@ function StockModal({addon,close,changed}:{addon:Addon;close:()=>void;changed:()
       <Submit busy={busy||next<0||next===stock}>Simpan perubahan stok</Submit>
     </form>
     <h3>Riwayat stok</h3>
-    {!moves?<p className="ops-muted">Memuat riwayat…</p>:moves.length?moves.map(m=><div className="ops-history" key={m.id}><div><b>{moveLabel[m.reason]}{m.booking_customer?` · ${m.booking_customer}`:""}</b><small>{new Date(m.created_at).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}{m.actor?` · ${m.actor}`:""}{m.note?` · ${m.note}`:""}</small></div><strong className={`stock-delta ${m.delta>0?"plus":"minus"}`}>{m.delta>0?"+":"−"}{Math.abs(m.delta)}<small> sisa {m.stock_after}</small></strong></div>):<p className="ops-muted">Belum ada perubahan stok.</p>}
+    {!moves?<p className="ops-muted">Memuat riwayat…</p>:moves.length?moves.map(m=><div className="ops-history" key={m.id}><div><b>{moveName(m)}{m.booking_customer?` · ${m.booking_customer}`:""}{m.sale_number?` · ${m.sale_number}`:""}</b><small>{new Date(m.created_at).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}{m.actor?` · ${m.actor}`:""}{m.note?` · ${m.note}`:""}</small></div><strong className={`stock-delta ${m.delta>0?"plus":"minus"}`}>{m.delta>0?"+":"−"}{Math.abs(m.delta)}<small> sisa {m.stock_after}</small></strong></div>):<p className="ops-muted">Belum ada perubahan stok.</p>}
   </div><div className="modal-actions"><button type="button" onClick={close}>Selesai</button></div></Modal>;
 }

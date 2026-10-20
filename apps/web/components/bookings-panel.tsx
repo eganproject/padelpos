@@ -1,10 +1,10 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
-import { BadgeCheck,CalendarClock,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer } from "lucide-react";
+import { BadgeCheck,CalendarClock,CalendarDays,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer,ShoppingBag } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
-import { type AddonOption,type BookingAddon,unitLabel } from "@/lib/addons";
+import { type AddonOption,type BookingAddon,type UnreturnedRental,unitLabel } from "@/lib/addons";
 import { type PaymentIntent,intentLabel,intentTone,methodLabel } from "@/lib/payments";
 import { formatShortDay } from "@/lib/shop";
 import { billOf,taxName } from "@/lib/bill";
@@ -13,6 +13,7 @@ import { ErrorBox,Modal,Submit } from "./operation-ui";
 import { MemberPicker } from "./member-picker";
 import { type LookupMember,memberCut } from "@/lib/members";
 import { Select, DateInput, MoneyInput } from "./form-controls";
+import { CounterPanel,SaleDetailModal } from "./counter-panel";
 
 const optionsUrl=(date:string,start:string,end:string,booking?:string)=>`/operations/addons/options?date=${date}&start=${start}&end=${end}${booking?`&booking=${booking}`:""}`;
 /** Potongan member untuk tagihan kasir; biaya lain yang diketik manual tidak didiskon. */
@@ -37,7 +38,72 @@ function firstStart(court:{opens_at:string;closes_at:string},date:string,context
   return (context&&date===context.date?starts.find(t=>t>=context.time):starts[0])??"";
 }
 
+type Tab="booking"|"kasir"|"belum-kembali";
+const tabs:{id:Tab;label:string;Icon:typeof CalendarDays}[]=[
+  {id:"booking",label:"Booking",Icon:CalendarDays},
+  {id:"kasir",label:"Sewa & jual",Icon:ShoppingBag},
+  {id:"belum-kembali",label:"Belum kembali",Icon:PackageCheck},
+];
+type Unreturned={unreturned:UnreturnedRental[];date:string;time:string};
+
+/**
+ * Halaman Booking: reservasi lapangan, transaksi kasir tanpa booking (sewa raket, beli bola), dan
+ * barang sewa yang belum kembali dari keduanya. Tab terpilih disimpan di `?tab=` agar bisa ditautkan.
+ */
 export function BookingsPanel(){
+  const [tab,setTab]=useState<Tab>("booking");
+  const [out,setOut]=useState<Unreturned|null>(null);
+  useEffect(()=>{const asked=new URLSearchParams(window.location.search).get("tab");if(tabs.some(t=>t.id===asked))setTab(asked as Tab)},[]);
+  const loadOut=useCallback(async()=>{try{setOut(await api<Unreturned>("/operations/rentals/unreturned"))}catch{/* angka di tab cukup dilewati bila gagal */}},[]);
+  useEffect(()=>{void loadOut()},[loadOut]);
+  function choose(next:Tab){
+    setTab(next);
+    const url=new URL(window.location.href);
+    if(next==="booking")url.searchParams.delete("tab");else url.searchParams.set("tab",next);
+    window.history.replaceState(null,"",url);
+  }
+  const count=out?.unreturned.reduce((sum,line)=>sum+line.quantity,0)??0;
+  return <div className="cms">
+    <div className="cms-tabs" role="tablist" aria-label="Bagian booking">{tabs.map(({id,label,Icon})=><button key={id} type="button" role="tab" id={`tab-${id}`} aria-selected={tab===id} aria-controls={`panel-${id}`} onClick={()=>choose(id)}><Icon size={16} aria-hidden="true"/><span>{label}</span>{id==="belum-kembali"&&count>0&&<em className="tab-count">{count}</em>}</button>)}</div>
+    <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      {tab==="booking"?<BookingsList changed={loadOut}/>:tab==="kasir"?<CounterPanel changed={loadOut}/>:<UnreturnedPanel data={out} reload={loadOut}/>}
+    </div>
+  </div>;
+}
+
+/** Barang sewa yang sedang dibawa pelanggan, dari booking lapangan maupun transaksi kasir. */
+function UnreturnedPanel({data,reload}:{data:Unreturned|null;reload:()=>Promise<void>}){
+  const [busy,setBusy]=useState(""),[booking,setBooking]=useState<string|null>(null),[sale,setSale]=useState<string|null>(null);
+  const closeBooking=useCallback(()=>setBooking(null),[]),closeSale=useCallback(()=>setSale(null),[]);
+  const changed=useCallback(()=>void reload(),[reload]);
+  async function returned(line:UnreturnedRental){
+    setBusy(line.id);
+    try{
+      const url=line.source==="kasir"?`/operations/counter/${line.ref_id}/returned`:`/operations/bookings/${line.ref_id}/addons/returned`;
+      await api(url,{method:"PATCH",body:JSON.stringify({line_ids:[line.id],returned:true})});
+      toast.success(`${line.quantity}× ${line.name} dari ${line.customer} sudah kembali`);await reload();
+    }catch(e){toast.error((e as Error).message)}finally{setBusy("")}
+  }
+  if(!data)return <p className="empty-state">Memuat barang sewa…</p>;
+  const lines=data.unreturned;
+  const over=(l:UnreturnedRental)=>l.date<data.date||(l.end_time<=data.time&&l.date===data.date);
+  const late=lines.filter(over);
+  return <>
+    <div className="ops-actions"><p>Raket, sepatu, dan barang sewa lain yang belum diterima kembali: dari booking yang jam mainnya sudah dimulai dan dari sewa langsung di kasir. Tandai setelah barang diterima di resepsionis.</p></div>
+    {late.length>0&&<div className="ops-alert addon-alert"><span><b>{late.reduce((sum,l)=>sum+l.quantity,0)} barang</b> sudah lewat jam kembalinya.</span></div>}
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Asal</th><th>Jadwal</th><th>Barang</th><th>Aksi</th></tr></thead><tbody>{lines.map(l=><tr key={l.id}>
+      <td className="wide" data-label="Pelanggan"><b>{l.customer}</b>{l.phone&&<small className="table-description">{l.phone}</small>}</td>
+      <td data-label="Asal"><span className={`addon-type ${l.source==="kasir"?"jual":"sewa"}`}>{l.source==="kasir"?"Kasir":"Booking"}</span><small className="table-description">{l.source==="kasir"?l.sale_number:l.court_name}</small></td>
+      <td data-label="Jadwal">{formatShortDay(l.date)}<small className="table-description">{l.start_time} – {l.end_time}{over(l)?<span className="addon-overdue"> · lewat jam kembali</span>:" · sedang dipakai"}</small></td>
+      <td data-label="Barang"><b>{l.quantity}× {l.name}</b></td>
+      <td className="actions"><div className="ops-row-buttons"><button className="ops-secondary" disabled={busy===l.id} onClick={()=>void returned(l)}><PackageCheck size={14}/> Sudah kembali</button><button className="ops-secondary" onClick={()=>l.source==="kasir"?setSale(l.ref_id):setBooking(l.ref_id)}>Detail</button></div></td>
+    </tr>)}</tbody></table>{!lines.length&&<p className="empty-state">Semua barang sewa sudah kembali.</p>}</div>
+    {booking&&<BookingDetail id={booking} close={closeBooking} changed={changed}/>}
+    {sale&&<SaleDetailModal id={sale} close={closeSale} changed={changed}/>}
+  </>;
+}
+
+function BookingsList({changed:changedOut}:{changed:()=>void}){
   const [data,setData]=useState<{bookings:Booking[];truncated:boolean;date:string;timezone:string}|null>(null);
   const [date,setDate]=useState(""),[query,setQuery]=useState(""),[status,setStatus]=useState("");
   const [error,setError]=useState(""),[creating,setCreating]=useState(false),[selected,setSelected]=useState<string|null>(null);
@@ -58,8 +124,8 @@ export function BookingsPanel(){
   return <>{error&&<ErrorBox message={error} retry={load}/>}<div className="ops-actions"><p>Semua jam mengikuti zona waktu venue ({data?.timezone||"…"}).</p><button className="ops-primary" onClick={()=>setCreating(true)}><Plus size={16}/> Booking baru</button></div>
     <div className="ops-filters"><label>Cari pelanggan / lapangan<input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Nama, telepon, atau kode booking"/></label><label>Tanggal<DateInput value={date} onChange={e=>setDate(e.target.value)}/></label><label>Status<Select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Semua status</option>{Object.entries(statusLabel).map(([key,value])=><option key={key} value={key}>{value}</option>)}</Select></label><button className="ops-secondary" onClick={()=>setDate(data?.date||"")}>Hari ini</button><button className="ops-secondary" onClick={()=>{setDate("");setStatus("");setQuery("")}}>Reset</button></div>
     <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Lapangan / jadwal</th><th>Status</th><th>Tagihan</th><th>Pembayaran neto</th><th>Aksi</th></tr></thead><tbody>{list.map(b=><tr key={b.id}><td className="wide" data-label="Pelanggan"><b>{b.customer}</b><small className="table-description">{b.phone} · {b.id.slice(0,8).toUpperCase()}</small></td><td className="wide" data-label="Lapangan & jadwal">{b.court_name}<small className="table-description">{formatShortDay(b.date)} · {b.start_time} – {b.end_time}</small></td><td data-label="Status"><span className={`status-pill ${statusTone[b.status]}`}>{statusLabel[b.status]}</span></td><td data-label="Tagihan">{money(b.total)}{b.addon_count>0&&<small className="table-description">Termasuk tambahan {money(b.total-b.court_total)}</small>}</td><td data-label="Pembayaran neto">{money(b.paid)}<small className="table-description">{balanceNote(b)}</small></td><td className="actions"><button className="ops-secondary" onClick={()=>setSelected(b.id)}>Detail / bayar</button></td></tr>)}</tbody></table>{data&&list.length>0&&(data.truncated||(!date&&!search))&&<p className="empty-state">{data.truncated?`Menampilkan ${list.length} booking pertama. Pilih tanggal atau cari nama untuk mempersempit.`:"Menampilkan 30 hari terakhir sampai 90 hari ke depan. Pilih tanggal atau cari nama, telepon, atau kode untuk booking lain."}</p>}{!data?<p className="empty-state">Memuat booking…</p>:!list.length&&<div className="ops-empty"><h2>Belum ada booking yang sesuai</h2><p>Buat reservasi pertama atau ubah filter pencarian.</p></div>}</div>
-    {creating&&<BookingForm close={closeCreate} done={id=>{closeCreate();setSelected(id);void load()}}/>}
-    {selected&&<BookingDetail id={selected} close={closeDetail} changed={()=>void load()}/>}
+    {creating&&<BookingForm close={closeCreate} done={id=>{closeCreate();setSelected(id);void load();changedOut()}}/>}
+    {selected&&<BookingDetail id={selected} close={closeDetail} changed={()=>{void load();changedOut()}}/>}
   </>;
 }
 function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
@@ -243,7 +309,7 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
   }
   async function markReturned(lineIds:string[],returned:boolean){
     setBusy(true);setError("");
-    try{const result=await api<{booking:Booking;addons:BookingAddon[]}>(`/operations/bookings/${id}/addons/returned`,{method:"PATCH",body:JSON.stringify({line_ids:lineIds,returned})});setData(d=>d&&{...d,...result});toast.success(returned?"Barang ditandai sudah kembali":"Tanda kembali dibatalkan")}
+    try{const result=await api<{booking:Booking;addons:BookingAddon[]}>(`/operations/bookings/${id}/addons/returned`,{method:"PATCH",body:JSON.stringify({line_ids:lineIds,returned})});setData(d=>d&&{...d,...result});toast.success(returned?"Barang ditandai sudah kembali":"Tanda kembali dibatalkan");changed()}
     catch(e){setError((e as Error).message)}finally{setBusy(false)}
   }
   async function makeLink(){
