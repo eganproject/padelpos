@@ -43,7 +43,7 @@ const financeViews: Record<string,{ title:string; subtitle:string; group:string 
   "": { title:"Ringkasan keuangan", subtitle:"Posisi kas, laba bersih, dan tagihan yang perlu diperhatikan pada periode yang dipilih.", group:"KEUANGAN" },
   transaksi: { title:"Kas & transaksi", subtitle:"Catat pengeluaran, pemasukan, pindah dana, dan setoran modal. Jurnalnya terbentuk otomatis.", group:"KEUANGAN" },
   jurnal: { title:"Jurnal umum", subtitle:"Semua jurnal, termasuk yang terbentuk otomatis dari booking, serta jurnal penyesuaian manual.", group:"KEUANGAN" },
-  laporan: { title:"Laporan keuangan", subtitle:"Laba rugi, neraca, buku besar, dan buku besar pembantu yang siap diunduh ke Excel.", group:"KEUANGAN" },
+  laporan: { title:"Laporan keuangan", subtitle:"Laba rugi, neraca, buku besar, dan buku besar pembantu yang siap diunduh ke Excel atau PDF.", group:"KEUANGAN" },
   pengaturan: { title:"Pengaturan keuangan", subtitle:"Daftar akun, pemasok, akun kas tiap metode bayar, pajak, dan penguncian periode.", group:"PENGATURAN" },
 };
 const sectionGroups: Record<string,string> = { payments:"PENGATURAN", notifications:"PENGATURAN", "customer-login":"PENGATURAN", users:"PENGATURAN", roles:"PENGATURAN", menus:"PENGATURAN", audit:"PENGATURAN", backups:"PENGATURAN", nota:"PENGATURAN", courts:"VENUE & LAYANAN", addons:"VENUE & LAYANAN", layout:"VENUE & LAYANAN", info:"VENUE & LAYANAN", profile:"AKUN" };
