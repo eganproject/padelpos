@@ -188,7 +188,10 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.deepEqual(mails.map(mail => [mail.kind, mail.recipient]), [["bill", "pelanggan@contoh.test"], ["confirmed", "pelanggan@contoh.test"], ["staff_new", "kasir@venue.test"]], "tagihan saat checkout, lalu satu email pelanggan dan satu untuk staf walau webhook datang dua kali");
       assert.match(mails[1].subject, /terkonfirmasi/);
       assert.match(mails[1].text, /Court Bayar/);
-      assert.match(mails[1].text, new RegExp(`https://padelix.contoh/pesanan/${order.order_id}`));
+      assert.match(mails[1].text, new RegExp(`Lihat kwitansi: https://padelix.contoh/pesanan/${order.order_id}/kwitansi`), "tautan langsung ke kwitansi");
+      assert.match(mails[1].text, /Rincian:/, "memuat rincian seperti kwitansi");
+      assert.match(mails[1].text, /Total: Rp/);
+      assert.match(mails[1].text, /Dibayar: Rp[\d.]+ · QRIS/, "menyebut metode bayar");
       assert.match(mails[0].text, /Bayar sebelum/, "tagihan memuat batas waktu bayar");
     });
 

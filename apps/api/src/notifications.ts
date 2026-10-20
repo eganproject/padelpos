@@ -9,6 +9,8 @@ import { getInfo } from "./content.js";
 import { defaultEvents, eventsSchema, type NotifyEvent } from "./notify-events.js";
 import { deliverDueWhatsApp, enqueueWhatsApp, staffNumbers, waNumber, whatsappConfig, whatsappReady } from "./whatsapp.js";
 import { notifyInbox } from "./inbox.js";
+import { bookingAddons } from "./addons.js";
+import type { Booking } from "./operations.js";
 
 export type { NotifyEvent } from "./notify-events.js";
 /** Nama lama, dipertahankan untuk pemanggil yang sudah ada. */
@@ -82,12 +84,15 @@ const venueName = async () => (await getInfo()).name || "Venue padel";
 type Tone = "info" | "success" | "warning" | "danger";
 interface Message {
   subject: string; heading: string; intro: string; rows?: [label: string, value: string][]; sessions?: Session[];
+  /** Rincian bergaya kwitansi (lapangan, tambahan, potongan, pajak) dan baris totalnya. Hanya untuk email. */
+  items?: Item[]; totals?: [label: string, value: string][];
   link?: { label: string; url: string }; outro?: string;
   /** Warna aksen email dan ikon di kotak masuk. */
   tone?: Tone;
   /** Judul pendek untuk kotak masuk dan baris pertama WhatsApp; bawaannya `subject`. */
   title?: string;
 }
+interface Item { label: string; detail?: string; amount: string; sub?: boolean }
 const toneColor: Record<Tone, string> = { info: "#0f766e", success: "#15803d", warning: "#b45309", danger: "#b91c1c" };
 
 /** Satu tata letak untuk semua email: teks biasa untuk klien sederhana, HTML untuk yang lain. */
@@ -97,7 +102,10 @@ async function render(message: Message) {
   const accent = toneColor[message.tone ?? "info"];
   const text = [
     message.heading, "", message.intro, "",
-    ...(message.sessions ?? []).map(session => "• " + sessionLine(session)),
+    ...(message.items?.length ? [] : (message.sessions ?? []).map(session => "• " + sessionLine(session))),
+    ...(message.items?.length ? ["Rincian:", ...message.items.map(item => `${item.sub ? "    " : "• "}${item.label}${item.detail ? ` (${item.detail})` : ""}: ${item.amount}`)] : []),
+    ...(message.totals ?? []).map(([label, value]) => `${label}: ${value}`),
+    ...(message.items?.length || message.totals?.length ? [""] : []),
     ...(message.rows ?? []).map(([label, value]) => `${label}: ${value}`),
     ...(message.link ? ["", `${message.link.label}: ${message.link.url}`] : []),
     ...(message.outro ? ["", message.outro] : []),
@@ -105,6 +113,10 @@ async function render(message: Message) {
   ].join("\n");
   const rows = (message.rows ?? []).map(([label, value]) => `<tr><td style="padding:6px 12px 6px 0;color:#6b7280;vertical-align:top">${escape(label)}</td><td style="padding:6px 0;font-weight:600;text-align:right">${escape(value)}</td></tr>`).join("");
   const sessions = (message.sessions ?? []).map(session => `<tr><td style="padding:10px 12px;border-top:1px solid #e5e7eb"><b style="display:block">${escape(session.court_name)}</b><span style="color:#4b5563">${escape(longDate(session.date))} · ${escape(session.start_time)}–${escape(session.end_time)}</span></td></tr>`).join("");
+  const items = (message.items ?? []).map(item => item.sub
+    ? `<tr><td style="padding:0 12px 6px 16px;color:#4b5563">${escape(item.label)}</td><td style="padding:0 0 6px;text-align:right;color:#4b5563;white-space:nowrap">${escape(item.amount)}</td></tr>`
+    : `<tr><td style="padding:8px 12px 6px 0;border-top:1px solid #e5e7eb"><b>${escape(item.label)}</b>${item.detail ? `<br><span style="color:#4b5563">${escape(item.detail)}</span>` : ""}</td><td style="padding:8px 0 6px;border-top:1px solid #e5e7eb;text-align:right;font-weight:600;white-space:nowrap;vertical-align:top">${escape(item.amount)}</td></tr>`).join("");
+  const totals = (message.totals ?? []).map(([label, value], index) => `<tr><td style="padding:6px 12px 6px 0;${index === 0 ? "border-top:2px solid #111827;" : ""}font-weight:${index === 0 ? 700 : 400}">${escape(label)}</td><td style="padding:6px 0;${index === 0 ? "border-top:2px solid #111827;" : ""}text-align:right;font-weight:700;white-space:nowrap">${escape(value)}</td></tr>`).join("");
   const html = `<!doctype html><html lang="id"><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"></head>
 <body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#111827">
 <span style="display:none;max-height:0;overflow:hidden">${escape(message.intro)}</span>
@@ -113,7 +125,8 @@ async function render(message: Message) {
 <div style="background:#ffffff;border:1px solid #e5e7eb;border-top:4px solid ${accent};border-radius:8px;padding:24px">
 <h1 style="margin:0 0 12px;font-size:20px;line-height:1.3">${escape(message.heading)}</h1>
 <p style="margin:0 0 16px;line-height:1.5">${escape(message.intro)}</p>
-${sessions ? `<table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-top:0;border-radius:6px;font-size:14px;margin:0 0 16px">${sessions}</table>` : ""}
+${items || totals ? `<table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px">${items}${totals}</table>` : ""}
+${sessions && !items ? `<table role="presentation" style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;border-top:0;border-radius:6px;font-size:14px;margin:0 0 16px">${sessions}</table>` : ""}
 ${rows ? `<table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;margin:0 0 16px">${rows}</table>` : ""}
 ${message.link ? `<p style="margin:0 0 16px"><a href="${escape(message.link.url)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:6px;font-weight:600">${escape(message.link.label)}</a></p>` : ""}
 ${message.outro ? `<p style="margin:0;line-height:1.5;color:#374151">${escape(message.outro)}</p>` : ""}
@@ -128,7 +141,7 @@ async function renderWhatsApp(message: Message) {
   return [
     `*${message.heading}*`, "", message.intro,
     ...(message.sessions?.length ? ["", ...message.sessions.map(session => `• ${sessionLine(session)}`)] : []),
-    ...(message.rows?.length ? ["", ...message.rows.map(([label, value]) => `${label}: *${value}*`)] : []),
+    ...(message.rows?.length || message.totals?.length ? ["", ...[...(message.totals ?? []), ...(message.rows ?? [])].map(([label, value]) => `${label}: *${value}*`)] : []),
     ...(message.link ? ["", `${message.link.label}:`, message.link.url] : []),
     ...(message.outro ? ["", message.outro] : []),
     "", `_${await venueName()}_`,
@@ -219,6 +232,27 @@ export async function contactOf(bookingId: string): Promise<Target> {
 /** Email pelanggan untuk satu booking (dipertahankan untuk pemanggil lama). */
 export const customerEmail = async (bookingId: string) => (await contactOf(bookingId)).email ?? "";
 const orderLink = (orderId: string | null, label = "Lihat pesanan") => orderId ? { label, url: `${publicUrl}/pesanan/${orderId}` } : undefined;
+const receiptLink = (orderId: string | null, label = "Lihat kwitansi") => orderId ? { label, url: `${publicUrl}/pesanan/${orderId}/kwitansi` } : undefined;
+/** Nama metode Midtrans yang dikenal pelanggan; sama dengan label di halaman pesanan. */
+const payTypes: Record<string, string> = {
+  qris: "QRIS", gopay: "GoPay", shopeepay: "ShopeePay", dana: "DANA", credit_card: "Kartu kredit",
+  bank_transfer: "Transfer bank (VA)", echannel: "Mandiri Bill", permata: "VA Permata", bca_va: "VA BCA", bni_va: "VA BNI", bri_va: "VA BRI", other_va: "Virtual account",
+  cstore: "Gerai retail", akulaku: "Akulaku", kredivo: "Kredivo",
+};
+export const payTypeLabel = (type?: string | null) => type ? payTypes[type] ?? type.replace(/_/g, " ") : "";
+
+/** Rincian per sesi seperti di kwitansi: sewa lapangan, tambahan, potongan, dan pajak. */
+async function billItems(bookings: Booking[]): Promise<Item[]> {
+  const items: Item[] = [];
+  for (const booking of bookings) {
+    items.push({ label: booking.court_name, detail: `${longDate(booking.date)} · ${booking.start_time}–${booking.end_time}`, amount: rupiah(booking.court_total) });
+    for (const line of await bookingAddons(booking.id)) items.push({ label: `${line.quantity}× ${line.name}`, amount: rupiah(line.subtotal), sub: true });
+    if (booking.member_discount > 0) items.push({ label: `Potongan member ${booking.member_plan}`.trim(), amount: "−" + rupiah(booking.member_discount), sub: true });
+    if (booking.discount > 0) items.push({ label: `Potongan${booking.discount_note ? ` ${booking.discount_note}` : ""}`, amount: "−" + rupiah(booking.discount), sub: true });
+    if (booking.tax > 0) items.push({ label: `${booking.tax_label || "Pajak"} ${(booking.tax_rate / 100).toLocaleString("id-ID")}%${booking.tax_inclusive ? " (sudah termasuk)" : ""}`, amount: rupiah(booking.tax), sub: true });
+  }
+  return items;
+}
 
 // --- Peristiwa ----------------------------------------------------------------
 
@@ -289,21 +323,29 @@ export async function notifyExpired(orderId: string) {
   }, orderId);
 }
 
-/** Pembayaran online diterima dan sesi terkonfirmasi. */
-export async function notifyOrderPaid(input: { key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; total: number; paid: number; sessions: Session[]; cancelled: boolean }) {
+/**
+ * Pembayaran online diterima: pelanggan menerima bukti booking bergaya kwitansi berisi rincian
+ * lapangan, tambahan, potongan, pajak, metode bayar, dan sisa tagihan, plus tautan ke kwitansi PDF.
+ */
+export async function notifyOrderPaid(input: { key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; total: number; paid: number; sessions: Booking[]; cancelled: boolean; payment_type?: string | null }) {
   const remaining = Math.max(0, input.total - input.paid);
   const target = input.booking_id ? await contactOf(input.booking_id) : {};
+  const method = payTypeLabel(input.payment_type);
+  const rows: [string, string][] = [["Kode pesanan", input.code], ["Dibayar", `${rupiah(input.amount)}${method ? ` · ${method}` : ""}`]];
+  if (!input.cancelled) rows.push(remaining > 0 ? ["Sisa dibayar di venue", rupiah(remaining)] : ["Status", "Lunas"]);
   await dispatch(`paid:${input.key}`, "confirmed", { ...target, email: input.email || target.email }, {
-    subject: input.cancelled ? `Pembayaran pesanan ${input.code} perlu dikembalikan` : `Booking ${input.code} terkonfirmasi`,
+    subject: input.cancelled ? `Pembayaran pesanan ${input.code} perlu dikembalikan` : `Booking ${input.code} terkonfirmasi: bukti pembayaran`,
     title: input.cancelled ? "Pembayaran perlu dikembalikan" : "Booking terkonfirmasi",
     heading: input.cancelled ? "Pembayaran diterima, tetapi jadwalnya sudah terlepas" : "Pembayaran diterima, booking Anda terkonfirmasi",
     intro: input.cancelled
       ? `Halo ${input.customer}, pembayaran Anda masuk setelah batas waktu bayar sehingga slotnya sudah dilepas. Venue akan menghubungi Anda untuk pengembalian dana.`
-      : `Halo ${input.customer}, terima kasih. Pembayaran Anda sudah kami terima dan jadwal berikut sudah dikunci untuk Anda.`,
+      : `Halo ${input.customer}, terima kasih. Pembayaran Anda sudah kami terima dan jadwal berikut sudah dikunci untuk Anda. Simpan email ini sebagai bukti booking.`,
     sessions: input.sessions,
-    rows: [["Kode pesanan", input.code], ["Dibayar", rupiah(input.amount)], ...(remaining > 0 && !input.cancelled ? [["Sisa dibayar di venue", rupiah(remaining)] as [string, string]] : [])],
-    link: input.order_id ? { label: input.cancelled ? "Lihat pesanan" : "Lihat bukti booking", url: `${publicUrl}/pesanan/${input.order_id}` } : undefined,
-    outro: input.cancelled ? undefined : "Tunjukkan kode pesanan saat datang. Mohon tiba 10 menit sebelum jam main.",
+    items: input.cancelled ? undefined : await billItems(input.sessions),
+    totals: input.cancelled ? undefined : [["Total", rupiah(input.total)]],
+    rows,
+    link: input.cancelled ? orderLink(input.order_id) : receiptLink(input.order_id, remaining > 0 ? "Lihat tagihan" : "Lihat kwitansi"),
+    outro: input.cancelled ? undefined : "Tunjukkan kode pesanan saat datang dan mohon tiba 10 menit sebelum jam main. Kwitansi bisa dicetak atau disimpan sebagai PDF dari tautan di atas.",
     tone: input.cancelled ? "danger" : "success",
   }, input.order_id);
   await notifyStaff(`staff-paid:${input.key}`, {
@@ -335,7 +377,7 @@ export async function notifyReceipt(input: {
       ? `Halo ${input.customer}, venue sudah mencatat pengembalian dana untuk booking berikut.`
       : `Halo ${input.customer}, berikut bukti pembayaran untuk booking Anda.`,
     sessions: [input.session], rows,
-    link: orderLink(input.order_id, refund ? "Lihat pesanan" : "Lihat kwitansi"),
+    link: refund ? orderLink(input.order_id) : receiptLink(input.order_id),
     tone: refund ? "info" : "success",
   }, input.booking_id);
 }
