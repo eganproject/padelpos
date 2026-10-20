@@ -7,7 +7,9 @@ export type Booking={id:string;court_id:string;court_name:string;customer:string
   /** Sudah termasuk dalam `total`. `tax_rate` dalam basis poin (1000 = 10%). */
   discount:number;discount_note:string;tax:number;tax_rate:number;tax_inclusive:number;tax_label:string;
   /** Pembayaran booking batal yang ditahan sebagai denda. */
-  forfeited:number;forfeited_at:string|null};
+  forfeited:number;forfeited_at:string|null;
+  /** Salinan tarif member saat dipesan; `member_discount` sudah termasuk dalam `total`. Tarif dalam basis poin. */
+  membership_id?:string|null;member_plan?:string;member_court_rate?:number;member_addon_rate?:number;member_discount?:number};
 export type Payment={id:string;amount:number;kind:"payment"|"refund";method:string;note:string;created_at:string};
 export type Maintenance={id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string};
 export type PriceRule={id:string;label:string;days:number[];start_time:string;end_time:string;hourly_rate:number;court_ids:string[]};

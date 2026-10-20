@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Bell, CalendarDays, History, LayoutDashboard, UserRound } from "lucide-react";
+import { BadgeCheck, Bell, CalendarDays, History, LayoutDashboard, UserRound } from "lucide-react";
 import { useAccount, useUnread } from "@/lib/account";
 import { Avatar } from "./shop-header";
 import { ProfileForm } from "./account-ui";
@@ -11,6 +11,7 @@ import { ProfileForm } from "./account-ui";
 const tabs = [
   { href: "/akun", label: "Ringkasan", icon: LayoutDashboard },
   { href: "/akun/pesanan", label: "Pesanan", icon: History },
+  { href: "/akun/member", label: "Member", icon: BadgeCheck },
   { href: "/akun/notifikasi", label: "Notifikasi", icon: Bell },
   { href: "/akun/profil", label: "Profil", icon: UserRound },
 ];

@@ -6,7 +6,8 @@ import { localClock, minutes } from "./clock.js";
 import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
 import { gatewayFee, syncBooking } from "./finance.js";
 import { durationProblem } from "./content.js";
-import { allocate, billOf, taxSnapshot } from "./bill.js";
+import { allocate, billOf, memberCut, taxSnapshot } from "./bill.js";
+import { accountMember } from "./member-rates.js";
 import { assertScheduleFree, closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, scheduleClash, timeSchema, type Booking } from "./operations.js";
 import {
   createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod,
@@ -114,7 +115,7 @@ async function slotTaken(item: CartItem) {
  * Periksa keranjang sebelum bayar: harga terbaru, ketersediaan slot, dan stok tambahan.
  * Tidak mengubah apa pun, jadi aman dipanggil setiap kali halaman keranjang dibuka.
  */
-export async function quoteCart(input: unknown) {
+export async function quoteCart(input: unknown, accountId: string | null = null) {
   const { items } = cartSchema.parse(input);
   await expireHolds();
   const rules = await priceRules();
@@ -125,7 +126,7 @@ export async function quoteCart(input: unknown) {
     const duration = minutes(item.end_time) - minutes(item.start_time);
     const court = await db.prepare("SELECT id,name,hourly_rate,opens_at,closes_at,active FROM courts WHERE id=?").get(item.court_id) as
       { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; active: number } | undefined;
-    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0 };
+    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0, member_discount: 0, member_plan: "" };
     if (!court || !court.active) return { ...base, ok: false, reason: "Lapangan ini sedang tidak tersedia.", court_total: 0, total: 0, addons: [] };
     // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat. Batasnya sama dengan
     // jadwal publik: slot yang dimulai tepat pada menit ini masih boleh dipesan.
@@ -153,9 +154,12 @@ export async function quoteCart(input: unknown) {
       };
     });
     // Hitungan yang sama dengan saat booking dibuat, jadi angka di keranjang = angka yang ditagih.
-    const { total, tax } = billOf(courtTotal + addons.reduce((sum, line) => sum + line.subtotal, 0), 0, snapshot);
+    const member = await accountMember(accountId, item.date);
+    const extras = addons.reduce((sum, line) => sum + line.subtotal, 0);
+    const cut = member ? memberCut(courtTotal, extras, member) : 0;
+    const { total, tax } = billOf(courtTotal + extras, cut, snapshot);
     return {
-      ...base, ok: !taken && addons.every(line => line.ok),
+      ...base, member_discount: cut, member_plan: member?.member_plan ?? "", ok: !taken && addons.every(line => line.ok),
       reason: taken ? `Jam ini ${taken}.`
         : addons.some(line => !line.ok) ? addonProblem(addons.filter(line => !line.ok), catalog) : "",
       court_total: courtTotal, tax, total, addons,
@@ -165,6 +169,7 @@ export async function quoteCart(input: unknown) {
   const config = await paymentConfig();
   return {
     items: results, total: ok.reduce((sum, item) => sum + item.total, 0), tax: ok.reduce((sum, item) => sum + item.tax, 0),
+    member_discount: ok.reduce((sum, item) => sum + item.member_discount, 0),
     tax_label: snapshot.tax_label, tax_inclusive: !!snapshot.tax_inclusive,
     amount: ok.reduce((sum, item) => sum + payableAmount(item.total, config), 0),
   };
@@ -226,6 +231,7 @@ async function itemsFor(bookings: Booking[], amount: number, full: boolean) {
       ...lines.get(booking.id)!.map(line => ({
         id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50),
       })),
+      ...(booking.member_discount ? [{ id: `member-${booking.id.slice(0, 8)}`, price: -booking.member_discount, quantity: 1, name: `Potongan member ${booking.member_plan}`.slice(0, 50) }] : []),
       ...(booking.discount ? [{ id: `diskon-${booking.id.slice(0, 8)}`, price: -booking.discount, quantity: 1, name: `Potongan ${booking.discount_note}`.slice(0, 50) }] : []),
       // Pajak yang sudah termasuk harga tidak ditambahkan lagi.
       ...(booking.tax && !booking.tax_inclusive ? [{ id: `pajak-${booking.id.slice(0, 8)}`, price: booking.tax, quantity: 1, name: `${booking.tax_label || "Pajak"} ${booking.tax_rate / 100}%`.slice(0, 50) }] : []),
@@ -286,13 +292,17 @@ export async function createCheckout(input: unknown, accountId: string | null = 
       const court = await ensureSlot(item.court_id, item.date, item.start_time, item.end_time);
       check(!await slotTaken(item), 409, `${label(item, court.name)} sudah dipesan orang lain. Hapus sesi itu dari keranjang.`);
       await assertScheduleFree(item.court_id, item.date, item.start_time, item.end_time);
-      const courtTotal = quote(court, await priceRules(), item.date, item.start_time, item.end_time), bill = billOf(courtTotal, 0, snapshot);
+      const courtTotal = quote(court, await priceRules(), item.date, item.start_time, item.end_time);
+      // Harga member mengikuti akun yang sedang masuk, diperiksa untuk tanggal main tiap sesi.
+      const member = await accountMember(accountId, item.date);
+      const cut = member ? memberCut(courtTotal, 0, member) : 0, bill = billOf(courtTotal, cut, snapshot);
       const id = randomUUID();
       // Baris pesanan baru dibuat setelah seluruh tagihan diketahui, jadi order_id diisi menyusul.
-      await db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,source,hold_expires_at,notes,created_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','online',UNIX_TIMESTAMP()+?,?,?)`)
+      await db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,source,hold_expires_at,notes,created_at,membership_id,member_plan,member_court_rate,member_addon_rate,member_discount)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','online',UNIX_TIMESTAMP()+?,?,?,?,?,?,?,?)`)
         .run(id, item.court_id, customerId, accountId, data.customer, data.phone, item.date, item.start_time, item.end_time, bill.total, courtTotal,
-          bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, config.hold_minutes * 60, data.notes, stamp);
+          bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, config.hold_minutes * 60, data.notes, stamp,
+          member?.membership_id ?? null, member?.member_plan ?? "", member?.member_court_rate ?? 0, member?.member_addon_rate ?? 0, cut);
       if (item.addons.length) await applyLines(await getBooking(id), item.addons, customerId);
       created.push(await getBooking(id));
     }
@@ -439,6 +449,16 @@ export async function handleNotification(input: unknown) {
   const config = await paymentConfig();
   check(config.serverKey, 409, "Pembayaran online belum diatur.");
   const intent = await intentOf(data.order_id);
+  if (!intent) {
+    // Iuran member memakai tabel tagihannya sendiri. Impor dinamis menghindari lingkaran impor dengan membership.ts.
+    const membership = await import("./membership.js");
+    const invoice = await membership.invoiceByOrder(data.order_id);
+    if (invoice) {
+      check(signatureMatches(signatureFor(data.order_id, data.status_code, data.gross_amount, config.serverKey), data.signature_key), 403, "Tanda tangan notifikasi tidak sah.");
+      check(Math.round(Number(data.gross_amount)) === invoice.amount, 409, "Nominal notifikasi tidak cocok dengan tagihan.");
+      return await membership.applyInvoiceStatus(invoice, data);
+    }
+  }
   // Order asing tetap dijawab 200 agar Midtrans berhenti mengirim ulang.
   if (!intent) return { handled: false, outcome: null, message: "Order tidak dikenal." };
   check(signatureMatches(signatureFor(data.order_id, data.status_code, data.gross_amount, config.serverKey), data.signature_key), 403, "Tanda tangan notifikasi tidak sah.");
@@ -495,6 +515,7 @@ export async function orderView(id: string) {
         start_time: booking.start_time, end_time: booking.end_time, status: booking.status,
         court_total: booking.court_total, total: booking.total, paid: booking.paid, cancel_reason: booking.cancel_reason,
         discount: booking.discount, discount_note: booking.discount_note,
+        member_discount: booking.member_discount, member_plan: booking.member_plan,
         tax: booking.tax, tax_rate: booking.tax_rate, tax_inclusive: booking.tax_inclusive, tax_label: booking.tax_label,
         addons: (await bookingAddons(booking.id)).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
       }))),

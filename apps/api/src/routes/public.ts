@@ -78,8 +78,15 @@ router.get("/addons", async (req, res) => {
   res.json({ addons: await publicAddons({ date, start, end }) });
 });
 
+/** Paket member yang dijual lewat situs, untuk pengunjung yang belum masuk. */
+router.get("/membership", async (_req, res) => {
+  const { membershipSettings, publicPlans } = await import("../membership.js");
+  const settings = await membershipSettings();
+  res.json({ open: settings.enabled, terms: settings.terms, plans: settings.enabled ? await publicPlans() : [] });
+});
+
 /** Periksa isi keranjang: harga terbaru, ketersediaan slot, dan stok tambahan. */
-router.post("/cart/quote", async (req, res) => res.json(await quoteCart(req.body)));
+router.post("/cart/quote", async (req, res) => res.json(await quoteCart(req.body, await customerAccountId(req))));
 
 /** Pesan dan bayar online. Dibatasi lebih ketat karena setiap panggilan mengunci satu slot. */
 router.post("/checkout", limiter(15 * 60 * 1000, 30, "Terlalu banyak percobaan pemesanan. Coba lagi sebentar lagi."), async (req, res) => {

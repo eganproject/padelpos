@@ -4,7 +4,7 @@ import { audit, db, getUsers, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { clockLabel, localClock, minutes } from "./clock.js";
 import { checkImage } from "./photos.js";
-import { billOf } from "./bill.js";
+import { billOf,memberCut } from "./bill.js";
 
 /**
  * Sewa & tambahan yang ditagihkan bersama booking: raket, bola, sepatu, pelatih, dan sejenisnya.
@@ -229,7 +229,7 @@ export async function moveLines(bookingId:string,window:AddonWindow){
       const use=await peakUse(addon.id,window,bookingId);
       check(use+line.quantity<=addon.stock,409,`${addon.name} hanya tersisa ${Math.max(0,addon.stock-use)} pada ${window.start}–${window.end}. Kurangi jumlahnya atau pilih jam lain.`);
     }
-    moved.push({id:line.id,subtotal:lineTotal(line.unit_price,line.quantity,line.pricing,duration)});
+    moved.push({id:line.id,type:line.type,subtotal:lineTotal(line.unit_price,line.quantity,line.pricing,duration)});
   }
   return moved;
 }
@@ -244,7 +244,7 @@ async function consume(addonId:string|null,quantity:number,bookingId:string,acto
   if(row)await recordMove(addonId,-quantity,quantity>0?"terpakai":"kembali",row.stock,actor,note,bookingId);
 }
 
-export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number;discount:number;tax_rate:number;tax_inclusive:number};
+export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number;discount:number;tax_rate:number;tax_inclusive:number;member_court_rate:number;member_addon_rate:number};
 /**
  * Ganti seluruh tambahan booking dengan daftar baru, lalu perbarui total tagihan.
  * Harus dipanggil di dalam transaksi. Baris lama yang tidak ikut dikirim dihapus.
@@ -294,8 +294,9 @@ export async function applyLines(booking:BookingRef,input:unknown,actor:string){
     }
   }
   const subtotal=booking.court_total+plan.reduce((sum,entry)=>sum+lineTotal(entry.unit_price,entry.quantity,entry.pricing,duration),0);
-  check(booking.discount<=subtotal,409,`Potongan harga ${rupiah(booking.discount)} lebih besar dari tagihan baru. Ubah potongannya terlebih dahulu.`);
-  const {total,tax}=billOf(subtotal,booking.discount,booking);
+  const cut=memberCut(booking.court_total,plan.filter(entry=>entry.type!=="lainnya").reduce((sum,entry)=>sum+lineTotal(entry.unit_price,entry.quantity,entry.pricing,duration),0),booking);
+  check(booking.discount+cut<=subtotal,409,`Potongan harga ${rupiah(booking.discount)} lebih besar dari tagihan baru. Ubah potongannya terlebih dahulu.`);
+  const {total,tax}=billOf(subtotal,booking.discount+cut,booking);
   check(total>=booking.paid,409,`Total baru ${rupiah(total)} lebih kecil dari pembayaran yang sudah diterima (${rupiah(booking.paid)}).`);
 
   const kept=new Set(plan.flatMap(entry=>entry.line?[entry.line.id]:[]));
@@ -318,7 +319,7 @@ export async function applyLines(booking:BookingRef,input:unknown,actor:string){
       if(entry.type==="jual")await consume(entry.addon!.id,entry.quantity,booking.id,actor);
     }
   }
-  await db.prepare("UPDATE bookings SET total=?,tax=? WHERE id=?").run(total,tax,booking.id);
+  await db.prepare("UPDATE bookings SET total=?,tax=?,member_discount=? WHERE id=?").run(total,tax,cut,booking.id);
   return total;
 }
 

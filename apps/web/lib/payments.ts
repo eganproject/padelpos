@@ -27,6 +27,7 @@ export type OrderSession = {
   id: string; code: string; court_name: string; date: string; start_time: string; end_time: string;
   status: string; court_total: number; total: number; paid: number; cancel_reason: string;
   discount: number; discount_note: string; tax: number; tax_rate: number; tax_inclusive: number; tax_label: string;
+  member_discount?: number; member_plan?: string;
   addons: { name: string; quantity: number; subtotal: number }[];
 };
 export type OrderView = {
@@ -73,9 +74,11 @@ export type CheckoutResult = { order_id: string; code: string; transaction_id: s
 export type CartQuoteItem = {
   index: number; court_id: string; court_name: string; date: string; start_time: string; end_time: string;
   ok: boolean; reason?: string; court_total: number; tax: number; total: number;
+  /** Potongan member bila pelanggan masuk dengan akun member; sudah termasuk dalam `total`. */
+  member_discount?: number; member_plan?: string;
   addons: { addon_id: string; name: string; quantity: number; unit_price: number; pricing: "per_booking" | "per_hour"; subtotal: number; ok: boolean }[];
 };
-export type CartQuote = { items: CartQuoteItem[]; total: number; tax: number; tax_label: string; tax_inclusive: boolean; amount: number };
+export type CartQuote = { items: CartQuoteItem[]; total: number; tax: number; tax_label: string; tax_inclusive: boolean; amount: number; member_discount?: number };
 export const quoteCart = (items: CartLine[]) => api<CartQuote>("/public/cart/quote", { method: "POST", body: JSON.stringify({ items }) });
 export const startCheckout = (body: CheckoutBody) => api<CheckoutResult>("/public/checkout", { method: "POST", body: JSON.stringify(body) });
 export const fetchOrder = (id: string) => api<OrderView>(`/public/orders/${encodeURIComponent(id)}`);

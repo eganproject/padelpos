@@ -1,6 +1,6 @@
 export type AccountType = "aset" | "liabilitas" | "ekuitas" | "pendapatan" | "beban";
 export type AccountSubtype = "kas_bank" | "piutang" | "persediaan" | "aset_tetap" | "utang" | "modal" | "pendapatan" | "beban";
-export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran";
+export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan";
 export type RecordKind = "pengeluaran" | "pemasukan";
 
 export type Account = { id:string; code:string; name:string; type:AccountType; subtype:AccountSubtype; is_cash:number; system_key:string|null; description:string; active:number; position:number; created_at:string };
@@ -46,7 +46,7 @@ export const subtypeLabel:Record<AccountSubtype,string> = {
 };
 export const sourceLabel:Record<EntrySource,string> = {
   manual:"Jurnal manual", catatan:"Catatan keuangan", pelunasan:"Pelunasan", transfer:"Pindah dana",
-  modal:"Modal pemilik", booking:"Booking", pembayaran:"Pembayaran",
+  modal:"Modal pemilik", booking:"Booking", pembayaran:"Pembayaran", keanggotaan:"Keanggotaan",
 };
 export const partnerKindLabel:Record<Partner["kind"],string> = { pemasok:"Pemasok", pelanggan:"Pelanggan", karyawan:"Karyawan", lainnya:"Lainnya" };
 export const methodLabels:{key:string;label:string}[] = [

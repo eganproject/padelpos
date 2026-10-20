@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, schema, schemaV2 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4 } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -175,6 +175,38 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
       const row = await db.prepare("SELECT document FROM roles WHERE id='admin'").get() as { document: string } | undefined;
       const role = row ? JSON.parse(row.document) as AccessRole : null;
       if (role && !role.menuIds.includes(menu.id)) await db.prepare("UPDATE roles SET document=? WHERE id='admin'").run(JSON.stringify({ ...role, menuIds: [...role.menuIds, menu.id] }));
+    },
+  },
+  {
+    version: 4, async up() {
+      for (const statement of schemaV4) await db.exec(statement);
+      // Sumber jurnal baru `keanggotaan`: CHECK lama dicari menurut isinya karena namanya dibuat MySQL.
+      const checks = await db.prepare(`SELECT c.CONSTRAINT_NAME name FROM information_schema.CHECK_CONSTRAINTS c
+        JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME=c.CONSTRAINT_NAME
+        WHERE c.CONSTRAINT_SCHEMA=DATABASE() AND t.TABLE_NAME='journal_entries' AND c.CHECK_CLAUSE LIKE '%pembayaran%'`).all() as { name: string }[];
+      for (const row of checks) await db.exec(`ALTER TABLE journal_entries DROP CHECK \`${row.name.replace(/`/g, "``")}\``);
+      await db.exec("ALTER TABLE journal_entries ADD CONSTRAINT journal_entries_source CHECK (source IN ('manual','catatan','pelunasan','transfer','modal','booking','pembayaran','keanggotaan'))");
+      const stamp = new Date().toISOString();
+      let position = Number((await db.prepare("SELECT COALESCE(MAX(position),0) n FROM accounts").get() as { n: number }).n);
+      for (const [codes, name, type, subtype, key, description] of membershipAccounts) {
+        if (await db.prepare("SELECT 1 FROM accounts WHERE system_key=?").get(key)) continue;
+        // Kode dan nama boleh sudah dipakai akun buatan admin; pilih yang masih kosong.
+        let code = "";
+        for (const candidate of codes) if (!await db.prepare("SELECT 1 FROM accounts WHERE code=?").get(candidate)) { code = candidate; break; }
+        code ||= `${codes[0]}-${randomUUID().slice(0, 3)}`;
+        const label = await db.prepare("SELECT 1 FROM accounts WHERE name=?").get(name) ? `${name} (sistem)` : name;
+        await db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,0,?,?,1,?,?)")
+          .run(randomUUID(), code, label, type, subtype, key, description, ++position, stamp);
+      }
+      // Menu Member: database baru sudah mendapatkannya dari versi 1, database lama ditambahkan di sini.
+      const seed = menuSeed.find(([menuId]) => menuId === "members")!;
+      if (!await db.prepare("SELECT 1 FROM menus WHERE id='members' OR path_key=?").get(seed[2])) {
+        const [menuId, name, path, icon, group, order] = seed;
+        await db.prepare("INSERT INTO menus (id, document) VALUES (?, ?)").run(menuId, JSON.stringify({ id: menuId, name, path, icon, group, order, active: true, createdAt: stamp }));
+        const admin = await db.prepare("SELECT document FROM roles WHERE id='admin'").get() as { document: string } | undefined;
+        const role = admin ? JSON.parse(admin.document) as AccessRole : null;
+        if (role && !role.menuIds.includes(menuId)) await db.prepare("UPDATE roles SET document=? WHERE id='admin'").run(JSON.stringify({ ...role, menuIds: [...role.menuIds, menuId] }));
+      }
     },
   },
 ];

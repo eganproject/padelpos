@@ -85,6 +85,7 @@ export default function ReceiptPage() {
                 ...session.addons.map((line, index) => (
                   <tr key={`${session.id}-a${index}`} className={`sub${off ? " off" : ""}`}><td>{line.quantity}× {line.name}</td><td className="num">{money(line.subtotal)}</td></tr>
                 )),
+                ...((session.member_discount ?? 0) > 0 ? [<tr key={`${session.id}-m`} className={`sub${off ? " off" : ""}`}><td>Potongan member {session.member_plan}</td><td className="num">−{money(session.member_discount!)}</td></tr>] : []),
                 ...(session.discount > 0 ? [<tr key={`${session.id}-d`} className={`sub${off ? " off" : ""}`}><td>Potongan{session.discount_note ? ` ${session.discount_note}` : ""}</td><td className="num">−{money(session.discount)}</td></tr>] : []),
                 ...(session.tax > 0 ? [<tr key={`${session.id}-t`} className={`sub${off ? " off" : ""}`}><td>{taxName(session)}</td><td className="num">{money(session.tax)}</td></tr>] : []),
               ];

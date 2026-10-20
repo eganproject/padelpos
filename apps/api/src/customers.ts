@@ -246,6 +246,8 @@ export async function deleteAccount(accountId: string) {
   return await transaction(async () => {
     await getAccount(accountId);
     await db.prepare("UPDATE bookings SET account_id=NULL WHERE account_id=?").run(accountId);
+    // Keanggotaan tetap ada dan bisa dihubungkan lagi dengan kode member; hanya tautan ke akunnya yang lepas.
+    await db.prepare("UPDATE memberships SET account_id=NULL WHERE account_id=?").run(accountId);
     await db.prepare("DELETE FROM sessions WHERE subject_id=? AND subject_type='customer'").run(accountId);
     await db.prepare("DELETE FROM customer_accounts WHERE id=?").run(accountId);
     await audit(accountId, "customer.delete", accountId);

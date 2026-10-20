@@ -469,10 +469,125 @@ export const schemaV2: string[] = [
   `ALTER TABLE customer_accounts ADD COLUMN notify_email TINYINT NOT NULL DEFAULT 1, ADD COLUMN notify_whatsapp TINYINT NOT NULL DEFAULT 1`,
 ];
 
+/**
+ * Migrasi 4: keanggotaan berbayar.
+ *
+ * - `membership_plans`: paket yang dijual (iuran, biaya daftar, masa berlaku, diskon member).
+ *   Diskon disimpan dalam basis poin seperti pajak: 1000 = 10%.
+ * - `memberships`: satu baris per member. Satu akun Google dan satu nomor HP hanya boleh punya satu
+ *   keanggotaan yang belum dibatalkan; kolom turunan `open_account`/`open_phone` menjaganya.
+ * - `membership_invoices`: tagihan pendaftaran dan perpanjangan, lunas sekali bayar, lewat kasir atau
+ *   Midtrans. Periode keanggotaan baru ditentukan saat tagihan lunas (atau saat disetujui admin).
+ * - `bookings` menyimpan salinan paket dan tarif diskon member saat dipesan, jadi mengubah paket
+ *   tidak mengubah tagihan lama.
+ */
+export const schemaV4: string[] = [
+  `CREATE TABLE membership_plans (
+    id ${id} PRIMARY KEY,
+    name VARCHAR(255) ${nocase} NOT NULL,
+    description TEXT NOT NULL DEFAULT (''),
+    price BIGINT NOT NULL CHECK(price > 0),
+    registration_fee BIGINT NOT NULL DEFAULT 0 CHECK(registration_fee >= 0),
+    duration_months INT NOT NULL CHECK(duration_months BETWEEN 1 AND 24),
+    court_discount INT NOT NULL DEFAULT 0 CHECK(court_discount BETWEEN 0 AND 10000),
+    addon_discount INT NOT NULL DEFAULT 0 CHECK(addon_discount BETWEEN 0 AND 10000),
+    online TINYINT NOT NULL DEFAULT 1,
+    active TINYINT NOT NULL DEFAULT 1,
+    position INT NOT NULL,
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY membership_plans_name (name)
+  )`,
+  `CREATE TABLE memberships (
+    id ${id} PRIMARY KEY,
+    code VARCHAR(16) NOT NULL,
+    plan_id ${id} NOT NULL,
+    account_id ${id},
+    customer_id ${id},
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(32) NOT NULL,
+    email VARCHAR(255) NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL CHECK(status IN ('pending_payment','pending_approval','active','frozen','cancelled')),
+    source VARCHAR(16) NOT NULL CHECK(source IN ('staff','online')),
+    starts_on ${date},
+    ends_on ${date},
+    frozen_on ${date},
+    notes TEXT NOT NULL DEFAULT (''),
+    cancel_reason TEXT NOT NULL DEFAULT (''),
+    cancelled_at ${stamp},
+    refund_amount BIGINT NOT NULL DEFAULT 0 CHECK(refund_amount >= 0),
+    created_by ${id},
+    created_at ${stamp} NOT NULL,
+    open_account ${id} GENERATED ALWAYS AS (IF(status <> 'cancelled', account_id, NULL)) STORED,
+    open_phone VARCHAR(32) GENERATED ALWAYS AS (IF(status <> 'cancelled', phone, NULL)) STORED,
+    CHECK ((status IN ('active','frozen')) = (starts_on IS NOT NULL AND ends_on IS NOT NULL) OR status = 'cancelled'),
+    UNIQUE KEY memberships_code (code),
+    UNIQUE KEY memberships_open_account (open_account),
+    UNIQUE KEY memberships_open_phone (open_phone),
+    KEY memberships_status (status, ends_on),
+    KEY memberships_account (account_id),
+    CONSTRAINT memberships_plan FOREIGN KEY (plan_id) REFERENCES membership_plans(id),
+    CONSTRAINT memberships_account_fk FOREIGN KEY (account_id) REFERENCES customer_accounts(id),
+    CONSTRAINT memberships_customer FOREIGN KEY (customer_id) REFERENCES customers(id)
+  )`,
+  `CREATE TABLE membership_invoices (
+    id ${id} PRIMARY KEY,
+    number VARCHAR(32) NOT NULL,
+    membership_id ${id} NOT NULL,
+    kind VARCHAR(16) NOT NULL CHECK(kind IN ('daftar','perpanjang')),
+    plan_id ${id} NOT NULL,
+    plan_name VARCHAR(255) NOT NULL,
+    months INT NOT NULL CHECK(months BETWEEN 1 AND 24),
+    dues BIGINT NOT NULL CHECK(dues > 0),
+    registration_fee BIGINT NOT NULL DEFAULT 0 CHECK(registration_fee >= 0),
+    tax BIGINT NOT NULL DEFAULT 0 CHECK(tax >= 0),
+    tax_rate INT NOT NULL DEFAULT 0,
+    tax_inclusive TINYINT NOT NULL DEFAULT 0,
+    tax_label VARCHAR(64) NOT NULL DEFAULT '',
+    amount BIGINT NOT NULL CHECK(amount > 0),
+    status VARCHAR(16) NOT NULL CHECK(status IN ('pending','paid','cancelled')),
+    method VARCHAR(16) CHECK(method IS NULL OR method IN ('cash','transfer','qris','va','ewallet','card')),
+    fee BIGINT NOT NULL DEFAULT 0 CHECK(fee >= 0),
+    paid_at ${stamp},
+    period_start ${date},
+    period_end ${date},
+    order_id VARCHAR(100),
+    snap_token VARCHAR(255),
+    redirect_url TEXT,
+    payment_type VARCHAR(64),
+    transaction_id VARCHAR(128),
+    expires_at BIGINT,
+    created_by ${id},
+    created_at ${stamp} NOT NULL,
+    updated_at ${stamp} NOT NULL,
+    CHECK ((status = 'paid') = (paid_at IS NOT NULL AND method IS NOT NULL)),
+    UNIQUE KEY membership_invoices_number (number),
+    UNIQUE KEY membership_invoices_order (order_id),
+    KEY membership_invoices_member (membership_id, created_at),
+    KEY membership_invoices_status (status, expires_at),
+    CONSTRAINT membership_invoices_member_fk FOREIGN KEY (membership_id) REFERENCES memberships(id),
+    CONSTRAINT membership_invoices_plan FOREIGN KEY (plan_id) REFERENCES membership_plans(id)
+  )`,
+  `ALTER TABLE bookings
+    ADD COLUMN membership_id ${id} NULL,
+    ADD COLUMN member_plan VARCHAR(255) NOT NULL DEFAULT '',
+    ADD COLUMN member_court_rate INT NOT NULL DEFAULT 0 CHECK(member_court_rate BETWEEN 0 AND 10000),
+    ADD COLUMN member_addon_rate INT NOT NULL DEFAULT 0 CHECK(member_addon_rate BETWEEN 0 AND 10000),
+    ADD COLUMN member_discount BIGINT NOT NULL DEFAULT 0 CHECK(member_discount >= 0),
+    ADD KEY bookings_membership (membership_id),
+    ADD CONSTRAINT bookings_membership_fk FOREIGN KEY (membership_id) REFERENCES memberships(id)`,
+];
+/** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
+export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
+  [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],
+  [["4-960", "4-961", "4-962"], "Potongan Member", "pendapatan", "pendapatan", "potongan_member", "Diskon harga member pada booking. Saldonya mengurangi pendapatan."],
+  [["2-400", "2-410", "2-420"], "Pendapatan Diterima di Muka", "liabilitas", "utang", "pendapatan_dimuka", "Iuran member untuk bulan yang belum berjalan. Diakui sebagai pendapatan tiap bulan."],
+];
+
 /** Urutan tabel yang aman untuk diisi ulang (induk sebelum anak) saat impor atau pemulihan. */
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
-  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "orders",
+  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts",
+  "membership_plans", "memberships", "membership_invoices", "orders",
   "bookings", "payments", "addons", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
 ];
@@ -483,6 +598,7 @@ export const menuSeed: MenuSeed[] = [
   ["dashboard", "Ringkasan", "/admin", "LayoutDashboard", "Operasional", 1],
   ["bookings", "Booking", "/admin/bookings", "CalendarDays", "Operasional", 2],
   ["customers", "Pelanggan", "/admin/customers", "Contact", "Operasional", 3],
+  ["members", "Member", "/admin/member", "BadgeCheck", "Operasional", 4],
   ["finance", "Ringkasan Keuangan", "/admin/keuangan", "ChartPie", "Keuangan", 51],
   ["finance-records", "Kas & Transaksi", "/admin/keuangan/transaksi", "ArrowLeftRight", "Keuangan", 52],
   ["finance-journal", "Jurnal Umum", "/admin/keuangan/jurnal", "BookOpenText", "Keuangan", 53],
