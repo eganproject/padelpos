@@ -127,6 +127,7 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
 }
 .shop .shop-btn:active:not(:disabled){transform:scale(.98)}
 .shop .shop-btn:disabled{opacity:.45;cursor:not-allowed}
+.shop .shop-btn svg{flex-shrink:0}
 .shop .shop-btn.sm{min-height:40px;padding:0 14px;font-size:14px;border-radius:10px}
 .shop .shop-btn.lg{min-height:54px;font-size:16px;border-radius:14px}
 .shop .shop-btn.wide{width:100%}

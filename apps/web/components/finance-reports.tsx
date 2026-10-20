@@ -1,12 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Check, Download, Pencil, Plus, Printer, Scale, Search, Trash2, TriangleAlert } from "lucide-react";
+import { Check, FileSpreadsheet, FileText, Download, Pencil, Plus, Printer, Scale, Search, Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
   type BalanceSheet, type GeneralLedger, type JournalEntry, type ProfitLoss, type Setup, type SubsidiaryLedger,
-  changeOf, downloadCsv, formatDate, money, rangeLabel, sourceLabel,
+  changeOf, formatDate, money, rangeLabel, sourceLabel,
 } from "@/lib/finance";
+import { type ExportFormat, type ReportDoc, exportReport, row } from "@/lib/report-export";
 import { Modal } from "./operation-ui";
 import { AmountField, Empty, PeriodPicker, ShareBar } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
@@ -33,12 +34,32 @@ export function ReportsTab({ setup, range, today, onRange }: { setup:Setup; rang
   );
 }
 
-function ReportHead({ title, subtitle, onCsv }: { title:string; subtitle:string; onCsv:()=>void }) {
+/**
+ * Judul laporan beserta tombol unduh. `build` menyusun isi laporan sekali untuk semua format,
+ * dan boleh async bila datanya perlu diambil ulang (mis. seluruh jurnal, bukan hanya yang tampil).
+ */
+function ReportHead({ title, subtitle, build }: { title:string; subtitle:string; build:()=>ReportDoc|null|Promise<ReportDoc|null> }) {
+  const [busy,setBusy] = useState<ExportFormat|null>(null);
+  async function download(format:ExportFormat) {
+    setBusy(format);
+    try {
+      const doc = await build();
+      if (!doc) return toast.error("Laporan masih dimuat, coba lagi sebentar");
+      await exportReport(doc, format);
+    } catch (error) { toast.error(`Gagal membuat file: ${(error as Error).message}`) }
+    finally { setBusy(null) }
+  }
+  const label = (format:ExportFormat, text:string) => busy===format ? "Menyiapkan…" : text;
   return (
     <div className="fin-report-head">
       <div><h3>{title}</h3><p>{subtitle}</p></div>
-      <div className="fin-report-actions">
-        <button type="button" className="ops-secondary" onClick={onCsv}><Download size={14}/> Unduh CSV</button>
+      <div className="fin-report-actions" role="group" aria-label="Unduh laporan">
+        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("xlsx")} title="Unduh sebagai file Excel (.xlsx)">
+          <FileSpreadsheet size={14}/> {label("xlsx","Excel")}</button>
+        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("pdf")} title="Unduh sebagai file PDF">
+          <FileText size={14}/> {label("pdf","PDF")}</button>
+        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("csv")} title="Unduh sebagai CSV">
+          <Download size={14}/> {label("csv","CSV")}</button>
         <button type="button" className="ops-secondary" onClick={()=>window.print()}><Printer size={14}/> Cetak</button>
       </div>
     </div>
@@ -76,15 +97,23 @@ function ProfitLossReport({ range }: { range:Range }) {
   return (
     <div className="fin-report">
       <ReportHead title="Laporan laba rugi" subtitle={`${rangeLabel(range.from,range.to)} · pembanding: ${rangeLabel(data.previous.from,data.previous.to)}`}
-        onCsv={()=>downloadCsv(`laba-rugi-${range.from}-sd-${range.to}.csv`,[
-          ["Laporan Laba Rugi"],["Periode",range.from,range.to],[],
-          ["Kode","Akun","Jenis","Periode ini","Periode sebelumnya"],
-          ...data.income_lines.map(line=>[line.code,line.name,"Pendapatan",line.amount,line.previous??0]),
-          ["","Total pendapatan","",data.income,data.previous.income],[],
-          ...data.expense_lines.map(line=>[line.code,line.name,"Biaya",line.amount,line.previous??0]),
-          ["","Total biaya","",data.expense,data.previous.expense],[],
-          ["","Laba bersih","",data.net,data.previous.net],
-        ])}/>
+        build={()=>({
+          title:"Laporan Laba Rugi", filename:`laba-rugi-${range.from}-sd-${range.to}`,
+          meta:[["Periode",rangeLabel(range.from,range.to)],["Pembanding",rangeLabel(data.previous.from,data.previous.to)]],
+          columns:[{header:"Kode",width:10},{header:"Akun",width:36},{header:"Periode ini",kind:"money"},{header:"Periode sebelumnya",kind:"money"}],
+          rows:[
+            row.group("Pendapatan"),
+            ...data.income_lines.map(line=>row.line(line.code,line.name,line.amount,line.previous??0)),
+            row.subtotal("","Total pendapatan",data.income,data.previous.income),
+            row.blank(),
+            row.group("Biaya"),
+            ...data.expense_lines.map(line=>row.line(line.code,line.name,line.amount,line.previous??0)),
+            row.subtotal("","Total biaya",data.expense,data.previous.expense),
+            row.blank(),
+            row.total("",data.net>=0?"Laba bersih":"Rugi bersih",data.net,data.previous.net),
+          ],
+          notes:["Periode sebelumnya memiliki panjang hari yang sama dengan periode ini.","Pendapatan booking dihitung pada tanggal sesi bermain, bukan tanggal pemesanan."],
+        })}/>
       <div className="fin-result">
         <div><span>Pendapatan</span><strong className="plus">{money(data.income)}</strong></div>
         <div><span>Biaya</span><strong className="minus">{money(data.expense)}</strong></div>
@@ -126,15 +155,27 @@ function BalanceReport({ today }: { today:string }) {
   return (
     <div className="fin-report">
       <ReportHead title="Neraca" subtitle={`Posisi keuangan per ${formatDate(asOf)}`}
-        onCsv={()=>downloadCsv(`neraca-${asOf}.csv`,[
-          ["Neraca"],["Per tanggal",asOf],[],["Kode","Pos","Kelompok","Jumlah"],
-          ...data.assets.map(line=>[line.code,line.name,"Harta",line.amount]),
-          ["","Total harta","",data.total_assets],[],
-          ...data.liabilities.map(line=>[line.code,line.name,"Kewajiban",line.amount]),
-          ["","Total kewajiban","",data.total_liabilities],[],
-          ...data.equity.map(line=>[line.code,line.name,"Modal",line.amount]),
-          ["","Total modal","",data.total_equity],
-        ])}/>
+        build={()=>({
+          title:"Neraca", filename:`neraca-${asOf}`,
+          meta:[["Posisi per",formatDate(asOf)],["Status",data.difference===0?"Seimbang":`Selisih ${money(data.difference)}`]],
+          columns:[{header:"Kode",width:10},{header:"Pos",width:40},{header:"Jumlah",kind:"money",width:20}],
+          rows:[
+            row.group("HARTA"),
+            ...data.asset_groups.flatMap(group=>[row.line("",group.label),...group.rows.map(line=>row.line(line.code,`    ${line.name}`,line.amount))]),
+            row.total("","Total harta",data.total_assets),
+            row.blank(),
+            row.group("KEWAJIBAN"),
+            ...data.liabilities.map(line=>row.line(line.code,line.name,line.amount)),
+            row.subtotal("","Total kewajiban",data.total_liabilities),
+            row.blank(),
+            row.group("MODAL"),
+            ...data.equity.map(line=>row.line(line.code,line.name,line.amount)),
+            row.subtotal("","Total modal",data.total_equity),
+            row.blank(),
+            row.total("","Total kewajiban & modal",data.total_liabilities+data.total_equity),
+          ],
+          notes:data.advances>0?[`Kewajiban termasuk ${money(data.advances)} uang pelanggan untuk sesi yang belum dimainkan.`]:[],
+        })}/>
       <div className="fin-balance-toolbar">
         <label className="fin-inline-field"><span>Posisi tanggal</span><DateInput value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
         <span className={`fin-tag ${data.difference===0?"ok":"warn"}`}>
@@ -180,13 +221,18 @@ function LedgerReport({ setup, range }: { setup:Setup; range:Range }) {
   return (
     <div className="fin-report">
       <ReportHead title="Buku besar" subtitle={`Seluruh mutasi satu akun, ${rangeLabel(range.from,range.to)}`}
-        onCsv={()=>data&&downloadCsv(`buku-besar-${data.account.code}-${range.from}-sd-${range.to}.csv`,[
-          ["Buku Besar"],["Akun",`${data.account.code} ${data.account.name}`],["Periode",range.from,range.to],[],
-          ["Tanggal","Nomor","Keterangan","Lawan akun","Debit","Kredit","Saldo"],
-          ["","","Saldo awal","","","",data.opening],
-          ...data.rows.map(row=>[row.date,row.number,row.line_memo||row.memo,row.counter,row.debit,row.credit,row.balance]),
-          ["","","Saldo akhir","",data.debit,data.credit,data.closing],
-        ])}/>
+        build={()=>data&&{
+          title:"Buku Besar", filename:`buku-besar-${data.account.code}-${range.from}-sd-${range.to}`, landscape:true,
+          meta:[["Akun",`${data.account.code} ${data.account.name}`],["Periode",rangeLabel(range.from,range.to)]],
+          columns:[{header:"Tanggal",kind:"date"},{header:"Nomor",width:16},{header:"Keterangan",width:42},{header:"Lawan akun",width:26},
+            {header:"Debit",kind:"money"},{header:"Kredit",kind:"money"},{header:"Saldo",kind:"money"}],
+          rows:[
+            row.subtotal("","","Saldo awal","",null,null,data.opening),
+            ...data.rows.map(item=>row.line(item.date,item.number,item.line_memo||item.memo,item.counter,item.debit||null,item.credit||null,item.balance)),
+            row.total("","","Saldo akhir","",data.debit,data.credit,data.closing),
+          ],
+          notes:data.truncated?[`Rincian dipotong pada ${data.rows.length.toLocaleString("id-ID")} baris pertama; total debit, kredit, dan saldo akhir tetap menghitung seluruh mutasi. Persempit periode untuk rincian lengkap.`]:[],
+        }}/>
       <label className="fin-inline-field wide"><span>Akun</span>
         <Select value={accountId} onChange={e=>setAccountId(e.target.value)}>
           {setup.accounts.map(account => <option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}
@@ -242,12 +288,16 @@ function SubsidiaryReport({ range }: { range:Range }) {
   return (
     <div className="fin-report">
       <ReportHead title="Buku besar pembantu" subtitle={`${meta[1]} · ${rangeLabel(range.from,range.to)}`}
-        onCsv={()=>data&&downloadCsv(`buku-pembantu-${kind}-${range.from}-sd-${range.to}.csv`,[
-          ["Buku Besar Pembantu"],["Jenis",meta[1]],["Periode",range.from,range.to],[],
-          ["Nama","Keterangan","Saldo awal","Debit","Kredit","Saldo akhir"],
-          ...data.rows.map(row=>[row.name,row.subtitle,row.opening,row.debit,row.credit,row.balance]),
-          ["","Total","","","",data.total],
-        ])}/>
+        build={()=>data&&{
+          title:`Buku Besar Pembantu ${meta[1]}`, filename:`buku-pembantu-${kind}-${range.from}-sd-${range.to}`, landscape:true,
+          meta:[["Jenis",meta[1]],["Periode",rangeLabel(range.from,range.to)]],
+          columns:[{header:"Nama",width:28},{header:"Keterangan",width:34},{header:"Saldo awal",kind:"money"},{header:"Debit",kind:"money"},{header:"Kredit",kind:"money"},{header:"Saldo akhir",kind:"money"}],
+          rows:[
+            ...data.rows.map(item=>row.line(item.name,item.subtitle,item.opening,item.debit||null,item.credit||null,item.balance)),
+            row.total("Total","",data.rows.reduce((sum,item)=>sum+item.opening,0),data.rows.reduce((sum,item)=>sum+item.debit,0),data.rows.reduce((sum,item)=>sum+item.credit,0),data.total),
+          ],
+          notes:[meta[2]],
+        }}/>
       <div className="fin-chips" role="group" aria-label="Jenis buku pembantu">
         {subsidiaryViews.map(([key,label]) => <button key={key} type="button" aria-pressed={kind===key} onClick={()=>setKind(key)}>{label}</button>)}
       </div>
@@ -301,16 +351,25 @@ export function JournalReport({ setup, range, today, onChanged }: { setup:Setup;
     try { const result = await api<{entries:JournalEntry[];total:number}>(query(200)); setEntries(result.entries); setTotal(result.total) }
     catch (error) { toast.error((error as Error).message) }
   }, [query]);
-  /** CSV memuat seluruh jurnal periode ini, bukan hanya 200 yang tampil di layar. */
-  async function exportCsv() {
-    try {
-      const { entries:all, total:count } = await api<{entries:JournalEntry[];total:number}>(query(10000));
-      if (count>all.length) toast.warning(`Hanya ${all.length} dari ${count} jurnal yang terunduh. Persempit periodenya.`);
-      downloadCsv(`jurnal-${range.from}-sd-${range.to}.csv`,[
-        ["Jurnal Umum"],["Periode",range.from,range.to],[],["Tanggal","Nomor","Keterangan","Akun","Debit","Kredit"],
-        ...all.flatMap(entry=>entry.lines.map(line=>[entry.date,entry.number,line.memo||entry.memo,`${line.account_code} ${line.account_name}`,line.debit,line.credit])),
-      ]);
-    } catch (error) { toast.error((error as Error).message) }
+  /** File unduhan memuat seluruh jurnal periode ini, bukan hanya 200 yang tampil di layar. */
+  async function buildExport():Promise<ReportDoc> {
+    const { entries:all, total:count } = await api<{entries:JournalEntry[];total:number}>(query(10000));
+    if (count>all.length) toast.warning(`Hanya ${all.length} dari ${count} jurnal yang terunduh. Persempit periodenya.`);
+    const debit = all.reduce((sum,entry)=>sum+entry.lines.reduce((total,line)=>total+line.debit,0),0);
+    const credit = all.reduce((sum,entry)=>sum+entry.lines.reduce((total,line)=>total+line.credit,0),0);
+    const filters:[string,string][] = [];
+    if (source) filters.push(["Sumber",sourceLabel[source as keyof typeof sourceLabel] ?? source]);
+    if (term) filters.push(["Pencarian",term]);
+    return {
+      title:"Jurnal Umum", filename:`jurnal-${range.from}-sd-${range.to}`, landscape:true,
+      meta:[["Periode",rangeLabel(range.from,range.to)],...filters,["Jumlah jurnal",all.length.toLocaleString("id-ID")]],
+      columns:[{header:"Tanggal",kind:"date"},{header:"Nomor",width:16},{header:"Keterangan",width:40},{header:"Akun",width:32},{header:"Debit",kind:"money"},{header:"Kredit",kind:"money"}],
+      rows:[
+        ...[...all].reverse().flatMap(entry=>entry.lines.map((line,index)=>row.line(
+          index===0?entry.date:"", index===0?entry.number:"", line.memo||entry.memo, `${line.account_code} ${line.account_name}`, line.debit||null, line.credit||null))),
+        row.total("","","Total","",debit,credit),
+      ],
+    };
   }
   useEffect(() => { const timer=setTimeout(()=>void load(),term?250:0); return ()=>clearTimeout(timer) }, [load, term]);
 
@@ -322,7 +381,7 @@ export function JournalReport({ setup, range, today, onChanged }: { setup:Setup;
   return (
     <div className="fin-report">
       <ReportHead title="Jurnal umum" subtitle={`Semua pencatatan, ${rangeLabel(range.from,range.to)}`}
-        onCsv={()=>void exportCsv()}/>
+        build={buildExport}/>
       <div className="fin-toolbar">
         <label className="fin-search"><Search size={15} aria-hidden="true"/>
           <input value={term} onChange={e=>setTerm(e.target.value)} placeholder="Cari keterangan atau nomor jurnal…" aria-label="Cari jurnal"/>
@@ -367,7 +426,7 @@ export function JournalReport({ setup, range, today, onChanged }: { setup:Setup;
           );
         })}</ul>
       )}
-      {entries && total>entries.length && <p className="fin-note">Menampilkan {entries.length} jurnal terbaru dari {total}. Unduh CSV untuk daftar lengkapnya.</p>}
+      {entries && total>entries.length && <p className="fin-note">Menampilkan {entries.length} jurnal terbaru dari {total}. Unduh Excel, PDF, atau CSV untuk daftar lengkapnya.</p>}
       {(creating||editing) && (
         <JournalForm setup={setup} today={today} entry={editing} close={()=>{setCreating(false);setEditing(null)}}
           saved={()=>{setCreating(false);setEditing(null);void load();onChanged()}}/>

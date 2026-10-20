@@ -233,7 +233,7 @@ export default function OrderPage() {
               <div className="total"><dt>Total{active.length && active.length < order.sessions.length ? " sesi aktif" : ""}</dt><dd>{money(billTotal)}</dd></div>
               <div><dt>Sudah dibayar</dt><dd>{money(order.paid)}</dd></div>
               {remaining > 0 && (
-                <div className={order.status === "pending" ? "due" : "now"}><dt>{order.status === "pending" ? "Belum dibayar" : "Dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
+                <div className={order.status === "pending" ? "due" : "now"}><dt>{order.status === "pending" ? "Belum dibayar" : "Sisa, dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
               )}
             </dl>
             {!!data?.payments?.length && (
@@ -246,7 +246,7 @@ export default function OrderPage() {
                 ))}
               </ul>
             )}
-            <p className="muted small">Atas nama {order.customer} · {order.phone}{payment ? ` · ${intentLabel[payment.status]}` : ""}</p>
+            <p className="muted small">Atas nama {order.customer} · {order.phone}{payment ? ` · ${payment.status === "paid" && order.paid < order.total ? "DP dibayar" : intentLabel[payment.status]}` : ""}</p>
             {order.status !== "confirmed" && order.paid > 0 && (
               <Link className="text-link" href={`/pesanan/${order.id}/kwitansi`}><ReceiptText size={15} aria-hidden="true" /> Lihat kwitansi</Link>
             )}

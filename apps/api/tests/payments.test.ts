@@ -238,6 +238,9 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(view.status, 200);
       assert.equal(view.data.order.sessions.length, 1);
       assert.ok(view.data.order.phone.includes("•"), "nomor telepon disamarkan");
+      const { maskPhone } = await import("../src/payments.js");
+      assert.equal(maskPhone("0812-9876-5432"), "•••• •••• •432", "tanda hubung ketikan pelanggan tidak membuka digit");
+      assert.equal(maskPhone("6281298765432"), "•••• •••• •432");
       assert.ok(!JSON.stringify(view.data).includes("081234500001"));
       assert.equal(view.data.payment.status, "paid");
       assert.equal(view.data.payment.redirect_url, null, "tautan bayar disembunyikan setelah lunas");

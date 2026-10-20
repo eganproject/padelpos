@@ -185,6 +185,17 @@ function addonProblem(lines: { addon_id: string; name: string; quantity: number 
 }
 
 /** 08xx dan +62xx disimpan seragam sebagai 62xx agar pelanggan lama dikenali. */
+/**
+ * Nomor di halaman status pesanan (bisa dibuka siapa pun yang memegang tautannya) hanya
+ * memperlihatkan 3 digit terakhir. Pemisah ketikan pelanggan (spasi, tanda hubung) dibuang dulu,
+ * agar "0812-9876-5432" tidak bocor menjadi "•812-•876-•432".
+ */
+export function maskPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const local = digits.startsWith("62") ? "0" + digits.slice(2) : digits;
+  if (local.length <= 3) return local;
+  return ("•".repeat(local.length - 3) + local.slice(-3)).replace(/^(.{4})(.{4})(.+)$/, "$1 $2 $3");
+}
 export function normalizePhone(value: string) {
   const digits = value.replace(/[^0-9]/g, "");
   return digits.startsWith("0") ? "62" + digits.slice(1) : digits.startsWith("62") ? digits : "62" + digits;
@@ -496,7 +507,7 @@ export async function orderView(id: string) {
   return {
     order: {
       id: order.id, code: order.code, customer: order.customer,
-      phone: order.phone.replace(/\d(?=\d{3})/g, "•"),
+      phone: maskPhone(order.phone),
       status: states.size === 1 ? [...states][0] : sessions.some(booking => booking.status === "confirmed") ? "confirmed" : "pending",
       total, paid, notes: order.notes, created_at: order.created_at,
       sessions: await Promise.all(sessions.map(async booking => ({

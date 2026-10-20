@@ -1,6 +1,6 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
-import { BadgeCheck,CalendarClock,Copy,CreditCard,PackageCheck,PackagePlus,Plus } from "lucide-react";
+import { BadgeCheck,CalendarClock,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
@@ -309,5 +309,5 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     <h3>Riwayat pembayaran</h3>{data!.payments.length?data!.payments.map(p=><div className="ops-history" key={p.id}><div><b>{p.kind==="refund"?"Pengembalian":"Pembayaran"} · {methodLabel[p.method]??p.method}</b><small>{new Date(p.created_at).toLocaleString("id-ID")} {p.note&&"· "+p.note}</small></div><strong>{p.kind==="refund"?"−":""}{money(p.amount)}</strong></div>):<p className="ops-muted">Belum ada pembayaran.</p>}
     {booking.status==="confirmed"&&<div className="ops-status-actions"><h3>Status reservasi</h3><button className="ops-secondary" disabled={busy||booking.paid<booking.total} onClick={()=>void status("completed")}>Tandai selesai</button><p className="ops-muted">Sesi dapat diselesaikan setelah jam berakhir dan tagihan lunas.{unreturned.length>0?` Masih ada ${unreturned.reduce((sum,l)=>sum+l.quantity,0)} barang sewa yang belum kembali.`:""}</p><label>Alasan pembatalan<input minLength={3} maxLength={200} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Wajib diisi untuk membatalkan"/></label><button className="ops-danger" disabled={busy||reason.trim().length<3} onClick={()=>void status("cancelled")}>Batalkan booking</button>{lines.some(l=>l.type==="jual")&&<p className="ops-muted">Stok barang jual pada booking ini kembali otomatis saat dibatalkan.</p>}</div>}
     </>}
-  </div><div className="modal-actions"><button type="button" onClick={close}>Tutup</button></div></Modal>;
+  </div><div className="modal-actions">{booking&&<button type="button" onClick={()=>window.open(`/cetak/nota/${booking.id}?cetak=1`,"_blank","noopener")}><Printer size={14}/> Cetak nota</button>}<button type="button" onClick={close}>Tutup</button></div></Modal>;
 }

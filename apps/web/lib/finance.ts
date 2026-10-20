@@ -95,14 +95,3 @@ export function presetRange(preset:string, today:string){
 export const rangeLabel = (from:string,to:string) => from===to?formatDate(from):`${formatDate(from)} – ${formatDate(to)}`;
 /** Selisih terhadap periode sebelumnya, dalam persen. Null bila pembandingnya nol. */
 export const changeOf = (current:number, previous:number) => previous===0 ? null : Math.round((current-previous)/Math.abs(previous)*100);
-
-/** Unduh tabel laporan sebagai CSV yang langsung terbaca di Excel. */
-export function downloadCsv(filename:string, rows:(string|number)[][]){
-  const escape = (cell:string|number) => typeof cell==="number" ? String(cell) : `"${cell.replace(/"/g,'""')}"`;
-  const body = rows.map(row=>row.map(escape).join(";")).join("\r\n");
-  const blob = new Blob(["﻿"+body],{type:"text/csv;charset=utf-8"});
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href=url; link.download=filename; document.body.appendChild(link); link.click(); link.remove();
-  URL.revokeObjectURL(url);
-}

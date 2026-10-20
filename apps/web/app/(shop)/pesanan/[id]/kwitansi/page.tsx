@@ -9,6 +9,7 @@ import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { fetchOrder, methodLabel, payTypeLabel, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
+import { formatWhatsapp } from "@/lib/venue-info";
 
 const stampFormat = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeStyle: "short", timeZone: "Asia/Jakarta" });
 const dateFormat = new Intl.DateTimeFormat("id-ID", { dateStyle: "long", timeZone: "Asia/Jakarta" });
@@ -53,7 +54,7 @@ export default function ReceiptPage() {
           <div>
             <b className="invoice-venue">{info?.name || "Venue padel"}</b>
             {info?.address && <span>{info.address}</span>}
-            <span>{[info?.whatsapp && `WA +${info.whatsapp}`, info?.phone, info?.email].filter(Boolean).join(" · ")}</span>
+            <span>{[info?.whatsapp && `WA ${formatWhatsapp(info.whatsapp)}`, info?.phone, info?.email].filter(Boolean).join(" · ")}</span>
           </div>
           <div className="invoice-title">
             <h1>{title}</h1>

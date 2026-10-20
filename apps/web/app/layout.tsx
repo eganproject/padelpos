@@ -16,6 +16,7 @@ import "./members.css";
 import "./payments.css";
 import "./finance.css";
 import "./form-controls.css";
+import "./receipt.css";
 import "./shop.css";
 import "./shop-home.css";
 import "./shop-booking.css";
