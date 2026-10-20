@@ -426,7 +426,7 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
         key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
         customer: order?.customer ?? settled[0].customer, email: order?.email || await customerEmail(intent.booking_id), amount: intent.amount,
         total: settled.reduce((sum, booking) => sum + booking.total, 0), paid: settled.reduce((sum, booking) => sum + booking.paid, 0),
-        sessions: settled,
+        sessions: settled, payment_type: status.payment_type ?? intent.payment_type,
         cancelled: settled.every(booking => booking.status === "cancelled"),
       });
     } else if (outcome !== "pending" && intent.kind === "booking") {
