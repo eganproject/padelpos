@@ -84,3 +84,13 @@ html[data-theme="dark"] .primary-button:hover{filter:brightness(.92)}
   .auth-card{padding:var(--s5) var(--s1);border:0;box-shadow:none}
   .form-grid{grid-template-columns:1fr}
 }
+
+/* --- Garis loading saat pindah halaman (components/route-progress.tsx) --- */
+.route-progress{position:fixed;inset:0 0 auto;height:3px;z-index:10000;pointer-events:none}
+.route-progress-bar{height:100%;width:0;background:var(--primary,#171717);
+  box-shadow:0 0 8px color-mix(in srgb,var(--primary,#171717) 45%,transparent);
+  transition:width .4s var(--ease,ease),opacity .3s ease .1s;border-radius:0 2px 2px 0}
+.route-progress[data-state="done"] .route-progress-bar{opacity:0;transition:width .2s ease,opacity .25s ease .15s}
+/* Situs pelanggan: hijau merek dengan kilau lime. */
+html:has(.shop) .route-progress-bar{background:#0f3326;box-shadow:0 0 10px #c8ff3d}
+@media(prefers-reduced-motion:reduce){.route-progress-bar{transition:none}}

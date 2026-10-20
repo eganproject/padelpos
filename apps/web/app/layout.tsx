@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
+import { RouteProgress } from "@/components/route-progress";
 /* Panel staf lebih dulu, lalu situs pelanggan. Urutan ini disengaja: aturan
    .shop ditulis terakhir sehingga tema terang/gelap staf tidak pernah merembes
    ke halaman pelanggan lewat elemen yang dipakai bersama. */
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="id" className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
       <body>
+        <RouteProgress />
         {children}
         <Toaster theme="dark" richColors position="top-right" closeButton />
       </body>
