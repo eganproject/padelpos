@@ -14,6 +14,8 @@ import { loadSnap } from "@/lib/snap";
 import { type CustomerChoice, CustomerSelect } from "./customer-select";
 import { AddonLinesEditor, type Draft, clampDrafts, draftPayload, draftsTotal } from "./addon-lines";
 import { ErrorBox, Modal } from "./operation-ui";
+import { MemberPicker } from "./member-picker";
+import { type LookupMember, percentLabel } from "@/lib/members";
 import { DateInput, MoneyInput, Select } from "./form-controls";
 
 const printSale = (id: string) => window.open(`/cetak/nota/${id}?jenis=kasir&cetak=1`, "_blank", "noopener");
@@ -66,6 +68,7 @@ export function CounterPanel({ changed }: { changed: () => void }) {
 function SaleForm({ close, done }: { close: () => void; done: (id: string) => void }) {
   const [form, setForm] = useState({ id: crypto.randomUUID(), phone: "", duration: 60, booking_id: "", method: "cash" as SaleMethod, tendered: "" as number | "", discount: 0, discount_note: "", notes: "", channel: null as ChannelKey | null });
   const [customer, setCustomer] = useState<CustomerChoice | null>(null);
+  const [member, setMember] = useState<LookupMember | null>(null);
   const [options, setOptions] = useState<SaleOptions | null>(null), [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDiscount, setShowDiscount] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   // Sisa raket bergantung pada jam sewa (lama sewa, atau jam booking yang dihubungkan), jadi dimuat ulang setiap berubah.
@@ -80,16 +83,31 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
   const booking = options?.bookings.find(entry => entry.id === form.booking_id) ?? null;
   /** Booking yang belum selesai menentukan jam sewa; yang sudah selesai memakai jam sekarang. */
   const followsBooking = !!booking && !!options && options.window.start === booking.start_time && options.window.end === booking.end_time;
+  /** Pelanggan member (dari riwayat atau booking yang dihubungkan) langsung dipasang harga membernya; kasir bisa melepasnya. */
+  const suggestMember = useCallback(async (code: string | null | undefined, date: string) => {
+    if (!code) return;
+    try {
+      const found = (await api<{ members: LookupMember[] }>(`/operations/members/lookup?q=${encodeURIComponent(code)}&date=${date}`)).members.find(entry => entry.code === code);
+      if (found?.valid) setMember(current => current ?? found);
+    } catch { /* kasir tetap bisa mencari member manual */ }
+  }, []);
+  /** Member dipilih lebih dulu: nama dan nomornya dipakai sebagai pelanggan transaksi. */
+  function pickMember(next: LookupMember | null) {
+    setMember(next);
+    if (next && !customer) setCustomer({ customer_id: null, name: next.name, phone: next.phone.replace(/\D/g, ""), visits: 0, last_visit: "", booking: null });
+  }
   function chooseCustomer(choice: CustomerChoice | null) {
     setCustomer(choice);
     set("phone", "");
     // Pelanggan yang punya booking hari ini langsung dihubungkan, kecuali kasir sudah memilih booking lain.
     if (choice?.booking && !form.booking_id) set("booking_id", choice.booking.id);
+    if (options) void suggestMember(choice?.member_code ?? choice?.booking?.member_code, options.window.date);
   }
   function chooseBooking(id: string) {
     set("booking_id", id);
     const picked = options?.bookings.find(entry => entry.id === id);
     if (picked && !customer) setCustomer({ customer_id: picked.customer_id, name: picked.customer, phone: picked.phone, visits: 0, last_visit: "", booking: picked });
+    if (picked && options) void suggestMember(picked.member_code, options.window.date);
   }
   const chosen = drafts.filter(draft => draft.quantity > 0);
   const renting = chosen.some(draft => draft.type === "sewa");
@@ -97,8 +115,11 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
   const windowMinutes = options ? (Number(options.window.end.slice(0, 2)) * 60 + Number(options.window.end.slice(3))) - (Number(options.window.start.slice(0, 2)) * 60 + Number(options.window.start.slice(3))) : form.duration;
   const duration = followsBooking ? windowMinutes : options ? Math.max(30, Math.min(form.duration, 1440 - Number(options.window.start.slice(0, 2)) * 60 - Number(options.window.start.slice(3)))) : form.duration;
   const subtotal = draftsTotal(chosen, duration);
-  const discount = showDiscount ? Math.min(form.discount, subtotal) : 0;
-  const bill = billOf(subtotal, discount, options?.tax);
+  // Diskon tambahan member untuk barang katalog; biaya lain yang diketik tidak ikut (sama dengan server).
+  const memberRate = member?.valid ? member.plan.addon_discount : 0;
+  const memberDiscount = Math.round(draftsTotal(chosen.filter(draft => draft.type !== "lainnya"), duration) * memberRate / 10000);
+  const discount = showDiscount ? Math.min(form.discount, subtotal - memberDiscount) : 0;
+  const bill = billOf(subtotal, discount + memberDiscount, options?.tax);
   const tendered = form.tendered === "" ? null : Number(form.tendered);
   const change = form.method === "cash" && tendered !== null ? tendered - bill.total : 0;
   const midtrans = form.method === "midtrans";
@@ -116,7 +137,7 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     try {
       const result = await api<SaleDetail>("/operations/counter", { method: "POST", body: JSON.stringify({
         id: form.id, customer: name, phone: customer?.customer_id ? "" : (customer?.isNew ? form.phone.trim() : customer?.phone ?? ""), customer_id: customer?.customer_id ?? null,
-        booking_id: form.booking_id || null, duration: form.duration, lines: draftPayload(chosen), method: form.method, channel: channel?.key ?? null,
+        booking_id: form.booking_id || null, membership_id: member?.valid ? member.id : null, duration: form.duration, lines: draftPayload(chosen), method: form.method, channel: channel?.key ?? null,
         tendered: form.method === "cash" ? tendered : null, discount, discount_note: discount ? form.discount_note : "", notes: form.notes,
       }) });
       toast.success(result.sale.status === "pending" ? `${result.sale.number} menunggu pembayaran Midtrans` : `${result.sale.number} tercatat · ${money(result.sale.total)}`);
@@ -134,6 +155,8 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     </Select></label>
     {booking && <p className="ops-muted">{followsBooking ? <>Barang sewa dipakai selama booking <b>{bookingLabel(booking)}</b> dan tercatat di detail booking itu.</> : <>Booking {bookingLabel(booking)} sudah selesai; jam sewa dihitung dari sekarang. Transaksi tetap tercatat di detail booking.</>}</p>}
     {booking && customer && customer.name.trim().toLowerCase() !== booking.customer.trim().toLowerCase() && <p className="ops-muted">Pelanggan berbeda dari pemesan booking ({booking.customer}). Tidak masalah bila memang teman satu lapangan.</p>}
+    <MemberPicker date={options?.window.date ?? ""} value={member} onChange={pickMember} />
+    {member?.valid && !memberRate && <p className="ops-muted">Paket {member.plan.name} tidak memberi diskon raket & barang, jadi harga kasir tetap normal.</p>}
 
     <h3 className="modal-subhead">Barang <small>sewa, beli, atau layanan</small></h3>
     <AddonLinesEditor options={options?.addons ?? null} drafts={drafts} onChange={setDrafts} duration={duration} allowCustom walkIn />
@@ -145,9 +168,10 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     {renting && <p className="ops-muted">Barang sewa masuk daftar <b>Belum kembali</b> sampai ditandai kembali. Simpan KTP atau jaminan lain sesuai kebijakan venue.</p>}
 
     {!showDiscount ? <button type="button" className="ops-link-button counter-discount-toggle" onClick={() => setShowDiscount(true)}>Beri potongan harga</button>
-      : <div className="field-grid"><label>Potongan<MoneyInput min={0} max={subtotal} value={form.discount} onChange={e => set("discount", Number(e.target.value))} /></label><label>Alasan potongan<input required={form.discount > 0} minLength={form.discount > 0 ? 3 : undefined} maxLength={120} value={form.discount_note} placeholder="Mis. pelanggan tetap" onChange={e => set("discount_note", e.target.value)} /></label></div>}
+      : <div className="field-grid"><label>Potongan<MoneyInput min={0} max={subtotal - memberDiscount} value={form.discount} onChange={e => set("discount", Number(e.target.value))} /></label><label>Alasan potongan<input required={form.discount > 0} minLength={form.discount > 0 ? 3 : undefined} maxLength={120} value={form.discount_note} placeholder="Mis. pelanggan tetap" onChange={e => set("discount_note", e.target.value)} /></label></div>}
 
     <div className="ops-total"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
+    {memberDiscount > 0 && <div className="ops-total"><span>Potongan member · {member!.plan.name} {percentLabel(memberRate)}</span><strong>−{money(memberDiscount)}</strong></div>}
     {discount > 0 && <div className="ops-total"><span>Potongan</span><strong>−{money(discount)}</strong></div>}
     {bill.tax > 0 && options?.tax && <div className="ops-total"><span>{taxName(options.tax)}</span><strong>{money(bill.tax)}</strong></div>}
     {surcharge > 0 && <div className="ops-total"><span>Biaya layanan {channel?.label}</span><strong>{money(surcharge)}</strong></div>}
@@ -274,6 +298,7 @@ export function SaleDetailModal({ id, close, changed }: { id: string; close: () 
         {sale.status === "paid" && open.length > 1 && <button type="button" className="ops-secondary addon-return-all" disabled={busy} onClick={() => void markReturned(open.map(line => line.id), true)}><PackageCheck size={14} /> Tandai semua kembali</button>}
       </section>
       <div className="ops-total"><span>Subtotal</span><strong>{money(sale.subtotal)}</strong></div>
+      {(sale.member_discount ?? 0) > 0 && <div className="ops-total"><span>Potongan member · {sale.member_plan}</span><strong>−{money(sale.member_discount!)}</strong></div>}
       {sale.discount > 0 && <div className="ops-total"><span>Potongan · {sale.discount_note}</span><strong>−{money(sale.discount)}</strong></div>}
       {sale.tax > 0 && <div className="ops-total"><span>{taxName(sale)}</span><strong>{money(sale.tax)}</strong></div>}
       <div className="ops-total"><span>Total{pending ? "" : ` · ${methodName[sale.method] ?? sale.method}${sale.pay_order_id && sale.status === "paid" ? " via Midtrans" : ""}`}</span><strong>{money(sale.total)}</strong></div>

@@ -222,12 +222,12 @@ export async function syncBooking(bookingId: string) {
  * periode yang sudah dilaporkan tidak berubah. Keduanya hanya dibuat sekali.
  */
 export async function syncCounterSale(saleId: string) {
-  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,fee,surcharge,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
-    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; tax: number; method: string; fee: number; surcharge: number; paid_at: string | null; voided_at: string | null } | undefined;
+  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,member_discount,member_plan,tax,method,fee,surcharge,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
+    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; member_discount: number; member_plan: string; tax: number; method: string; fee: number; surcharge: number; paid_at: string | null; voided_at: string | null } | undefined;
   // Transaksi Midtrans yang belum atau tidak jadi dibayar tidak menyentuh pembukuan.
   if (!sale || !sale.paid_at) return;
   const parts = await db.prepare("SELECT type,SUM(subtotal) amount FROM counter_sale_lines WHERE sale_id=? GROUP BY type ORDER BY type").all(saleId) as { type: string; amount: number }[];
-  const revenue = sale.total + sale.discount - sale.tax;
+  const revenue = sale.total + sale.discount + sale.member_discount - sale.tax;
   const shares = allocate(revenue, parts.map(part => Math.max(0, Number(part.amount))));
   const merged = new Map<string, number>();
   parts.forEach((part, index) => { const key = addonAccountKey[part.type] ?? "pendapatan_lain"; merged.set(key, (merged.get(key) ?? 0) + shares[index]); });
@@ -239,8 +239,8 @@ export async function syncCounterSale(saleId: string) {
       { account_id: await cashAccountFor(sale.method), ...side(sale.total, true), memo: sale.number },
     ];
     result.push(
-
       { account_id: (await systemAccount("potongan_harga")).id, ...side(sale.discount, true), memo: "Potongan harga" },
+      ...(sale.member_discount ? [{ account_id: (await systemAccount("potongan_member")).id, ...side(sale.member_discount, true), memo: `Potongan member ${sale.member_plan}`.trim() }] : []),
     );
     for (const [key, amount] of merged) result.push({ account_id: (await systemAccount(key)).id, ...side(amount, false), memo: sale.customer });
     result.push({ account_id: (await systemAccount("utang_pajak")).id, ...side(sale.tax, false), memo: sale.customer });

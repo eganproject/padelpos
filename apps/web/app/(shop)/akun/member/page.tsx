@@ -6,7 +6,7 @@ import { BadgeCheck, CalendarDays, Clock3, CreditCard, KeyRound, Loader2, Refres
 import { toast } from "sonner";
 import { claimMembership, fetchMembership, joinMembership, payMembership, renewMembership, useAccount, validPhone, type MemberCheckout, type MyMembership } from "@/lib/account";
 import { money } from "@/lib/api";
-import { type MemberInvoice, type PublicPlan, discountSummary, longDate, monthsLabel, percentLabel } from "@/lib/members";
+import { type MemberInvoice, type PublicPlan, discountSummary, longDate, monthsLabel, percentLabel, quotaSummary } from "@/lib/members";
 import { billOf } from "@/lib/bill";
 import { surchargeFor, type ChannelKey } from "@/lib/payments";
 import { ChannelPicker, cheapestChannel } from "@/components/channel-picker";
@@ -97,6 +97,9 @@ function PlanChoice({ plans, value, onChange, registration }: { plans: PublicPla
           <input type="radio" name="plan" value={plan.id} checked={value === plan.id} onChange={() => onChange(plan.id)} />
           <span className="member-plan-head"><b>{plan.name}</b><strong>{money(plan.price)}<small> / {monthsLabel(plan.duration_months)}</small></strong></span>
           <span className="member-plan-perk">Hemat {percentLabel(plan.court_discount)} sewa lapangan{plan.addon_discount ? `, ${percentLabel(plan.addon_discount)} raket & tambahan` : ""}</span>
+          {plan.rates?.map(rate => <small key={rate.label} className="member-plan-rate">{rate.label}: {money(rate.hourly_rate)} / jam</small>)}
+          {plan.member_slots && <small className="member-plan-rate">Bisa pesan jam khusus member</small>}
+          {quotaSummary(plan) && <small>Harga member maksimal {quotaSummary(plan)}</small>}
           {plan.description && <small>{plan.description}</small>}
           {registration && plan.registration_fee > 0 && <small>Biaya pendaftaran sekali {money(plan.registration_fee)}</small>}
         </label>

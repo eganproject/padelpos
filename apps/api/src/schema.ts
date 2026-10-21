@@ -707,6 +707,54 @@ export const schemaV9: string[] = [
     created_at ${stamp} NOT NULL
   )`,
 ];
+/**
+ * Versi 11: keanggotaan fase 2.
+ *
+ * - `membership_plan_rates`: tarif tetap per jam untuk member, per paket dan per tarif lapangan.
+ *   `rule_key` adalah id `price_rules`, atau `normal` untuk jam yang memakai tarif dasar lapangan.
+ *   Jam tanpa tarif tetap tetap memakai diskon persen paket.
+ * - `membership_plans.daily_minutes` / `monthly_minutes`: batas jam main dengan harga member per hari
+ *   dan per bulan (0 = tanpa batas). Lewat batas, booking tetap boleh dengan harga normal.
+ * - `membership_plans.member_slots`: paket ini boleh memesan jam khusus member.
+ * - `member_slots`: jam khusus member (mis. Sabtu 06.00–09.00), untuk semua lapangan bila `court_ids` kosong.
+ * - `bookings.member_court_cut`: bagian potongan member dari sewa lapangan, dihitung saat dipesan atau
+ *   dipindah; `member_fixed` salinan tarif tetap paket saat dipesan (JSON), dipakai saat pindah jadwal.
+ * - `counter_sales`: potongan member untuk transaksi kasir (barang selain biaya lain).
+ */
+export const schemaV11: string[] = [
+  `ALTER TABLE membership_plans
+    ADD COLUMN daily_minutes INT NOT NULL DEFAULT 0 CHECK(daily_minutes BETWEEN 0 AND 1440),
+    ADD COLUMN monthly_minutes INT NOT NULL DEFAULT 0 CHECK(monthly_minutes BETWEEN 0 AND 44640),
+    ADD COLUMN member_slots TINYINT NOT NULL DEFAULT 1`,
+  `CREATE TABLE membership_plan_rates (
+    plan_id ${id} NOT NULL,
+    rule_key VARCHAR(64) NOT NULL,
+    hourly_rate BIGINT NOT NULL CHECK(hourly_rate >= 0),
+    PRIMARY KEY (plan_id, rule_key),
+    CONSTRAINT membership_plan_rates_plan FOREIGN KEY (plan_id) REFERENCES membership_plans(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE member_slots (
+    id ${id} PRIMARY KEY,
+    label VARCHAR(255) NOT NULL,
+    days VARCHAR(255) NOT NULL CHECK(json_valid(days)),
+    start_time ${time} NOT NULL,
+    end_time ${time} NOT NULL,
+    court_ids TEXT NOT NULL CHECK(json_valid(court_ids)),
+    created_at ${stamp} NOT NULL
+  )`,
+  `ALTER TABLE bookings
+    ADD COLUMN member_court_cut BIGINT NOT NULL DEFAULT 0 CHECK(member_court_cut >= 0),
+    ADD COLUMN member_fixed TEXT NULL`,
+  // Booking lama hanya memakai diskon persen, dengan pembulatan yang sama seperti memberCut.
+  "UPDATE bookings SET member_court_cut=ROUND(court_total*member_court_rate/10000) WHERE membership_id IS NOT NULL AND member_court_rate>0",
+  `ALTER TABLE counter_sales
+    ADD COLUMN membership_id ${id} NULL,
+    ADD COLUMN member_plan VARCHAR(255) NOT NULL DEFAULT '',
+    ADD COLUMN member_addon_rate INT NOT NULL DEFAULT 0 CHECK(member_addon_rate BETWEEN 0 AND 10000),
+    ADD COLUMN member_discount BIGINT NOT NULL DEFAULT 0 CHECK(member_discount >= 0),
+    ADD KEY counter_sales_membership (membership_id),
+    ADD CONSTRAINT counter_sales_membership_fk FOREIGN KEY (membership_id) REFERENCES memberships(id)`,
+];
 /** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
 export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
   [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],
@@ -717,8 +765,8 @@ export const membershipAccounts: [codes: string[], name: string, type: string, s
 /** Urutan tabel yang aman untuk diisi ulang (induk sebelum anak) saat impor atau pemulihan. */
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
-  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "avatars", "brand_assets",
-  "membership_plans", "memberships", "membership_invoices", "orders",
+  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "member_slots", "customer_accounts", "avatars", "brand_assets",
+  "membership_plans", "membership_plan_rates", "memberships", "membership_invoices", "orders",
   "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
 ];

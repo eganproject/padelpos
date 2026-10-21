@@ -6,8 +6,8 @@ import { photoIndex } from "./photos.js";
 import { clockLabel,localClock,minutes,shiftDate } from "./clock.js";
 import { applyLines,bookingAddons,linesSchema,moveLines,releaseAddons,saveMovedLines,setReturned } from "./addons.js";
 import { syncBooking } from "./finance.js";
-import { billOf,discountableAddons,memberCut,taxSnapshot } from "./bill.js";
-import { memberRatesFor,noMember } from "./member-rates.js";
+import { type SlotRate,billOf,discountableAddons,memberCourtCut,memberCut,parseFixed,taxSnapshot } from "./bill.js";
+import { courtPricing,ensureMemberSlot,memberOn,memberOnlyAt,memberRatesFor,memberSlots,noMember } from "./member-rates.js";
 import { ensureOpen } from "./finance.js";
 import { getPolicies } from "./content.js";
 import { notifyCancelled,notifyReceipt,notifyReschedule } from "./notifications.js";
@@ -25,7 +25,11 @@ export interface Booking {id:string;court_id:string;court_name:string;customer_i
   /** Email pelanggan isian staf; booking online memakai email pesanan atau akun. */
   email:string;reschedule_count:number;order_id:string|null;account_id:string|null;
   /** Salinan keanggotaan saat dipesan: tarif diskon dalam basis poin dan nilai potongannya (sudah termasuk dalam `total`). */
-  membership_id:string|null;member_plan:string;member_court_rate:number;member_addon_rate:number;member_discount:number}
+  membership_id:string|null;member_plan:string;member_court_rate:number;member_addon_rate:number;member_discount:number;
+  /** Bagian `member_discount` dari sewa lapangan, dan salinan tarif tetap member (JSON) untuk pindah jadwal. */
+  member_court_cut:number;member_fixed:string|null;
+  /** Keterangan harga member untuk kasir, mis. kuota harga member habis. Hanya pada respons simpan. */
+  member_note?:string}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
 export interface Payment {id:string;booking_id:string;amount:number;fee?:number;surcharge?:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
 export const dateSchema=z.string("Pilih tanggal.").regex(/^\d{4}-\d{2}-\d{2}$/,"Tanggal tidak valid.").refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
@@ -124,15 +128,18 @@ export async function createBooking(input:unknown,actor:string){
   const data=bookingSchema.parse(input);
   return await transaction(async ()=>{
     const court=await ensureSlot(data.court_id,data.date,data.start_time,data.end_time),id=randomUUID();
-    const courtTotal=quote(court,await priceRules(),data.date,data.start_time,data.end_time),snapshot=await taxSnapshot();
+    const rules=await priceRules(),slots=slotRates(court,rules,data.date,data.start_time,data.end_time);
+    const courtTotal=quote(court,rules,data.date,data.start_time,data.end_time),snapshot=await taxSnapshot();
     // Harga member hanya lewat pilihan kasir; nomor HP saja tidak cukup untuk membuktikan keanggotaan.
-    const member=data.membership_id?await memberRatesFor(data.membership_id,data.date):noMember;
-    const cut=memberCut(courtTotal,0,member),bill=billOf(courtTotal,cut,snapshot);
+    const member=data.membership_id?await memberRatesFor(data.membership_id,data.date):null;
+    await ensureMemberSlot(data.court_id,data.date,data.start_time,data.end_time,member);
+    const pricing=await courtPricing(member,slots,data.date);
+    const cut=pricing.court_cut,bill=billOf(courtTotal,cut,snapshot);
     await assertScheduleFree(data.court_id,data.date,data.start_time,data.end_time);
-    await db.prepare("INSERT INTO bookings (id,court_id,customer,phone,email,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,notes,created_by,created_at,membership_id,member_plan,member_court_rate,member_addon_rate,member_discount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.email.toLowerCase(),data.date,data.start_time,data.end_time,bill.total,courtTotal,bill.tax,snapshot.tax_rate,snapshot.tax_inclusive,snapshot.tax_label,"confirmed",data.notes,actor,new Date().toISOString(),member.membership_id,member.member_plan,member.member_court_rate,member.member_addon_rate,cut);
+    await db.prepare("INSERT INTO bookings (id,court_id,customer,phone,email,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,notes,created_by,created_at,membership_id,member_plan,member_court_rate,member_addon_rate,member_discount,member_court_cut,member_fixed) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").run(id,data.court_id,data.customer,data.phone,data.email.toLowerCase(),data.date,data.start_time,data.end_time,bill.total,courtTotal,bill.tax,snapshot.tax_rate,snapshot.tax_inclusive,snapshot.tax_label,"confirmed",data.notes,actor,new Date().toISOString(),member?.membership_id??null,member?.member_plan??"",pricing.member_court_rate,member?.member_addon_rate??0,cut,cut,pricing.member_fixed);
     if(data.addons.length)await applyLines(await getBooking(id),data.addons,actor);
     await syncBooking(id);
-    await audit(actor,"booking.create",id);return await getBooking(id);
+    await audit(actor,"booking.create",id);return {...await getBooking(id),member_note:pricing.note};
   });
 }
 export async function createMaintenance(input:unknown,actor:string){
@@ -226,17 +233,23 @@ export async function setBookingMember(id:string,input:unknown,actor:string){
   return await transaction(async ()=>{
     const booking=await getBooking(id);
     check(booking.status==="confirmed",409,"Harga member hanya dapat diubah pada booking yang masih aktif.");
-    const member=membership_id?await memberRatesFor(membership_id,booking.date):noMember;
+    const member=membership_id?await memberRatesFor(membership_id,booking.date):null;
+    // Booking di jam khusus member tidak boleh kehilangan membernya.
+    await ensureMemberSlot(booking.court_id,booking.date,booking.start_time,booking.end_time,member);
+    const court=(await courts()).find(c=>c.id===booking.court_id)!;
+    const pricing=await courtPricing(member,slotRates(court,await priceRules(),booking.date,booking.start_time,booking.end_time),booking.date,id);
+    // Tarif lapangan bisa berubah sejak booking dibuat; potongan tidak boleh melebihi sewa yang ditagih.
+    const courtCut=Math.min(pricing.court_cut,booking.court_total);
     const extras=(await db.prepare("SELECT COALESCE(SUM(subtotal),0) n FROM booking_addons WHERE booking_id=?").get(id) as {n:number}).n;
-    const subtotal=booking.court_total+Number(extras),cut=memberCut(booking.court_total,await discountableAddons(id),member);
+    const subtotal=booking.court_total+Number(extras),cut=memberCut(courtCut,await discountableAddons(id),member??noMember);
     check(booking.discount+cut<subtotal,409,"Potongan harga ditambah potongan member melebihi tagihan. Kecilkan potongan harganya terlebih dahulu.");
     const bill=billOf(subtotal,booking.discount+cut,booking);
     check(bill.total>=booking.paid,409,"Tagihan dengan harga member lebih kecil dari pembayaran yang sudah diterima. Catat pengembalian kelebihannya setelah ini, atau kurangi potongannya.");
-    await db.prepare("UPDATE bookings SET membership_id=?,member_plan=?,member_court_rate=?,member_addon_rate=?,member_discount=?,total=?,tax=? WHERE id=?")
-      .run(member.membership_id,member.member_plan,member.member_court_rate,member.member_addon_rate,cut,bill.total,bill.tax,id);
+    await db.prepare("UPDATE bookings SET membership_id=?,member_plan=?,member_court_rate=?,member_addon_rate=?,member_discount=?,member_court_cut=?,member_fixed=?,total=?,tax=? WHERE id=?")
+      .run(member?.membership_id??null,member?.member_plan??"",pricing.member_court_rate,member?.member_addon_rate??0,cut,courtCut,pricing.member_fixed,bill.total,bill.tax,id);
     await syncBooking(id);
-    await audit(actor,membership_id?"booking.member":"booking.member.remove",id,{before:{membership_id:booking.membership_id,member_discount:booking.member_discount,total:booking.total},after:{membership_id:member.membership_id,member_discount:cut,total:bill.total}});
-    return await getBooking(id);
+    await audit(actor,membership_id?"booking.member":"booking.member.remove",id,{before:{membership_id:booking.membership_id,member_discount:booking.member_discount,total:booking.total},after:{membership_id:member?.membership_id??null,member_discount:cut,total:bill.total}});
+    return {...await getBooking(id),member_note:pricing.note};
   });
 }
 
@@ -300,18 +313,27 @@ export async function rescheduleBooking(id:string,input:unknown,actor:string,byC
     // Pendapatan booking dicatat pada tanggal mainnya, jadi kedua tanggal harus berada di periode terbuka.
     await ensureOpen(booking.date);await ensureOpen(data.date);
     const lines=await moveLines(id,{date:data.date,start:data.start_time,end:data.end_time});
-    const courtTotal=quote(court,await priceRules(),data.date,data.start_time,data.end_time);
+    const rules=await priceRules(),slots=slotRates(court,rules,data.date,data.start_time,data.end_time);
+    const courtTotal=quote(court,rules,data.date,data.start_time,data.end_time);
     const subtotal=courtTotal+lines.reduce((sum,line)=>sum+line.subtotal,0);
-    // Tarif member ikut pindah apa adanya: keanggotaannya sudah diperiksa saat booking dibuat.
-    const cut=memberCut(courtTotal,lines.filter(line=>line.type!=="lainnya").reduce((sum,line)=>sum+line.subtotal,0),booking);
+    // Tarif member ikut pindah apa adanya: keanggotaannya sudah diperiksa saat booking dibuat. Jam khusus
+    // member dan kuota jam harga member diperiksa untuk tanggal baru.
+    const member=booking.membership_id?await memberOn(booking.membership_id,data.date):null;
+    await ensureMemberSlot(data.court_id,data.date,data.start_time,data.end_time,booking.membership_id?member??{slot_access:false}:null);
+    const courtCut=booking.membership_id?memberCourtCut(slots,booking.member_court_rate,parseFixed(booking.member_fixed)):0;
+    if(courtCut&&member){
+      const quota=await courtPricing({...member,member_court_rate:booking.member_court_rate,fixed:parseFixed(booking.member_fixed)},slots,data.date,id);
+      check(quota.court_cut>0,409,`${quota.note.replace(/, jadi sewa lapangan sesi ini memakai harga normal\.$/,".")} Pilih tanggal lain${byCustomer?", atau hubungi venue.":", atau lepas harga member terlebih dahulu."}`);
+    }
+    const cut=memberCut(courtCut,lines.filter(line=>line.type!=="lainnya").reduce((sum,line)=>sum+line.subtotal,0),booking);
     check(booking.discount+cut<subtotal,409,`Potongan harga ${rupiahText(booking.discount)} lebih besar dari tagihan di jadwal baru. Ubah potongannya terlebih dahulu.`);
     const bill=billOf(subtotal,booking.discount+cut,booking);
     // Staf boleh memindah ke slot yang lebih murah: kelebihan bayarnya tampil sebagai "Perlu pengembalian"
     // dan dicatat lewat refund biasa. Pelanggan tidak, agar venue tidak tiba-tiba berutang pengembalian.
     if(byCustomer)check(bill.total>=booking.paid,409,"Tagihan di jadwal baru lebih kecil dari pembayaran Anda. Pilih jadwal lain atau hubungi venue.");
     await assertScheduleFree(data.court_id,data.date,data.start_time,data.end_time,id);
-    await db.prepare("UPDATE bookings SET court_id=?,date=?,start_time=?,end_time=?,court_total=?,total=?,tax=?,member_discount=?,reschedule_count=reschedule_count+1 WHERE id=?")
-      .run(data.court_id,data.date,data.start_time,data.end_time,courtTotal,bill.total,bill.tax,cut,id);
+    await db.prepare("UPDATE bookings SET court_id=?,date=?,start_time=?,end_time=?,court_total=?,total=?,tax=?,member_discount=?,member_court_cut=?,reschedule_count=reschedule_count+1 WHERE id=?")
+      .run(data.court_id,data.date,data.start_time,data.end_time,courtTotal,bill.total,bill.tax,cut,courtCut,id);
     await saveMovedLines(lines);
     await syncBooking(id);
     await audit(actor,byCustomer?"booking.reschedule.customer":"booking.reschedule",id,{
@@ -468,13 +490,17 @@ export async function priceRules():Promise<PriceRule[]>{
 export function rateAt(court:Pick<Court,"id"|"hourly_rate">,rules:PriceRule[],date:string,start:string){
   const day=weekday(date);
   const rule=rules.find(r=>r.court_ids.includes(court.id)&&r.days.includes(day)&&r.start_time<=start&&r.end_time>start);
-  return rule?{rate:rule.hourly_rate,rule:rule.label}:{rate:court.hourly_rate,rule:null};
+  return rule?{rate:rule.hourly_rate,rule:rule.label,rule_id:rule.id}:{rate:court.hourly_rate,rule:null,rule_id:null};
+}
+/** Tarif tiap slot 30 menit dari `start` sampai `end`, untuk sewa dan harga member. */
+export function slotRates(court:Pick<Court,"id"|"hourly_rate">,rules:PriceRule[],date:string,start:string,end:string):SlotRate[]{
+  const slots:SlotRate[]=[];
+  for(let value=minutes(start);value<minutes(end);value+=30){const {rate,rule_id}=rateAt(court,rules,date,clockLabel(value));slots.push({rate,rule_id})}
+  return slots;
 }
 /** Total sewa: jumlah tarif setiap slot 30 menit, dibulatkan ke rupiah terdekat. */
 export function quote(court:Pick<Court,"id"|"hourly_rate">,rules:PriceRule[],date:string,start:string,end:string){
-  let sum=0;
-  for(let value=minutes(start);value<minutes(end);value+=30)sum+=rateAt(court,rules,date,clockLabel(value)).rate;
-  return Math.round(sum/2);
+  return Math.round(slotRates(court,rules,date,start,end).reduce((sum,slot)=>sum+slot.rate,0)/2);
 }
 export async function savePriceRule(input:unknown,actor:string,id?:string){
   const data=priceRuleSchema.parse(input);
@@ -528,13 +554,15 @@ export async function publicCourts(){
 // --- Ketersediaan publik ---------------------------------------------------
 // Sengaja tidak memuat nama, telepon, atau catatan pemesan.
 // `rate` adalah tarif per jam slot itu; `rule` berisi nama tarif khusus bila berlaku.
-export type PublicSlot={start:string;end:string;state:"available"|"booked"|"maintenance"|"past";rate:number;rule:string|null};
+export type PublicSlot={start:string;end:string;state:"available"|"booked"|"maintenance"|"past";rate:number;rule:string|null;rule_id:string|null;
+  /** Nama jam khusus member bila slot ini hanya untuk member. */
+  member_only:string|null};
 export async function publicAvailability(date:string){
   const now=localClock();
   const active=(await courts()).filter(c=>c.active);
   const taken=(await bookings(date)).filter(occupies);
   const care=await maintenances(date);
-  const rules=await priceRules(),photos=await photoIndex(),first=(await floors())[0]?.id??null;
+  const rules=await priceRules(),photos=await photoIndex(),first=(await floors())[0]?.id??null,exclusive=await memberSlots();
   const courtsOut=active.map(court=>{
     const slots:PublicSlot[]=[];
     for(let value=minutes(court.opens_at);value+30<=minutes(court.closes_at);value+=30){
@@ -542,7 +570,7 @@ export async function publicAvailability(date:string){
       const busy=taken.some(b=>b.court_id===court.id&&b.start_time<=start&&b.end_time>start);
       const fixing=care.some(m=>m.court_id===court.id&&m.start_time<=start&&m.end_time>start);
       const past=date<now.date||(date===now.date&&start<now.time);
-      slots.push({start,end,state:busy?"booked":fixing?"maintenance":past?"past":"available",...rateAt(court,rules,date,start)});
+      slots.push({start,end,state:busy?"booked":fixing?"maintenance":past?"past":"available",...rateAt(court,rules,date,start),member_only:memberOnlyAt(exclusive,court.id,date,start,end)?.label??null});
     }
     return {court:publicCourt(court,rules,photos,first),slots};
   });

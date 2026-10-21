@@ -36,3 +36,15 @@
 .member-picked b{display:inline-flex;align-items:center;gap:4px}
 .member-picked small{font-size:var(--fs-xs);color:var(--muted)}
 .member-picked .member-invalid,.member-invalid{color:var(--red-text)}
+
+/* Tarif tetap member per tarif lapangan, di formulir paket */
+.member-rates{display:flex;flex-direction:column;gap:var(--s2);margin:0;padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel2)}
+.member-rates legend{padding:0 4px;font-size:var(--fs-sm);font-weight:600;color:var(--text)}
+.member-rates legend small{font-weight:400;color:var(--muted)}
+.modal-fields .member-rate-row{display:grid;grid-template-columns:minmax(0,1fr) 180px;align-items:center;gap:var(--s3)}
+.member-rate-name{display:flex;flex-direction:column;gap:2px;min-width:0}
+.member-rate-name b{font-weight:500;color:var(--text)}
+.member-rate-name small{font-size:var(--fs-xs);color:var(--muted)}
+p.member-invalid{margin:0;font-size:var(--fs-sm)}
+p.member-invalid>svg,p.ops-muted>svg{display:inline-block;vertical-align:-2px;margin-right:2px}
+@media(max-width:560px){.modal-fields .member-rate-row{grid-template-columns:1fr;gap:6px}}
