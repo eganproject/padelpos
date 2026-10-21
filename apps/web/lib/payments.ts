@@ -5,20 +5,54 @@ import type { TaxSnapshot } from "./bill";
 export type PaymentMode = "full" | "dp";
 export type IntentStatus = "pending" | "paid" | "expired" | "cancelled" | "failed" | "refunded";
 
+/** Siapa yang menanggung biaya admin Midtrans. */
+export type FeeBearer = "venue" | "customer";
+export type ChannelKey = "qris" | "gopay" | "shopeepay" | "va" | "card" | "cstore" | "akulaku" | "kredivo";
+/** Tarif satu metode Midtrans: persen dari nominal, ditambah biaya tetap, lalu PPN bila tarifnya belum termasuk pajak. */
+export type ChannelFee = { key: ChannelKey; label: string; hint: string; enabled: boolean; percent: number; flat: number; vat: boolean };
+/** Tarif yang diketahui pelanggan dan kasir; hanya metode yang aktif. */
+export type PublicFees = { fee_bearer: FeeBearer; vat_percent: number; channels: ChannelFee[] };
+
 /** Yang diketahui pelanggan. */
 export type PaymentPublic = {
   enabled: boolean; mode: PaymentMode; dp_percent: number; hold_minutes: number; note: string; tax?: TaxSnapshot;
   /** Untuk Snap.js; kosong bila admin belum mengisi client key. */
   client_key?: string; environment?: "sandbox" | "production";
+  fees?: PublicFees;
 };
 /** Pengaturan untuk admin; server key tidak pernah ikut, hanya penandanya. */
 export type PaymentSettings = {
   enabled: boolean; environment: "sandbox" | "production"; client_key: string; mode: PaymentMode;
   dp_percent: number; hold_minutes: number; note: string; updated_at: string | null;
+  fee_bearer: FeeBearer; vat_percent: number; channels: ChannelFee[];
   server_key_set: boolean; key_source: "panel" | "env"; ready: boolean; webhook_url: string; finish_url: string;
 };
+
+/** Potongan Midtrans untuk transaksi senilai `gross`; rumusnya sama dengan server (apps/api/src/midtrans.ts). */
+export function feeFor(channel: Pick<ChannelFee, "percent" | "flat" | "vat"> | undefined, gross: number, vatPercent: number) {
+  if (!channel || gross <= 0) return 0;
+  const vat = channel.vat ? 1 + vatPercent / 100 : 1;
+  return Math.max(0, Math.min(gross, Math.round((gross * channel.percent / 100 + channel.flat) * vat)));
+}
+/** Biaya layanan yang ditambahkan ke tagihan bila pelanggan menanggung biaya admin; 0 bila venue yang menanggung. */
+export function surchargeFor(fees: Pick<PublicFees, "fee_bearer" | "vat_percent"> | undefined, channel: Pick<ChannelFee, "percent" | "flat" | "vat"> | undefined, base: number) {
+  if (!fees || fees.fee_bearer !== "customer" || !channel || base <= 0) return 0;
+  const vat = channel.vat ? 1 + fees.vat_percent / 100 : 1;
+  let surcharge = Math.max(0, Math.ceil((base + channel.flat * vat) / (1 - channel.percent / 100 * vat)) - base);
+  while (feeFor(channel, base + surcharge, fees.vat_percent) > surcharge) surcharge++;
+  return surcharge;
+}
+/** "0,7%", "Rp4.000 + PPN", "2,9% + Rp2.000 + PPN". */
+export function rateLabel(channel: Pick<ChannelFee, "percent" | "flat" | "vat">) {
+  const parts = [
+    channel.percent ? `${channel.percent.toLocaleString("id-ID")}%` : "",
+    channel.flat ? `Rp${channel.flat.toLocaleString("id-ID")}` : "",
+  ].filter(Boolean);
+  if (!parts.length) return "Gratis";
+  return parts.join(" + ") + (channel.vat ? " + PPN" : "");
+}
 export type PaymentIntent = {
-  order_id: string; booking_id: string; amount: number; kind: "booking" | "tagihan"; status: IntentStatus;
+  order_id: string; booking_id: string; amount: number; surcharge?: number; channel?: ChannelKey | null; kind: "booking" | "tagihan"; status: IntentStatus;
   redirect_url: string | null; payment_type: string | null; transaction_id: string | null;
   environment: string; expires_at: number; created_at: string; updated_at: string; raw_status: string | null;
 };
@@ -37,8 +71,9 @@ export type OrderView = {
     sessions: OrderSession[];
   };
   /** Uang masuk (payment) dan keluar (refund) untuk kwitansi, urut waktu. */
-  payments?: { id: string; session_code: string; amount: number; kind: "payment" | "refund"; method: string; source: "staff" | "gateway"; created_at: string }[];
-  payment: { order_id: string; status: IntentStatus; amount: number; kind: "booking" | "tagihan"; redirect_url: string | null; snap_token?: string | null; expires_at: number; payment_type: string | null; updated_at: string } | null;
+  payments?: { id: string; session_code: string; amount: number; surcharge?: number; kind: "payment" | "refund"; method: string; source: "staff" | "gateway"; created_at: string }[];
+  /** `amount` sudah termasuk `surcharge`, biaya layanan Midtrans yang ditanggung pelanggan. */
+  payment: { order_id: string; status: IntentStatus; amount: number; surcharge?: number; channel?: ChannelKey | null; kind: "booking" | "tagihan"; redirect_url: string | null; snap_token?: string | null; expires_at: number; payment_type: string | null; updated_at: string } | null;
 };
 
 export const intentLabel: Record<IntentStatus, string> = {
@@ -54,6 +89,8 @@ const payTypes: Record<string, string> = {
   bank_transfer: "Transfer bank (VA)", echannel: "Mandiri Bill", permata: "VA Permata", bca_va: "VA BCA", bni_va: "VA BNI", bri_va: "VA BRI", other_va: "Virtual account",
   cstore: "Gerai retail", akulaku: "Akulaku", kredivo: "Kredivo",
 };
+const channelNames: Record<string, string> = { qris: "QRIS", gopay: "GoPay", shopeepay: "ShopeePay", va: "Virtual account", card: "Kartu", cstore: "Indomaret/Alfamart", akulaku: "Akulaku", kredivo: "Kredivo" };
+export const channelName = (key: string | null | undefined) => (key ? channelNames[key] ?? key : "");
 export const payTypeLabel = (type: string | null) => (type ? payTypes[type] ?? type.replace(/_/g, " ") : "belum dipilih");
 
 /** Nominal yang ditagih sekarang; hitungannya sama dengan server. */
@@ -68,8 +105,8 @@ export function countdown(expiresAt: number, now: number) {
 }
 
 export type CartLine = { court_id: string; date: string; start_time: string; end_time: string; addons: { addon_id: string; quantity: number }[] };
-export type CheckoutBody = { items: CartLine[]; customer: string; phone: string; email: string; notes: string };
-export type CheckoutResult = { order_id: string; code: string; transaction_id: string; sessions: number; amount: number; total: number; expires_at: number; redirect_url: string; token: string };
+export type CheckoutBody = { items: CartLine[]; customer: string; phone: string; email: string; notes: string; channel?: ChannelKey | null };
+export type CheckoutResult = { order_id: string; code: string; transaction_id: string; sessions: number; amount: number; surcharge: number; total: number; expires_at: number; redirect_url: string; token: string };
 /** Hasil pemeriksaan keranjang oleh server: harga terbaru dan alasan bila satu sesi tidak bisa dipesan. */
 export type CartQuoteItem = {
   index: number; court_id: string; court_name: string; date: string; start_time: string; end_time: string;

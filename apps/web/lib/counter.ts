@@ -1,3 +1,4 @@
+import type { ChannelKey, PublicFees } from "./payments";
 import type { AddonOption, AddonPricing, BookingAddon } from "./addons";
 import type { TaxSnapshot } from "./bill";
 import type { ReceiptSettings, ReceiptVenue } from "./receipt";
@@ -12,6 +13,8 @@ export type CounterSale = {
   total: number; method: string; tendered: number | null; status: SaleStatus; notes: string; void_reason: string;
   voided_at: string | null; created_at: string;
   customer_id: string | null; booking_id: string | null; fee: number; paid_at: string | null;
+  /** Biaya layanan Midtrans yang dibayar pelanggan di atas `total` (bila biaya admin ditanggung pelanggan). */
+  surcharge?: number; channel?: ChannelKey | null;
   pay_order_id: string | null; snap_token: string | null; pay_url: string | null; pay_expires_at: number | null; payment_type: string | null;
 };
 /** Booking lapangan hari ini yang bisa dihubungkan ke transaksi kasir. */
@@ -26,7 +29,7 @@ export type SaleRow = CounterSale & { open_rentals: number; items: string | null
 export type SaleList = { sales: SaleRow[]; summary: { count: number; total: number; by_method: Partial<Record<string, number>>; pending: number }; date: string; today: string };
 export type SaleOptions = {
   addons: AddonOption[]; window: { date: string; start: string; end: string }; tax: TaxSnapshot; bookings: LinkedBooking[];
-  midtrans: { enabled: boolean; client_key: string; environment: "sandbox" | "production"; minutes: number };
+  midtrans: { enabled: boolean; client_key: string; environment: "sandbox" | "production"; minutes: number; fees?: PublicFees };
 };
 export type SaleDetail = { sale: CounterSale; lines: CounterLine[]; booking: LinkedBooking | null };
 /** Transaksi kasir yang terhubung ke sebuah booking, untuk detail booking. */

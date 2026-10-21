@@ -678,9 +678,24 @@ export const schemaV7: string[] = [
   "UPDATE counter_sales SET paid_at=created_at WHERE paid_at IS NULL",
 ];
 /**
+ * Versi 8: biaya admin Midtrans. `surcharge` adalah biaya layanan yang dibayar pelanggan di atas tagihan
+ * (bila venue mengatur biaya admin ditanggung pelanggan), `channel` adalah metode yang dipilih sebelum
+ * membuka Midtrans. Potongan Midtrans yang sesungguhnya tetap dicatat di kolom `fee`.
+ */
+export const schemaV8: string[] = [
+  `ALTER TABLE payment_intents ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0, ADD COLUMN channel VARCHAR(20) NULL`,
+  `ALTER TABLE payments ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0`,
+  `ALTER TABLE membership_invoices ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0, ADD COLUMN channel VARCHAR(20) NULL`,
+  `ALTER TABLE counter_sales ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0, ADD COLUMN channel VARCHAR(20) NULL`,
+];
+/** Akun sistem untuk biaya layanan yang dibayar pelanggan, dengan format yang sama seperti `membershipAccounts`. */
+export const gatewayAccounts: typeof membershipAccounts = [
+  [["4-850", "4-851", "4-852"], "Pendapatan Biaya Layanan Pembayaran", "pendapatan", "pendapatan", "pendapatan_layanan",
+    "Biaya admin Midtrans yang dibayar pelanggan. Diimbangi oleh Biaya Bank & Payment Gateway."],
+];
+/**
  * Versi 9: berkas merek (logo terang, logo gelap, favicon) untuk Pengaturan > Brand. Satu baris per
  * jenis; id acak berganti setiap kali berkas diganti sehingga browser boleh menyimpannya selamanya.
- * (Versi 8 dipakai fitur biaya admin Midtrans.)
  */
 export const schemaV9: string[] = [
   `CREATE TABLE brand_assets (

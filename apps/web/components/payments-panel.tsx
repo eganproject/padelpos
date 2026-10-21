@@ -4,13 +4,16 @@ import { Check,Copy,ExternalLink,Loader2,RefreshCw,ShieldCheck,TriangleAlert } f
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { formatShortDay } from "@/lib/shop";
-import { type AdminIntent,type PaymentSettings,amountDue,intentLabel,intentTone,payTypeLabel } from "@/lib/payments";
+import { type AdminIntent,type ChannelFee,type FeeBearer,type PaymentSettings,amountDue,feeFor,intentLabel,intentTone,payTypeLabel,rateLabel,surchargeFor } from "@/lib/payments";
 import { ErrorBox } from "./operation-ui";
 import { Select } from "./form-controls";
 
 type Data={settings:PaymentSettings;intents:AdminIntent[];date:string;time:string;timezone:string};
-type Form={enabled:boolean;environment:"sandbox"|"production";client_key:string;server_key:string;clear_server_key:boolean;mode:"full"|"dp";dp_percent:number;hold_minutes:number;note:string};
-const formFrom=(settings:PaymentSettings):Form=>({enabled:settings.enabled,environment:settings.environment,client_key:settings.client_key,server_key:"",clear_server_key:false,mode:settings.mode,dp_percent:settings.dp_percent,hold_minutes:settings.hold_minutes,note:settings.note});
+type Form={enabled:boolean;environment:"sandbox"|"production";client_key:string;server_key:string;clear_server_key:boolean;mode:"full"|"dp";dp_percent:number;hold_minutes:number;note:string;fee_bearer:FeeBearer;vat_percent:number;channels:ChannelFee[]};
+const formFrom=(settings:PaymentSettings):Form=>({enabled:settings.enabled,environment:settings.environment,client_key:settings.client_key,server_key:"",clear_server_key:false,mode:settings.mode,dp_percent:settings.dp_percent,hold_minutes:settings.hold_minutes,note:settings.note,
+  fee_bearer:settings.fee_bearer,vat_percent:settings.vat_percent,channels:settings.channels.map(channel=>({...channel}))});
+/** Contoh di panel: harga lapangan yang mudah dibayangkan. */
+const sample=350000;
 
 export function PaymentsPanel(){
   const [data,setData]=useState<Data|null>(null),[form,setForm]=useState<Form|null>(null);
@@ -28,7 +31,8 @@ export function PaymentsPanel(){
     event.preventDefault();if(!form)return;
     setBusy("simpan");setError("");
     try{
-      const result=await api<{settings:PaymentSettings}>("/operations/payments/settings",{method:"PUT",body:JSON.stringify(form)});
+      const body={...form,channels:Object.fromEntries(form.channels.map(({key,enabled,percent,flat,vat})=>[key,{enabled,percent,flat,vat}]))};
+      const result=await api<{settings:PaymentSettings}>("/operations/payments/settings",{method:"PUT",body:JSON.stringify(body)});
       setData(current=>current&&{...current,settings:result.settings});setForm(formFrom(result.settings));setTest(null);
       toast.success("Pengaturan pembayaran disimpan");
     }catch(e){setError((e as Error).message)}finally{setBusy("")}
@@ -53,6 +57,8 @@ export function PaymentsPanel(){
   if(error&&!data)return <ErrorBox message={error} retry={load}/>;
   if(!data||!form||!settings)return <p className="empty-state">Memuat pengaturan pembayaran…</p>;
   const sandbox=form.environment==="sandbox";
+  const setChannel=(key:string,patch:Partial<ChannelFee>)=>setForm(current=>current&&{...current,channels:current.channels.map(channel=>channel.key===key?{...channel,...patch}:channel)});
+  const qris=form.channels.find(channel=>channel.key==="qris"&&channel.enabled)??form.channels.find(channel=>channel.enabled);
   const keyHint=sandbox?"SB-Mid-server-…":"Mid-server-…";
   return <div className="cms">
     {error&&<ErrorBox message={error}/>}
@@ -69,6 +75,7 @@ export function PaymentsPanel(){
         <div><dt>Server key</dt><dd>{settings.server_key_set?(settings.key_source==="env"?"Dari environment":"Tersimpan di panel"):"Belum diisi"}</dd></div>
         <div><dt>Cara menagih</dt><dd>{settings.mode==="dp"?`DP ${settings.dp_percent}%`:"Bayar penuh"}</dd></div>
         <div><dt>Batas bayar</dt><dd>{settings.hold_minutes} menit</dd></div>
+        <div><dt>Biaya admin</dt><dd>{settings.fee_bearer==="customer"?"Ditanggung pelanggan":"Ditanggung venue"}</dd></div>
       </dl>
       <button type="button" className="ops-secondary" onClick={()=>void runTest()} disabled={!settings.server_key_set||!!busy}>
         {busy==="uji"?<Loader2 size={15} className="spin"/>:<RefreshCw size={15}/>} Uji koneksi
@@ -125,6 +132,34 @@ export function PaymentsPanel(){
         </section>
 
         <section className="cms-card wide">
+          <header><h2>Biaya admin Midtrans</h2><p>Midtrans memotong biaya setiap transaksi yang berhasil, besarnya berbeda per metode. Tarif awal mengikuti harga standar di midtrans.com/pricing; ubah bila kontrak venue Anda berbeda. Berlaku untuk booking online, link tagihan, member, dan kasir.</p></header>
+          <fieldset className="chip-field"><legend>Siapa yang menanggung</legend>
+            <div className="chip-group">
+              <button type="button" aria-pressed={form.fee_bearer==="venue"} onClick={()=>set("fee_bearer","venue")}>Venue</button>
+              <button type="button" aria-pressed={form.fee_bearer==="customer"} onClick={()=>set("fee_bearer","customer")}>Pelanggan</button>
+            </div>
+          </fieldset>
+          {qris&&<p className="fee-example">{form.fee_bearer==="customer"
+            ?<>Contoh harga {money(sample)} lewat {qris.label}: pelanggan memilih metode dulu, lalu membayar <b>{money(sample+surchargeFor(form,qris,sample))}</b> (biaya layanan {money(surchargeFor(form,qris,sample))}). Venue tetap menerima {money(sample)}. Biaya layanan dicatat sebagai Pendapatan Biaya Layanan Pembayaran dan potongan Midtrans sebagai Biaya Bank &amp; Payment Gateway.</>
+            :<>Contoh harga {money(sample)} lewat {qris.label}: pelanggan membayar {money(sample)}, Midtrans memotong {money(feeFor(qris,sample,form.vat_percent))}, dan venue menerima <b>{money(sample-feeFor(qris,sample,form.vat_percent))}</b>. Potongannya dicatat sebagai Biaya Bank &amp; Payment Gateway di laba rugi.</>}
+          </p>}
+          <div className="fee-scroll"><table className="fee-table">
+            <thead><tr><th>Metode</th><th>Persen</th><th>Biaya tetap</th><th>+PPN</th><th className="num">{form.fee_bearer==="customer"?`Biaya layanan dari ${money(sample)}`:`Potongan dari ${money(sample)}`}</th></tr></thead>
+            <tbody>{form.channels.map(channel=><tr key={channel.key} className={channel.enabled?"":"off"}>
+              <td><label className="cms-check"><input type="checkbox" checked={channel.enabled} onChange={e=>setChannel(channel.key,{enabled:e.target.checked})}/> <span>{channel.label}<small>{channel.hint}</small></span></label></td>
+              <td><input type="number" min={0} max={10} step={0.01} value={channel.percent} aria-label={`Persen ${channel.label}`} onChange={e=>setChannel(channel.key,{percent:Number(e.target.value)||0})}/></td>
+              <td><input type="number" min={0} max={50000} step={100} value={channel.flat} aria-label={`Biaya tetap ${channel.label}`} onChange={e=>setChannel(channel.key,{flat:Math.round(Number(e.target.value))||0})}/></td>
+              <td><input type="checkbox" checked={channel.vat} aria-label={`Tambah PPN untuk ${channel.label}`} onChange={e=>setChannel(channel.key,{vat:e.target.checked})}/></td>
+              <td className="num">{money(form.fee_bearer==="customer"?surchargeFor(form,channel,sample):feeFor(channel,sample,form.vat_percent))}<small>{rateLabel(channel)}</small></td>
+            </tr>)}</tbody>
+          </table></div>
+          <label className="cms-field"><span className="cms-label">PPN atas biaya Midtrans (%)</span>
+            <input type="number" min={0} max={20} step={0.5} value={form.vat_percent} onChange={e=>set("vat_percent",Number(e.target.value)||0)}/>
+            <small className="cms-hint">Midtrans menagih PPN untuk tarif yang ditandai +PPN (VA, kartu, paylater). QRIS, GoPay, ShopeePay, dan gerai retail sudah termasuk pajak. Metode yang dimatikan tidak tampil di halaman bayar.</small>
+          </label>
+        </section>
+
+        <section className="cms-card wide">
           <header><h2>Webhook Midtrans</h2><p>Tempel alamat ini di dashboard Midtrans: Settings → Configuration → Payment Notification URL. Tanpa itu, pembayaran yang masuk tidak otomatis mengonfirmasi booking.</p></header>
           <div className="pay-copy">
             <input readOnly value={settings.webhook_url} onFocus={e=>e.target.select()}/>
@@ -150,7 +185,7 @@ export function PaymentsPanel(){
         <td data-label="Waktu">{new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}<small className="table-description">{intent.environment==="production"?"Produksi":"Sandbox"}</small></td>
         <td className="wide" data-label="Pesanan"><b>{intent.customer}</b><small className="table-description">{intent.order_id} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</small></td>
         <td data-label="Jadwal">{intent.court_name}<small className="table-description">{formatShortDay(intent.date)} · {intent.start_time} – {intent.end_time}</small></td>
-        <td data-label="Nominal">{money(intent.amount)}</td>
+        <td data-label="Nominal">{money(intent.amount)}{(intent.surcharge??0)>0&&<small className="table-description">termasuk biaya layanan {money(intent.surcharge!)}</small>}</td>
         <td data-label="Metode">{intent.payment_type?payTypeLabel(intent.payment_type):"—"}</td>
         <td data-label="Status"><span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span></td>
         <td className="actions"><div className="row-actions">

@@ -1,15 +1,16 @@
 "use client";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
   type Account, type AccountSubtype, type AccountType, type Partner, type Setup,
-  type GatewayFee, formatDate, methodLabels, money, partnerKindLabel, subtypeLabel, typeLabel,
+  formatDate, methodLabels, money, partnerKindLabel, subtypeLabel, typeLabel,
 } from "@/lib/finance";
 import { Modal } from "./operation-ui";
 import { Empty } from "./finance-ui";
-import { Select, DateInput, MoneyInput } from "./form-controls";
+import { Select, DateInput } from "./form-controls";
 
 const typeOrder: AccountType[] = ["aset","liabilitas","ekuitas","pendapatan","beban"];
 const subtypesFor: Record<AccountType,AccountSubtype[]> = {
@@ -193,7 +194,6 @@ function PartnerForm({ partner, close, saved }: { partner?:Partner|null; close:(
   );
 }
 
-const onlineMethods = methodLabels.filter(method => method.key!=="cash");
 function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
   const cash = setup.accounts.filter(account => account.is_cash && account.active);
   // Rekening yang sudah dinonaktifkan tidak ada di pilihan. Nilai awal disamakan dengan yang tampil di
@@ -206,17 +206,13 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
       default_cash_account: fallback,
       locked_until: setup.settings.locked_until,
       tax: { ...setup.settings.tax },
-      gateway_fees: Object.fromEntries(onlineMethods.map(method => [method.key, setup.settings.gateway_fees[method.key] ?? { percent:0, flat:0 }])) as Record<string,GatewayFee>,
     };
   });
   const [saving,setSaving] = useState(false);
   const stored = setup.settings;
-  const fee = (fees:Record<string,GatewayFee>, key:string) => fees[key] ?? { percent:0, flat:0 };
   const dirty = !(methodLabels.every(method => stored.cash_accounts[method.key]===form.cash_accounts[method.key])
     && stored.default_cash_account===form.default_cash_account && stored.locked_until===form.locked_until
-    && JSON.stringify(stored.tax)===JSON.stringify(form.tax)
-    && onlineMethods.every(method => JSON.stringify(fee(stored.gateway_fees,method.key))===JSON.stringify(fee(form.gateway_fees,method.key))));
-  const setFee = (key:string, patch:Partial<GatewayFee>) => setForm(current => ({ ...current, gateway_fees:{ ...current.gateway_fees, [key]:{ ...fee(current.gateway_fees,key), ...patch } } }));
+    && JSON.stringify(stored.tax)===JSON.stringify(form.tax));
   const sample = 300000, sampleTax = form.tax.enabled ? (form.tax.inclusive ? Math.round(sample*form.tax.rate/(100+form.tax.rate)) : Math.round(sample*form.tax.rate/100)) : 0;
   async function submit(event:React.FormEvent) {
     event.preventDefault(); setSaving(true);
@@ -273,22 +269,8 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
         )}
       </section>
       <section className="fin-sheet">
-        <header><h4>Potongan payment gateway</h4></header>
-        <p className="fin-note">Isi sesuai tarif Midtrans di kontrak Anda. Potongannya dicatat sebagai biaya, sehingga saldo Bank sama dengan uang yang benar-benar masuk rekening. Perubahan hanya berlaku untuk pembayaran berikutnya.</p>
-        <div className="fin-method-grid">
-          {onlineMethods.map(method => (
-            <div className="fin-field" key={method.key}><span className="fin-label">{method.label}</span>
-              <div className="fin-form-grid">
-                <label className="fin-field"><span className="fin-hint">Persen</span>
-                  <input type="number" min={0} max={20} step={0.01} value={fee(form.gateway_fees,method.key).percent||""} placeholder="0" onChange={e=>setFee(method.key,{percent:Number(e.target.value)||0})}/>
-                </label>
-                <label className="fin-field"><span className="fin-hint">Tetap</span>
-                  <MoneyInput min={0} max={100000} value={fee(form.gateway_fees,method.key).flat||""} placeholder="0" onChange={e=>setFee(method.key,{flat:Math.round(Number(e.target.value))||0})}/>
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
+        <header><h4>Biaya admin Midtrans</h4></header>
+        <p className="fin-note">Tarif per metode dan siapa yang menanggungnya diatur di <Link href="/admin/payments">Pembayaran Online</Link>. Potongan Midtrans dicatat ke Biaya Bank &amp; Payment Gateway; biaya layanan yang dibayar pelanggan dicatat ke Pendapatan Biaya Layanan Pembayaran.</p>
       </section>
       <section className="fin-sheet">
         <header><h4><Lock size={15}/> Kunci pembukuan</h4></header>

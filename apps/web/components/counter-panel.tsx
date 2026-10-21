@@ -7,6 +7,8 @@ import { api, money } from "@/lib/api";
 import { unitLabel } from "@/lib/addons";
 import { billOf, taxName } from "@/lib/bill";
 import { formatShortDay } from "@/lib/shop";
+import { channelName, surchargeFor, type ChannelKey } from "@/lib/payments";
+import { ChannelPicker } from "./channel-picker";
 import { type SaleDetail, type SaleList, type SaleMethod, type SaleOptions, bookingLabel, cashPresets, durationLabel, durations, methodName, saleMethods, saleStatus, walkInName } from "@/lib/counter";
 import { loadSnap } from "@/lib/snap";
 import { type CustomerChoice, CustomerSelect } from "./customer-select";
@@ -62,7 +64,7 @@ export function CounterPanel({ changed }: { changed: () => void }) {
 }
 
 function SaleForm({ close, done }: { close: () => void; done: (id: string) => void }) {
-  const [form, setForm] = useState({ id: crypto.randomUUID(), phone: "", duration: 60, booking_id: "", method: "cash" as SaleMethod, tendered: "" as number | "", discount: 0, discount_note: "", notes: "" });
+  const [form, setForm] = useState({ id: crypto.randomUUID(), phone: "", duration: 60, booking_id: "", method: "cash" as SaleMethod, tendered: "" as number | "", discount: 0, discount_note: "", notes: "", channel: null as ChannelKey | null });
   const [customer, setCustomer] = useState<CustomerChoice | null>(null);
   const [options, setOptions] = useState<SaleOptions | null>(null), [drafts, setDrafts] = useState<Draft[]>([]);
   const [showDiscount, setShowDiscount] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -100,6 +102,12 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
   const tendered = form.tendered === "" ? null : Number(form.tendered);
   const change = form.method === "cash" && tendered !== null ? tendered - bill.total : 0;
   const midtrans = form.method === "midtrans";
+  // Biaya admin Midtrans yang ditanggung pelanggan: kasir memilih metodenya, totalnya ikut naik.
+  const fees = options?.midtrans.fees;
+  const customerPays = midtrans && fees?.fee_bearer === "customer" && fees.channels.length > 0;
+  const channel = customerPays ? fees.channels.find(entry => entry.key === form.channel) ?? fees.channels.find(entry => entry.key === "qris") ?? fees.channels[0] : undefined;
+  const surcharge = customerPays ? surchargeFor(fees, channel, bill.total) : 0;
+  const charge = bill.total + surcharge;
   const name = customer?.name.trim() ?? "";
   const ready = chosen.length > 0 && bill.total > 0 && (!renting || name.length >= 2) && (form.method !== "cash" || tendered === null || tendered >= bill.total) && (!midtrans || (!!options?.midtrans.enabled && bill.total >= 1000));
 
@@ -108,7 +116,7 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     try {
       const result = await api<SaleDetail>("/operations/counter", { method: "POST", body: JSON.stringify({
         id: form.id, customer: name, phone: customer?.customer_id ? "" : (customer?.isNew ? form.phone.trim() : customer?.phone ?? ""), customer_id: customer?.customer_id ?? null,
-        booking_id: form.booking_id || null, duration: form.duration, lines: draftPayload(chosen), method: form.method,
+        booking_id: form.booking_id || null, duration: form.duration, lines: draftPayload(chosen), method: form.method, channel: channel?.key ?? null,
         tendered: form.method === "cash" ? tendered : null, discount, discount_note: discount ? form.discount_note : "", notes: form.notes,
       }) });
       toast.success(result.sale.status === "pending" ? `${result.sale.number} menunggu pembayaran Midtrans` : `${result.sale.number} tercatat · ${money(result.sale.total)}`);
@@ -142,11 +150,13 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     <div className="ops-total"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
     {discount > 0 && <div className="ops-total"><span>Potongan</span><strong>−{money(discount)}</strong></div>}
     {bill.tax > 0 && options?.tax && <div className="ops-total"><span>{taxName(options.tax)}</span><strong>{money(bill.tax)}</strong></div>}
-    <div className="ops-total counter-grand"><span>Total bayar</span><strong>{money(bill.total)}</strong></div>
+    {surcharge > 0 && <div className="ops-total"><span>Biaya layanan {channel?.label}</span><strong>{money(surcharge)}</strong></div>}
+    <div className="ops-total counter-grand"><span>Total bayar</span><strong>{money(charge)}</strong></div>
 
     <fieldset className="chip-field"><legend>Metode bayar</legend><div className="chip-group">{saleMethods.map(method => <button type="button" key={method.value} aria-pressed={form.method === method.value} disabled={method.value === "midtrans" && options !== null && !options.midtrans.enabled} onClick={() => set("method", method.value)}>{method.value === "midtrans" && <QrCode size={13} aria-hidden="true" />}{method.label}</button>)}</div>
       {options && !options.midtrans.enabled && <small className="ops-muted">Midtrans belum aktif. Admin dapat mengaktifkannya di menu Pembayaran.</small>}
-      {midtrans && <small className="ops-muted">Setelah disimpan, layar menampilkan QR tagihan. Pelanggan memindainya dengan ponsel dan memilih QRIS, e-wallet, virtual account, atau kartu. Lunas otomatis begitu pembayaran masuk; tidak dibayar dalam {options?.midtrans.minutes ?? 15} menit berarti batal dan stok kembali.</small>}
+      {customerPays && <ChannelPicker compact fees={fees} base={bill.total} value={channel?.key ?? null} onChange={key => set("channel", key)} name="metode-kasir" />}
+      {midtrans && <small className="ops-muted">Setelah disimpan, layar menampilkan QR tagihan. Pelanggan memindainya dengan ponsel dan {customerPays ? `membayar lewat ${channel?.label ?? "metode yang dipilih"}; biaya admin Midtrans ditanggung pelanggan` : "memilih QRIS, e-wallet, virtual account, atau kartu"}. Lunas otomatis begitu pembayaran masuk; tidak dibayar dalam {options?.midtrans.minutes ?? 15} menit berarti batal dan stok kembali.</small>}
       {form.method === "qris" && <small className="ops-muted">QRIS statis venue (dicek manual). Pilih Midtrans untuk QRIS yang terkonfirmasi otomatis.</small>}
     </fieldset>
     {form.method === "cash" && bill.total > 0 && <div className="counter-cash">
@@ -155,7 +165,7 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
       {tendered !== null && <p className={`counter-change${change < 0 ? " short" : ""}`}>{change < 0 ? `Kurang ${money(-change)}` : `Kembalian ${money(change)}`}</p>}
     </div>}
     <label>Catatan (opsional)<input maxLength={300} value={form.notes} placeholder="Mis. jaminan KTP" onChange={e => set("notes", e.target.value)} /></label>
-  </div><div className="modal-actions"><button type="button" onClick={close} disabled={busy}>Batal</button><button className="ops-primary" type="submit" disabled={busy || !ready || !options}>{busy ? "Menyimpan…" : midtrans ? `Buat tagihan Midtrans ${bill.total > 0 ? money(bill.total) : ""}` : `Simpan & lunas ${bill.total > 0 ? money(bill.total) : ""}`}</button></div></form></Modal>;
+  </div><div className="modal-actions"><button type="button" onClick={close} disabled={busy}>Batal</button><button className="ops-primary" type="submit" disabled={busy || !ready || !options}>{busy ? "Menyimpan…" : midtrans ? `Buat tagihan Midtrans ${bill.total > 0 ? money(charge) : ""}` : `Simpan & lunas ${bill.total > 0 ? money(bill.total) : ""}`}</button></div></form></Modal>;
 }
 
 /** Sisa waktu bayar dalam mm:ss, diperbarui tiap detik. */
@@ -198,12 +208,12 @@ function PaymentWait({ data, refreshed }: { data: SaleDetail; refreshed: (next: 
     try { await navigator.clipboard.writeText(sale.pay_url!); toast.success("Tautan bayar disalin"); } catch { toast.error("Tidak dapat menyalin. Salin manual dari kolom tautan."); }
   }
   const digits = sale.phone.replace(/\D/g, ""), wa = digits.length >= 9 ? (digits.startsWith("0") ? "62" + digits.slice(1) : digits) : "";
-  const message = `Tagihan ${sale.number} sebesar ${money(sale.total)}. Bayar lewat tautan ini: ${sale.pay_url}`;
+  const message = `Tagihan ${sale.number} sebesar ${money(sale.total + (sale.surcharge ?? 0))}. Bayar lewat tautan ini: ${sale.pay_url}`;
   if (!sale.pay_url) return <p className="ops-muted">Menyiapkan halaman bayar…</p>;
   return <section className="counter-pay" aria-label="Pembayaran Midtrans">
-    <div className="counter-pay-amount"><span>Total tagihan</span><strong>{money(sale.total)}</strong>{countdown && <small className={countdown.left < 120 ? "late" : ""}>{countdown.left ? `Berlaku ${countdown.label} lagi` : "Batas bayar lewat, memeriksa status…"}</small>}</div>
+    <div className="counter-pay-amount"><span>Total tagihan{(sale.surcharge ?? 0) > 0 ? ` · termasuk biaya layanan ${money(sale.surcharge!)}` : ""}</span><strong>{money(sale.total + (sale.surcharge ?? 0))}</strong>{countdown && <small className={countdown.left < 120 ? "late" : ""}>{countdown.left ? `Berlaku ${countdown.label} lagi` : "Batas bayar lewat, memeriksa status…"}</small>}</div>
     <div className="counter-pay-qr">{qr ? <img src={qr} alt={`QR tagihan ${sale.number}`} width={220} height={220} /> : <span className="ops-muted">Membuat QR…</span>}</div>
-    <p className="counter-pay-hint">Minta pelanggan memindai QR ini dengan kamera ponsel, lalu pilih QRIS, GoPay/ShopeePay, virtual account, atau kartu di halaman Midtrans.</p>
+    <p className="counter-pay-hint">Minta pelanggan memindai QR ini dengan kamera ponsel, lalu {sale.channel ? `bayar lewat ${channelName(sale.channel)}` : "pilih QRIS, GoPay/ShopeePay, virtual account, atau kartu"} di halaman Midtrans.</p>
     <p className="counter-pay-live"><span className="counter-pay-dot" aria-hidden="true" /> Menunggu pembayaran. Status diperbarui otomatis.</p>
     {problem && <ErrorBox message={problem} />}
     <div className="counter-pay-actions">
@@ -267,7 +277,8 @@ export function SaleDetailModal({ id, close, changed }: { id: string; close: () 
       {sale.discount > 0 && <div className="ops-total"><span>Potongan · {sale.discount_note}</span><strong>−{money(sale.discount)}</strong></div>}
       {sale.tax > 0 && <div className="ops-total"><span>{taxName(sale)}</span><strong>{money(sale.tax)}</strong></div>}
       <div className="ops-total"><span>Total{pending ? "" : ` · ${methodName[sale.method] ?? sale.method}${sale.pay_order_id && sale.status === "paid" ? " via Midtrans" : ""}`}</span><strong>{money(sale.total)}</strong></div>
-      {sale.fee > 0 && sale.status === "paid" && <p className="ops-muted">Potongan Midtrans {money(sale.fee)} dicatat sebagai beban payment gateway.</p>}
+      {(sale.surcharge ?? 0) > 0 && <div className="ops-total"><span>Biaya layanan Midtrans · dibayar pelanggan</span><strong>{money(sale.surcharge!)}</strong></div>}
+      {sale.fee > 0 && sale.status === "paid" && <p className="ops-muted">Potongan Midtrans {money(sale.fee)} dicatat sebagai beban payment gateway{(sale.surcharge ?? 0) > 0 ? `, biaya layanan ${money(sale.surcharge!)} sebagai pendapatan` : ""}.</p>}
       {sale.tendered !== null && <div className="ops-total"><span>Diterima {money(sale.tendered)}</span><strong>Kembali {money(sale.tendered - sale.total)}</strong></div>}
       {sale.status === "void" || sale.status === "expired" ? <p>{sale.status === "void" ? "Dibatalkan" : "Kedaluwarsa"}{sale.voided_at ? ` ${new Date(sale.voided_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}` : ""}: {sale.void_reason}</p>
         : <div className="ops-status-actions"><h3>{pending ? "Batalkan tagihan" : "Batalkan transaksi"}</h3><p className="ops-muted">{pending ? "Pelanggan tidak jadi atau ingin bayar dengan cara lain. Halaman bayar Midtrans dihentikan dan stok kembali; buat transaksi baru untuk metode lain." : sale.pay_order_id ? "Untuk salah input atau pelanggan tidak jadi. Pembukuan dibalik dan stok kembali. Dana Midtrans dikembalikan manual (dari dashboard Midtrans atau tunai)." : "Untuk salah input atau pelanggan tidak jadi. Pembukuan dibalik pada tanggal hari ini dan stok barang jual kembali."}</p><label>Alasan pembatalan<input minLength={3} maxLength={200} value={reason} onChange={e => setReason(e.target.value)} placeholder="Wajib diisi untuk membatalkan" /></label><button className="ops-danger" disabled={busy || reason.trim().length < 3} onClick={() => void cancel()}>{pending ? "Batalkan tagihan" : "Batalkan transaksi"}</button></div>}

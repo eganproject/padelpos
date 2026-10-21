@@ -27,7 +27,7 @@ export interface Booking {id:string;court_id:string;court_name:string;customer_i
   /** Salinan keanggotaan saat dipesan: tarif diskon dalam basis poin dan nilai potongannya (sudah termasuk dalam `total`). */
   membership_id:string|null;member_plan:string;member_court_rate:number;member_addon_rate:number;member_discount:number}
 export interface Maintenance {id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string}
-export interface Payment {id:string;booking_id:string;amount:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
+export interface Payment {id:string;booking_id:string;amount:number;fee?:number;surcharge?:number;kind:"payment"|"refund";method:string;source:"staff"|"gateway";gateway_ref:string|null;note:string;created_at:string;created_by:string|null}
 export const dateSchema=z.string("Pilih tanggal.").regex(/^\d{4}-\d{2}-\d{2}$/,"Tanggal tidak valid.").refine(v=>{const date=new Date(v+"T00:00:00Z");return !isNaN(date.getTime())&&date.toISOString().slice(0,10)===v},"Tanggal tidak valid.");
 export const timeSchema=z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$/,"Jam harus menggunakan interval 30 menit.");
 /** Nomor telepon kontak: angka dengan spasi, tanda hubung, kurung, atau awalan +, berisi 9–15 digit. */

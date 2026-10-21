@@ -13,7 +13,8 @@ import { policySummary, whatsappLink } from "@/lib/venue-info";
 import {
   cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
 } from "@/lib/cart";
-import { amountDue, quoteCart, startCheckout, type CartQuote } from "@/lib/payments";
+import { amountDue, quoteCart, startCheckout, surchargeFor, type CartQuote, type ChannelKey } from "@/lib/payments";
+import { ChannelPicker, cheapestChannel } from "@/components/channel-picker";
 import { billOf, taxName } from "@/lib/bill";
 import { useAccount, validPhone } from "@/lib/account";
 
@@ -31,6 +32,7 @@ export default function CartPage() {
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [channel, setChannel] = useState<ChannelKey | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
   const account = useAccount();
@@ -92,10 +94,19 @@ export default function CartPage() {
     ? quote.amount
     : payment ? valid.reduce((sum, entry) => sum + amountDue(payment, entry.total), 0) : total;
   const later = total - payNow;
+  // Biaya admin Midtrans yang ditanggung pelanggan berbeda per metode, jadi metodenya dipilih di sini.
+  const fees = payment?.fees;
+  const customerPays = fees?.fee_bearer === "customer" && fees.channels.length > 0;
+  const picked = customerPays ? fees.channels.find(entry => entry.key === channel) ?? null : null;
+  const surcharge = customerPays ? surchargeFor(fees, picked ?? undefined, payNow) : 0;
+  const charge = payNow + surcharge;
+  useEffect(() => {
+    if (customerPays && (!channel || !fees.channels.some(entry => entry.key === channel))) setChannel(cheapestChannel(fees, payNow));
+  }, [customerPays, fees, channel, payNow]);
   const policyLine = venue ? policySummary(venue.policies) : null;
   const phoneValid = validPhone(form.phone);
   const nameValid = form.customer.trim().length >= 2;
-  const ready = items.length > 0 && !blocked && !checking && nameValid && phoneValid;
+  const ready = items.length > 0 && !blocked && !checking && nameValid && phoneValid && (!customerPays || !!picked);
 
   const message = items.length ? [
     `Halo${info?.name ? ` ${info.name}` : ""}, saya ingin memesan:`,
@@ -119,6 +130,7 @@ export default function CartPage() {
       const result = await startCheckout({
         items: cartPayload(items),
         customer: form.customer.trim(), phone: form.phone.trim(), email: form.email.trim(), notes: form.notes.trim(),
+        channel: customerPays ? channel : null,
       });
       // Sesi sudah menjadi pesanan di server; keranjang tidak perlu disimpan lagi.
       clearCart();
@@ -232,8 +244,14 @@ export default function CartPage() {
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
                 <>
-                  <div className="now"><dt>Bayar sekarang (DP {payment.dp_percent}%)</dt><dd>{money(payNow)}</dd></div>
+                  <div className={surcharge > 0 ? "" : "now"}><dt>Bayar sekarang (DP {payment.dp_percent}%)</dt><dd>{money(payNow)}</dd></div>
                   <div><dt>Sisa, dibayar di venue</dt><dd>{money(later)}</dd></div>
+                </>
+              )}
+              {payment?.enabled && surcharge > 0 && (
+                <>
+                  <div className="fee"><dt>Biaya layanan · {picked?.label}<small>Biaya admin Midtrans, ditanggung pemesan</small></dt><dd>{money(surcharge)}</dd></div>
+                  <div className="now"><dt>Dibayar sekarang</dt><dd>{money(charge)}</dd></div>
                 </>
               )}
             </dl>
@@ -275,13 +293,16 @@ export default function CartPage() {
                 <span>Catatan <em>opsional</em></span>
                 <input maxLength={300} placeholder="Mis. datang ber-4" value={form.notes} onChange={event => setForm({ ...form, notes: event.target.value })} />
               </label>
+              {customerPays && <ChannelPicker fees={fees} base={payNow} value={channel} onChange={setChannel} />}
               {error && <p className="shop-note error" role="alert">{error}</p>}
               <button className="shop-btn primary lg wide" type="submit" disabled={busy || checking || blocked}>
-                {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan pembayaran…</> : <><Lock size={17} aria-hidden="true" /> Bayar {money(payNow)}</>}
+                {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan pembayaran…</> : <><Lock size={17} aria-hidden="true" /> Bayar {money(charge)}</>}
               </button>
               <p className="fine">
                 <ShieldCheck size={15} aria-hidden="true" />
-                <span>Slot dikunci {payment.hold_minutes} menit selama pembayaran. Diproses aman oleh Midtrans: QRIS, virtual account, e-wallet, atau kartu.</span>
+                <span>Slot dikunci {payment.hold_minutes} menit selama pembayaran. Diproses aman oleh Midtrans{customerPays
+                  ? `; biaya layanan mengikuti tarif Midtrans untuk metode yang dipilih.`
+                  : ": QRIS, virtual account, e-wallet, atau kartu."}</span>
               </p>
               {payment.note && <p className="fine">{payment.note}</p>}
             </form>
@@ -305,8 +326,8 @@ export default function CartPage() {
 
       <div className="pay-bar">
         <div>
-          <small>{payment?.enabled && later > 0 ? "Bayar sekarang" : "Total"}</small>
-          <b>{money(payment?.enabled ? payNow : total)}</b>
+          <small>{payment?.enabled && (later > 0 || surcharge > 0) ? "Bayar sekarang" : "Total"}</small>
+          <b>{money(payment?.enabled ? charge : total)}</b>
         </div>
         {payment?.enabled ? (
           <button type="button" className="shop-btn primary" onClick={payFromBar} disabled={busy || checking || blocked}>

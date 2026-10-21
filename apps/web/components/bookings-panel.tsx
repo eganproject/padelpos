@@ -5,7 +5,9 @@ import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
 import { type AddonOption,type BookingAddon,type UnreturnedRental,unitLabel } from "@/lib/addons";
-import { type PaymentIntent,intentLabel,intentTone,methodLabel } from "@/lib/payments";
+import { type ChannelKey,type PaymentIntent,intentLabel,intentTone,methodLabel,surchargeFor } from "@/lib/payments";
+import { useVenueInfo } from "@/lib/use-venue-info";
+import { ChannelPicker } from "./channel-picker";
 import { formatShortDay } from "@/lib/shop";
 import { billOf,taxName } from "@/lib/bill";
 import { AddonLinesEditor,type Draft,clampDrafts,draftPayload,draftsFrom,draftsTotal } from "./addon-lines";
@@ -313,10 +315,15 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     try{const result=await api<{booking:Booking;addons:BookingAddon[]}>(`/operations/bookings/${id}/addons/returned`,{method:"PATCH",body:JSON.stringify({line_ids:lineIds,returned})});setData(d=>d&&{...d,...result});toast.success(returned?"Barang ditandai sudah kembali":"Tanda kembali dibatalkan");changed()}
     catch(e){setError((e as Error).message)}finally{setBusy(false)}
   }
+  // Biaya admin Midtrans ditanggung pelanggan: link dibuat untuk satu metode agar biaya layanannya pasti.
+  const fees=useVenueInfo().data?.payment.fees;
+  const customerPays=fees?.fee_bearer==="customer"&&fees.channels.length>0;
+  const [linkChannel,setLinkChannel]=useState<ChannelKey|null>(null);
+  const linkPick=customerPays?fees.channels.find(entry=>entry.key===linkChannel)??fees.channels.find(entry=>entry.key==="qris")??fees.channels[0]:undefined;
   async function makeLink(){
     setBusy(true);setError("");
     try{
-      const result=await api<{intent:PaymentIntent}>(`/operations/bookings/${id}/payment-link`,{method:"POST",body:JSON.stringify({})});
+      const result=await api<{intent:PaymentIntent}>(`/operations/bookings/${id}/payment-link`,{method:"POST",body:JSON.stringify({channel:linkPick?.key??null})});
       setData(d=>d&&{...d,intents:[result.intent,...d.intents]});
       await copyLink(result.intent.redirect_url??"");
       toast.success("Link pembayaran dibuat");
@@ -360,9 +367,10 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
     <BillAdjust key={`${booking.id}-${booking.status}`} booking={booking} busy={busy} onSaved={next=>{merge({booking:next});changed()}}/>
     {(payable||refundable)&&<form onSubmit={pay} className="ops-payment"><h3>{refundable?"Catat pengembalian dana":"Catat DP / pelunasan"}</h3><p className="ops-muted">Pastikan uang sudah {refundable?"dikembalikan":"diterima"}. Formulir ini mencatat transaksi manual.</p><div className="field-grid"><label>Nominal<MoneyInput required min={1} max={refundable?refundDue(booking):booking.total-booking.paid} value={form.amount} onChange={e=>setForm({...form,id:crypto.randomUUID(),amount:Number(e.target.value)})}/></label><label>Metode<Select value={form.method} onChange={e=>setForm({...form,id:crypto.randomUUID(),method:e.target.value})}><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="qris">QRIS</option></Select></label></div><label>Catatan / referensi{refundable?" (wajib)":" (opsional)"}<input required={!!refundable} minLength={refundable?3:undefined} maxLength={200} value={form.note} onChange={e=>setForm({...form,id:crypto.randomUUID(),note:e.target.value})}/></label><Submit busy={busy}>{refundable?"Catat pengembalian":"Catat pembayaran"}</Submit></form>}
     {(payable||(data!.intents.length>0))&&<section className="ops-addons" aria-label="Tagihan online">
-      <div className="ops-card-head"><h3>Tagihan online</h3>{payable&&<button type="button" className="ops-secondary" disabled={busy} onClick={()=>void makeLink()}><CreditCard size={14}/> Buat link pembayaran</button>}</div>
+      <div className="ops-card-head"><h3>Tagihan online</h3>{payable&&<button type="button" className="ops-secondary" disabled={busy} onClick={()=>void makeLink()}><CreditCard size={14}/> Buat link pembayaran{linkPick?` ${money(booking.total-booking.paid+surchargeFor(fees,linkPick,booking.total-booking.paid))}`:""}</button>}</div>
+      {payable&&customerPays&&<><ChannelPicker compact fees={fees} base={booking.total-booking.paid} value={linkPick?.key??null} onChange={setLinkChannel} name="metode-link"/><p className="ops-muted">Biaya admin Midtrans ditanggung pelanggan, jadi link hanya menerima metode yang dipilih.</p></>}
       {data!.intents.length?<ul className="pay-links">{data!.intents.map(intent=><li key={intent.order_id}>
-        <div><b>{money(intent.amount)} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</b><small>{intent.order_id} · {new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}</small></div>
+        <div><b>{money(intent.amount)} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}{(intent.surcharge??0)>0?` · termasuk biaya layanan ${money(intent.surcharge!)}`:""}</b><small>{intent.order_id} · {new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}</small></div>
         <span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span>
         {intent.status==="pending"&&intent.redirect_url&&<button type="button" className="ops-link-button" onClick={()=>void copyLink(intent.redirect_url!)}><Copy size={13}/> Salin link</button>}
       </li>)}</ul>:<p className="ops-muted">Belum ada tagihan online. Link berlaku 24 jam dan dapat dikirim ke pelanggan lewat WhatsApp.</p>}

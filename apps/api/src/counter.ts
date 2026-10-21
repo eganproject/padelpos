@@ -5,8 +5,11 @@ import { check } from "./errors.js";
 import { clockLabel, localClock, minutes } from "./clock.js";
 import { type Addon, addons, lineSchema, lineTotal, peakUse, recordMove } from "./addons.js";
 import { billOf, taxSnapshot } from "./bill.js";
-import { gatewayFee, syncCounterSale } from "./finance.js";
-import { createSnapTransaction, expireTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod, type MidtransStatus } from "./midtrans.js";
+import { syncCounterSale } from "./finance.js";
+import {
+  createSnapTransaction, expireTransaction, fetchTransactionStatus, gatewayFee, outcomeOf, paymentConfig, paymentMethod, pickChannel, publicFees,
+  snapPayments, surchargeFor, surchargeItem, type ChannelKey, type MidtransStatus,
+} from "./midtrans.js";
 import { normalizePhone } from "./payments.js";
 import { publicUrl } from "./config.js";
 
@@ -29,12 +32,14 @@ export interface CounterSale {
   total: number; method: string; tendered: number | null; status: SaleStatus; notes: string; void_reason: string;
   voided_at: string | null; created_by: string; created_at: string;
   customer_id: string | null; booking_id: string | null; fee: number; paid_at: string | null;
+  /** Biaya layanan Midtrans yang dibayar pelanggan di atas `total`, dan metode yang dipilih untuknya. */
+  surcharge: number; channel: ChannelKey | null;
   pay_order_id: string | null; snap_token: string | null; pay_url: string | null; pay_expires_at: number | null; payment_type: string | null;
 }
 export type SaleStatus = "pending" | "paid" | "void" | "expired";
 export interface CounterLine { id: string; sale_id: string; addon_id: string | null; name: string; type: Addon["type"] | "lainnya"; pricing: Addon["pricing"]; unit_price: number; quantity: number; subtotal: number; returned_at: string | null }
 
-const columns = "s.id,s.number,s.customer,s.phone,s.date,s.start_time,s.end_time,s.subtotal,s.discount,s.discount_note,s.tax,s.tax_rate,s.tax_inclusive,s.tax_label,s.total,s.method,s.tendered,s.status,s.notes,s.void_reason,s.voided_at,s.created_by,s.created_at,s.customer_id,s.booking_id,s.fee,s.paid_at,s.pay_order_id,s.snap_token,s.pay_url,s.pay_expires_at,s.payment_type";
+const columns = "s.id,s.number,s.customer,s.phone,s.date,s.start_time,s.end_time,s.subtotal,s.discount,s.discount_note,s.tax,s.tax_rate,s.tax_inclusive,s.tax_label,s.total,s.method,s.tendered,s.status,s.notes,s.void_reason,s.voided_at,s.created_by,s.created_at,s.customer_id,s.booking_id,s.fee,s.surcharge,s.channel,s.paid_at,s.pay_order_id,s.snap_token,s.pay_url,s.pay_expires_at,s.payment_type";
 /** Batas bayar Midtrans di kasir: pelanggan membayar di tempat, jadi cukup singkat. */
 export const payMinutes = 15;
 const rupiah = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
@@ -53,6 +58,8 @@ export const saleSchema = z.object({
   duration: z.number().int().min(30, "Lama sewa minimal 30 menit.").max(720, "Lama sewa maksimal 12 jam.").refine(value => value % 30 === 0, "Lama sewa harus kelipatan 30 menit.").default(60),
   lines: z.array(lineSchema.omit({ id: true })).min(1, "Pilih minimal satu barang.").max(30, "Maksimal 30 baris per transaksi."),
   method: z.enum(["cash", "transfer", "qris", "midtrans"]),
+  /** Metode Midtrans yang dipilih; wajib bila biaya admin ditanggung pelanggan. */
+  channel: z.string().max(20).nullable().optional(),
   tendered: z.number().int().min(0).max(999_999_999).nullable().default(null),
   discount: z.number().int().min(0, "Potongan tidak boleh negatif.").max(999_999_999).default(0),
   discount_note: z.string().trim().max(120, "Alasan potongan maksimal 120 karakter.").default(""),
@@ -136,7 +143,7 @@ export async function saleOptions(input: unknown) {
   return {
     addons: list, window, tax: await taxSnapshot(), bookings: await todayBookings(),
     // Client key memang untuk browser: Snap.js memakainya bila pelanggan membayar di layar kasir.
-    midtrans: { enabled: midtrans, client_key: midtrans ? config.clientKey : "", environment: config.environment, minutes: payMinutes },
+    midtrans: { enabled: midtrans, client_key: midtrans ? config.clientKey : "", environment: config.environment, minutes: payMinutes, fees: await publicFees() },
   };
 }
 
@@ -193,9 +200,11 @@ async function customerFor(name: string, phone: string) {
 
 export async function createSale(input: unknown, actor: string) {
   const data = saleSchema.parse(input);
+  let channel: ChannelKey | null = null;
   if (data.method === "midtrans") {
     const config = await paymentConfig();
     check(config.enabled && config.serverKey, 409, "Pembayaran Midtrans belum aktif. Atur dulu di menu Pembayaran, atau pilih metode lain.");
+    channel = await pickChannel(data.channel);
   }
   await expirePendingSales();
   const created = await transaction(async () => {
@@ -248,11 +257,12 @@ export async function createSale(input: unknown, actor: string) {
 
     const id = data.id ?? randomUUID(), now = new Date().toISOString(), online = data.method === "midtrans";
     check(!online || bill.total >= 1000, 400, "Pembayaran Midtrans minimal Rp1.000.");
-    await db.prepare(`INSERT INTO counter_sales (id,number,customer,phone,date,start_time,end_time,subtotal,discount,discount_note,tax,tax_rate,tax_inclusive,tax_label,total,method,tendered,status,notes,created_by,created_at,customer_id,booking_id,paid_at,pay_expires_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    const surcharge = online ? surchargeFor(channel, bill.total, await paymentConfig()) : 0;
+    await db.prepare(`INSERT INTO counter_sales (id,number,customer,phone,date,start_time,end_time,subtotal,discount,discount_note,tax,tax_rate,tax_inclusive,tax_label,total,method,tendered,status,notes,created_by,created_at,customer_id,booking_id,paid_at,pay_expires_at,surcharge,channel)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, await nextNumber(window.date.slice(0, 4)), name || walkInName, phone, window.date, window.start, window.end, subtotal, data.discount, data.discount ? data.discount_note : "",
         bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, bill.total, data.method, data.method === "cash" ? data.tendered : null, online ? "pending" : "paid", data.notes, actor, now,
-        customerId, booking?.id ?? null, online ? null : now, online ? Math.floor(Date.now() / 1000) + payMinutes * 60 : null);
+        customerId, booking?.id ?? null, online ? null : now, online ? Math.floor(Date.now() / 1000) + payMinutes * 60 : null, surcharge, online ? channel : null);
     for (const entry of plan) {
       await db.prepare("INSERT INTO counter_sale_lines (id,sale_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
         .run(randomUUID(), id, entry.addon?.id ?? null, entry.name, entry.type, entry.pricing, entry.unit_price, entry.quantity, entry.subtotal, now);
@@ -285,8 +295,9 @@ async function openPayment(id: string, actor: string) {
   if (sum !== sale.total) items.push({ id: "penyesuaian", price: sale.total - sum, quantity: 1, name: "Penyesuaian pembulatan" });
   try {
     const snap = await createSnapTransaction({
-      transaction_details: { order_id: orderId, gross_amount: sale.total },
-      item_details: items,
+      transaction_details: { order_id: orderId, gross_amount: sale.total + sale.surcharge },
+      item_details: [...items, ...surchargeItem(sale.surcharge, sale.channel)],
+      ...await snapPayments(sale.channel),
       customer_details: { first_name: sale.customer.slice(0, 20), ...(sale.phone ? { phone: sale.phone.slice(0, 19) } : {}) },
       expiry: { unit: "minute", duration: payMinutes },
       callbacks: { finish: `${publicUrl}/` },
@@ -331,7 +342,7 @@ export async function applySaleStatus(sale: CounterSale, status: MidtransStatus)
       if (late) for (const line of await saleLines(sale.id)) if (line.type === "jual" && line.addon_id) await consume(line.addon_id, line.quantity, sale.id, "midtrans", "Pembayaran Midtrans masuk terlambat");
       await db.prepare(`UPDATE counter_sales SET status='paid',method=?,fee=?,paid_at=?,payment_type=?,transaction_id=?,void_reason='',voided_at=NULL,voided_by=NULL,
           notes=CASE WHEN ? THEN TRIM(CONCAT(notes,' ','[Pembayaran Midtrans masuk setelah transaksi ${fresh.status === "void" ? "dibatalkan" : "kedaluwarsa"}. Serahkan barangnya atau kembalikan dananya.]')) ELSE notes END
-        WHERE id=?`).run(method, await gatewayFee(method, fresh.total), now, status.payment_type ?? null, status.transaction_id ?? null, late ? 1 : 0, sale.id);
+        WHERE id=?`).run(method, await gatewayFee(status.payment_type, fresh.total + fresh.surcharge), now, status.payment_type ?? null, status.transaction_id ?? null, late ? 1 : 0, sale.id);
       await syncCounterSale(sale.id);
       await audit("midtrans", "counter.paid", sale.id, { total: fresh.total, method, late });
     });

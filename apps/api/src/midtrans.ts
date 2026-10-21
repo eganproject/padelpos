@@ -11,17 +11,46 @@ import { taxSnapshot } from "./bill.js";
  * dikirim kembali ke browser, hanya penanda bahwa kuncinya sudah terisi.
  */
 export type PaymentMode = "full" | "dp";
+/** Siapa yang menanggung biaya admin Midtrans: venue (dipotong dari pendapatan) atau pelanggan (ditambahkan ke tagihan). */
+export type FeeBearer = "venue" | "customer";
+export type ChannelKey = "qris" | "gopay" | "shopeepay" | "va" | "card" | "cstore" | "akulaku" | "kredivo";
+/** Tarif Midtrans untuk satu kanal: persen dari nominal transaksi, ditambah biaya tetap, lalu PPN bila tarifnya belum termasuk pajak. */
+export interface ChannelFee { enabled: boolean; percent: number; flat: number; vat: boolean }
 export interface PaymentSettings {
   enabled: boolean; environment: "sandbox" | "production"; client_key: string; server_key: string;
   mode: PaymentMode; dp_percent: number; hold_minutes: number; note: string; updated_at: string | null;
+  fee_bearer: FeeBearer; vat_percent: number; channels: Record<ChannelKey, ChannelFee>;
 }
+
+/**
+ * Kanal pembayaran Snap dan tarif standar Midtrans (midtrans.com/pricing, Oktober 2026). Venue dengan
+ * tarif khusus dapat mengubahnya di panel. `snap` adalah nilai `enabled_payments`, `types` adalah
+ * `payment_type` yang dikirim kembali oleh Midtrans saat pembayaran masuk.
+ */
+export const channelCatalog: { key: ChannelKey; label: string; hint: string; snap: string[]; types: string[]; defaults: ChannelFee }[] = [
+  { key: "qris", label: "QRIS", hint: "Semua aplikasi bank & e-wallet", snap: ["other_qris"], types: ["qris"], defaults: { enabled: true, percent: 0.7, flat: 0, vat: false } },
+  { key: "gopay", label: "GoPay", hint: "Aplikasi Gojek / GoPay", snap: ["gopay"], types: ["gopay"], defaults: { enabled: true, percent: 2, flat: 0, vat: false } },
+  { key: "shopeepay", label: "ShopeePay", hint: "Aplikasi Shopee", snap: ["shopeepay"], types: ["shopeepay"], defaults: { enabled: true, percent: 2, flat: 0, vat: false } },
+  { key: "va", label: "Virtual account", hint: "BCA, BNI, BRI, Mandiri, Permata, CIMB", snap: ["bca_va", "bni_va", "bri_va", "echannel", "permata_va", "cimb_va", "other_va"],
+    types: ["bank_transfer", "echannel", "permata", "bca_va", "bni_va", "bri_va", "cimb_va", "other_va"], defaults: { enabled: true, percent: 0, flat: 4000, vat: true } },
+  { key: "card", label: "Kartu kredit/debit", hint: "Visa, Mastercard, JCB, Amex", snap: ["credit_card"], types: ["credit_card"], defaults: { enabled: true, percent: 2.9, flat: 2000, vat: true } },
+  { key: "cstore", label: "Indomaret / Alfamart", hint: "Bayar tunai di gerai", snap: ["indomaret", "alfamart"], types: ["cstore"], defaults: { enabled: true, percent: 0, flat: 5000, vat: false } },
+  { key: "akulaku", label: "Akulaku PayLater", hint: "Cicilan tanpa kartu", snap: ["akulaku"], types: ["akulaku"], defaults: { enabled: true, percent: 1.7, flat: 0, vat: true } },
+  { key: "kredivo", label: "Kredivo", hint: "Cicilan tanpa kartu", snap: ["kredivo"], types: ["kredivo"], defaults: { enabled: true, percent: 2, flat: 0, vat: true } },
+];
+export const channelKeys = channelCatalog.map(channel => channel.key) as [ChannelKey, ...ChannelKey[]];
+const defaultChannels = () => Object.fromEntries(channelCatalog.map(channel => [channel.key, { ...channel.defaults }])) as Record<ChannelKey, ChannelFee>;
+
 const defaults: PaymentSettings = {
   enabled: false, environment: "sandbox", client_key: "", server_key: "",
   mode: "full", dp_percent: 50, hold_minutes: 20, note: "", updated_at: null,
+  fee_bearer: "venue", vat_percent: 11, channels: defaultChannels(),
 };
 async function stored(): Promise<PaymentSettings> {
   const row = await db.prepare("SELECT document FROM settings WHERE `key`='payment'").get() as { document: string } | undefined;
-  return { ...defaults, ...(row ? JSON.parse(row.document) as Partial<PaymentSettings> : {}) };
+  const saved = row ? JSON.parse(row.document) as Partial<PaymentSettings> : {};
+  // Kanal yang belum pernah disimpan memakai tarif standar Midtrans.
+  return { ...defaults, ...saved, channels: { ...defaultChannels(), ...(saved.channels ?? {}) } };
 }
 export async function paymentConfig() {
   const settings = await stored();
@@ -38,6 +67,69 @@ export async function paymentConfig() {
 }
 /** Siap dipakai bila admin mengaktifkannya dan server key tersedia. */
 export const paymentReady = async () => { const config = await paymentConfig(); return config.enabled && !!config.serverKey; };
+
+// --- Biaya admin Midtrans --------------------------------------------------------
+
+type FeeConfig = Pick<PaymentSettings, "fee_bearer" | "vat_percent" | "channels">;
+/** Kanal dari `payment_type` Midtrans; null untuk jenis yang tidak dikenal (tanpa potongan). */
+export const channelOf = (paymentType?: string | null) => channelCatalog.find(channel => channel.types.includes(paymentType ?? ""))?.key ?? null;
+export const channelLabel = (key: string | null | undefined) => channelCatalog.find(channel => channel.key === key)?.label ?? "";
+/** Potongan Midtrans untuk satu transaksi senilai `gross` lewat kanal itu, dibulatkan ke rupiah terdekat. */
+export function feeFor(channel: ChannelKey | null, gross: number, config: FeeConfig) {
+  const rate = channel ? config.channels[channel] : undefined;
+  if (!rate || gross <= 0) return 0;
+  const vat = rate.vat ? 1 + config.vat_percent / 100 : 1;
+  return Math.max(0, Math.min(gross, Math.round((gross * rate.percent / 100 + rate.flat) * vat)));
+}
+/**
+ * Biaya layanan yang ditambahkan ke tagihan bila pelanggan menanggung biaya admin. Midtrans memotong
+ * persennya dari nominal yang ditagih (termasuk biaya layanan itu sendiri), jadi angkanya dinaikkan
+ * sampai potongan Midtrans tertutup penuh dan venue tetap menerima harga aslinya.
+ */
+export function surchargeFor(channel: ChannelKey | null, base: number, config: FeeConfig) {
+  if (config.fee_bearer !== "customer" || !channel || base <= 0) return 0;
+  const rate = config.channels[channel];
+  const vat = rate.vat ? 1 + config.vat_percent / 100 : 1;
+  const share = rate.percent / 100 * vat;
+  let surcharge = Math.max(0, Math.ceil((base + rate.flat * vat) / (1 - share)) - base);
+  while (feeFor(channel, base + surcharge, config) > surcharge) surcharge++;
+  return surcharge;
+}
+/** Potongan Midtrans untuk pembayaran yang sudah masuk, menurut jenis pembayaran yang dilaporkan Midtrans. */
+export async function gatewayFee(paymentType: string | null | undefined, gross: number) {
+  return feeFor(channelOf(paymentType), gross, await stored());
+}
+/**
+ * Kanal yang dipilih pelanggan sebelum membuka Midtrans. Wajib bila pelanggan menanggung biaya admin,
+ * karena besarnya berbeda per kanal; bila venue yang menanggung, Midtrans menampilkan semua kanal aktif.
+ */
+export async function pickChannel(input: unknown): Promise<ChannelKey | null> {
+  const config = await stored();
+  const parsed = z.enum(channelKeys).nullable().optional().safeParse(input);
+  const channel = parsed.success ? parsed.data ?? null : null;
+  check(!channel || config.channels[channel].enabled, 400, "Metode pembayaran itu sedang tidak tersedia. Pilih metode lain.");
+  check(channel || config.fee_bearer !== "customer", 400, "Pilih metode pembayaran terlebih dahulu.");
+  return channel;
+}
+/** `enabled_payments` untuk Snap: kanal yang dipilih, atau semua kanal yang aktif. */
+export async function snapPayments(channel: ChannelKey | null) {
+  const config = await stored();
+  if (channel) return { enabled_payments: channelCatalog.find(entry => entry.key === channel)!.snap };
+  const active = channelCatalog.filter(entry => config.channels[entry.key].enabled);
+  return active.length === channelCatalog.length ? {} : { enabled_payments: active.flatMap(entry => entry.snap) };
+}
+/** Baris biaya layanan untuk rincian Midtrans. */
+export const surchargeItem = (surcharge: number, channel: ChannelKey | null) =>
+  surcharge > 0 ? [{ id: "biaya-layanan", price: surcharge, quantity: 1, name: `Biaya layanan ${channelLabel(channel)}`.trim().slice(0, 50) }] : [];
+/** Tarif yang boleh diketahui pelanggan dan kasir, untuk menghitung biaya layanan sebelum membayar. */
+async function publicFees() {
+  const config = await stored();
+  return {
+    fee_bearer: config.fee_bearer, vat_percent: config.vat_percent,
+    channels: channelCatalog.filter(entry => config.channels[entry.key].enabled)
+      .map(entry => ({ key: entry.key, label: entry.label, hint: entry.hint, ...config.channels[entry.key] })),
+  };
+}
 
 /** Nominal yang ditagih online: penuh, atau DP yang dibulatkan ke ribuan terdekat ke atas. */
 export function payableAmount(total: number, config: Pick<PaymentSettings, "mode" | "dp_percent">) {
@@ -139,6 +231,14 @@ export const paymentSettingsSchema = z.object({
   dp_percent: z.number().int().min(10, "DP minimal 10%.").max(90, "DP maksimal 90%."),
   hold_minutes: z.number().int().min(10, "Batas waktu bayar minimal 10 menit.").max(120, "Batas waktu bayar maksimal 120 menit."),
   note: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
+  fee_bearer: z.enum(["venue", "customer"]).optional(),
+  vat_percent: z.number().min(0).max(20, "PPN maksimal 20%.").optional(),
+  channels: z.partialRecord(z.enum(channelKeys), z.object({
+    enabled: z.boolean(),
+    percent: z.number().min(0).max(10, "Persen biaya admin maksimal 10%."),
+    flat: z.number().int().min(0).max(50000, "Biaya tetap maksimal Rp50.000."),
+    vat: z.boolean(),
+  })).optional(),
 });
 export async function savePaymentSettings(input: unknown, actor: string) {
   const data = paymentSettingsSchema.parse(input);
@@ -149,9 +249,16 @@ export async function savePaymentSettings(input: unknown, actor: string) {
     const current = await stored();
     const serverKey = data.clear_server_key ? "" : (data.server_key || current.server_key);
     check(!data.enabled || serverKey || process.env.MIDTRANS_SERVER_KEY, 409, "Isi server key sebelum mengaktifkan pembayaran online.");
+    const channels = { ...current.channels };
+    for (const key of channelKeys) {
+      const rate = data.channels?.[key];
+      if (rate) channels[key] = { enabled: rate.enabled, percent: Math.round(rate.percent * 100) / 100, flat: rate.flat, vat: rate.vat };
+    }
+    check(channelKeys.some(key => channels[key].enabled), 400, "Aktifkan minimal satu metode pembayaran.");
     const next: PaymentSettings = {
       enabled: data.enabled, environment: data.environment, client_key: data.client_key, server_key: serverKey,
       mode: data.mode, dp_percent: data.dp_percent, hold_minutes: data.hold_minutes, note: data.note,
+      fee_bearer: data.fee_bearer ?? current.fee_bearer, vat_percent: data.vat_percent ?? current.vat_percent, channels,
       updated_at: new Date().toISOString(),
     };
     await saveSetting("payment", next);
@@ -166,6 +273,8 @@ export async function adminPayment() {
     enabled: config.enabled, environment: config.environment, client_key: config.clientKey,
     mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes,
     note: config.note, updated_at: config.updated_at,
+    fee_bearer: config.fee_bearer, vat_percent: config.vat_percent,
+    channels: channelCatalog.map(entry => ({ key: entry.key, label: entry.label, hint: entry.hint, ...config.channels[entry.key] })),
     server_key_set: !!config.serverKey, key_source: config.fromEnv ? "env" : "panel",
     ready: await paymentReady(),
     webhook_url: `${publicUrl}/api/public/payments/midtrans/notification`,
@@ -173,6 +282,7 @@ export async function adminPayment() {
   };
 }
 /** Yang boleh diketahui pelanggan. */
+export { publicFees };
 export async function publicPayment() {
   const config = await paymentConfig();
   const ready = await paymentReady();
@@ -180,5 +290,6 @@ export async function publicPayment() {
   return {
     enabled: ready, mode: config.mode, dp_percent: config.dp_percent, hold_minutes: config.hold_minutes, note: config.note, tax: await taxSnapshot(),
     client_key: ready ? config.clientKey : "", environment: config.environment,
+    fees: await publicFees(),
   };
 }
