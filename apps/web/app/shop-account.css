@@ -264,3 +264,11 @@
 .shop .member-terms summary{cursor:pointer;font-size:15px;font-weight:700}
 .shop .member-terms p{margin-top:10px;white-space:pre-line;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
 @media (max-width:519px){.shop .member-claim-fields{grid-template-columns:1fr}}
+
+/* --- Foto profil --------------------------------------------------------- */
+.shop .acct-photo{display:flex;align-items:center;gap:16px}
+.shop .acct-photo-frame{position:relative;display:inline-flex;flex:none;border-radius:50%;overflow:hidden}
+.shop .acct-photo-frame i{position:absolute;inset:0;display:grid;place-items:center;background:rgb(0 0 0 / .45);color:#fff}
+.shop .acct-photo>div{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0}
+.shop .acct-photo .shop-btn.ghost{padding:0 8px}
+.shop .acct-photo small{flex-basis:100%;font-size:12.5px;color:var(--ink-3)}

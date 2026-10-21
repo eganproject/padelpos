@@ -6,11 +6,11 @@ import { ChevronRight, ExternalLink, LogOut, Menu, Moon, PanelLeftClose, PanelLe
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "./brand";
+import { StaffAvatar } from "./staff-avatar";
 import { api, ApiError, forgetSession, clearSession, type User } from "@/lib/api";
 import { AdminNavigation, currentMenu, menuIcon, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
 
 type Theme = "dark" | "light";
-const initials = (name?: string) => (name || "Admin").split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase();
 
 /**
  * Kerangka panel staf bergaya desk ERPNext: bilah navigasi atas (logo, jejak halaman, pencarian,
@@ -110,7 +110,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="desk-sidebar-foot">
             <Link href="/admin/profile" className="desk-sidebar-user" title={compact ? user?.name : undefined} onClick={() => setDrawerOpen(false)}>
-              <span className="desk-avatar" aria-hidden="true">{initials(user?.name)}</span>
+              <span className="desk-avatar" aria-hidden="true"><StaffAvatar user={user}/></span>
               <span className="desk-sidebar-user-text"><b>{user?.name || "Admin"}</b><small>{role.name || user?.email || "Staf"}</small></span>
             </Link>
             <button type="button" className="desk-icon-btn desk-collapse-btn" onClick={toggleSidebar} aria-label={compact ? "Lebarkan menu" : "Ringkas menu"} title={compact ? "Lebarkan menu" : "Ringkas menu"}>
@@ -201,9 +201,9 @@ function UserMenu({ user, roleName, theme, toggleTheme, logout }: { user:User|nu
   }, [open]);
   return (
     <div className="desk-user" ref={box}>
-      <button type="button" className="desk-avatar" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open} aria-label="Menu akun" title={user?.name}>{initials(user?.name)}</button>
+      <button type="button" className="desk-avatar" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open} aria-label="Menu akun" title={user?.name}><StaffAvatar user={user}/></button>
       {open && <div className="desk-dropdown desk-user-menu" role="menu">
-        <div className="desk-user-head"><span className="desk-avatar large" aria-hidden="true">{initials(user?.name)}</span><div><b>{user?.name || "Admin"}</b><small>{roleName || user?.email}</small></div></div>
+        <div className="desk-user-head"><span className="desk-avatar large" aria-hidden="true"><StaffAvatar user={user}/></span><div><b>{user?.name || "Admin"}</b><small>{roleName || user?.email}</small></div></div>
         <Link role="menuitem" href="/admin/profile"><UserRound aria-hidden="true" /> Profil saya</Link>
         <Link role="menuitem" href="/" target="_blank" rel="noopener"><ExternalLink aria-hidden="true" /> Situs pelanggan</Link>
         <button role="menuitem" type="button" onClick={toggleTheme}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />} {theme === "dark" ? "Tema terang" : "Tema gelap"}</button>

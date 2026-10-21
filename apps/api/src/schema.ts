@@ -634,6 +634,24 @@ export const schemaV5: string[] = [
     ADD COLUMN sale_id ${id} NULL,
     ADD CONSTRAINT addon_stock_moves_sale_fk FOREIGN KEY (sale_id) REFERENCES counter_sales(id)`,
 ];
+/**
+ * Versi 6: foto profil staf (pengguna panel admin) dan pelanggan. Satu foto per pemilik; id foto
+ * selalu baru setiap kali diganti agar cache browser untuk foto lama tidak terpakai. Penunjuknya
+ * disimpan di dokumen pengguna (`avatarId`) dan di kolom `customer_accounts.avatar_id`.
+ */
+export const schemaV6: string[] = [
+  `CREATE TABLE avatars (
+    id ${id} PRIMARY KEY,
+    owner_type VARCHAR(16) NOT NULL CHECK(owner_type IN ('user','customer')),
+    owner_id ${id} NOT NULL,
+    mime VARCHAR(20) NOT NULL CHECK(mime IN ('image/jpeg','image/png','image/webp')),
+    data MEDIUMBLOB NOT NULL,
+    bytes INT NOT NULL CHECK(bytes > 0),
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY avatars_owner (owner_type, owner_id)
+  )`,
+  `ALTER TABLE customer_accounts ADD COLUMN avatar_id ${id} NULL`,
+];
 /** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
 export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
   [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],
@@ -644,7 +662,7 @@ export const membershipAccounts: [codes: string[], name: string, type: string, s
 /** Urutan tabel yang aman untuk diisi ulang (induk sebelum anak) saat impor atau pemulihan. */
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
-  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts",
+  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "avatars",
   "membership_plans", "memberships", "membership_invoices", "orders",
   "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
