@@ -34,10 +34,9 @@ export interface FinanceRecord {
   partner_id: string | null; partner_name: string | null; description: string; due_date: string | null;
   settled_at: string | null; entry_id: string | null; entry_number: string | null; photo_id: string | null; created_by: string | null; created_at: string;
 }
-export interface GatewayFee { percent: number; flat: number }
 export interface FinanceSettings {
   cash_accounts: Record<string, string>; default_cash_account: string; locked_until: string; updated_at: string;
-  tax: TaxSettings; gateway_fees: Record<string, GatewayFee>;
+  tax: TaxSettings;
 }
 
 const maxAmount = 999_999_999_999;
@@ -75,14 +74,21 @@ export async function settings(): Promise<FinanceSettings> {
   const stored = row ? JSON.parse(row.document) as Partial<FinanceSettings> : {};
   return {
     cash_accounts: stored.cash_accounts ?? {}, default_cash_account: stored.default_cash_account ?? "", locked_until: stored.locked_until ?? "", updated_at: stored.updated_at ?? "",
-    tax: await taxSettings(), gateway_fees: stored.gateway_fees ?? {},
+    tax: await taxSettings(),
   };
 }
-/** Potongan payment gateway untuk satu pembayaran online, sesuai tarif yang diatur di Pengaturan. */
-export async function gatewayFee(method: string, amount: number) {
-  const fee = (await settings()).gateway_fees[method];
-  if (!fee) return 0;
-  return Math.max(0, Math.min(amount, Math.round(amount * fee.percent / 100) + fee.flat));
+/**
+ * Baris jurnal penerimaan lewat payment gateway. Potongan Midtrans tidak pernah masuk rekening, jadi
+ * dicatat sebagai beban; biaya layanan yang dibayar pelanggan dicatat sebagai pendapatan tersendiri.
+ *   Dr Kas/Bank (diterima − potongan) + Dr Beban Gateway (potongan) = Cr ... (tagihan) + Cr Pendapatan Biaya Layanan
+ */
+async function gatewayLines(method: string, amount: number, surcharge: number, fee: number, memo: string): Promise<LineInput[]> {
+  const received = amount + surcharge, cut = Math.min(Math.max(0, fee), received);
+  return [
+    { account_id: await cashAccountFor(method), debit: received - cut, memo },
+    { account_id: (await systemAccount("beban_gateway")).id, debit: cut, memo: "Potongan payment gateway" },
+    { account_id: (await systemAccount("pendapatan_layanan")).id, credit: surcharge, memo: "Biaya layanan dibayar pelanggan" },
+  ];
 }
 /** Akun kas/bank tujuan sebuah metode pembayaran. Jatuh ke Kas bila pengaturannya sudah tidak valid. */
 async function cashAccountFor(method: string) {
@@ -191,20 +197,18 @@ export async function syncBooking(bookingId: string) {
   // Pembayaran tidak pernah berubah setelah dicatat, jadi jurnalnya cukup dibuat sekali. Menulis ulang
   // jurnal lama akan memindahkan uang yang sudah diterima ke rekening lain begitu pemetaan kas di
   // Pengaturan diganti, dan saldo kas periode yang sudah ditutup ikut bergeser diam-diam.
-  const payments = await db.prepare(`SELECT p.id,p.amount,p.fee,p.kind,p.method,p.created_at FROM payments p
+  const payments = await db.prepare(`SELECT p.id,p.amount,p.fee,p.surcharge,p.kind,p.method,p.created_at FROM payments p
     WHERE p.booking_id=? AND NOT EXISTS (SELECT 1 FROM journal_entries e WHERE e.source='pembayaran' AND e.ref_id=p.id)
     ORDER BY p.created_at`).all(bookingId) as
-    { id: string; amount: number; fee: number; kind: "payment" | "refund"; method: string; created_at: string }[];
+    { id: string; amount: number; fee: number; surcharge: number; kind: "payment" | "refund"; method: string; created_at: string }[];
   for (const payment of payments) {
     const cash = { account_id: await cashAccountFor(payment.method), memo: `${payment.kind === "refund" ? "Pengembalian" : "Pembayaran"} ${payment.method}` };
-    // Potongan payment gateway tidak pernah masuk rekening: dicatat sebagai beban, bukan pengurang piutang.
-    const fee = payment.kind === "payment" ? Math.min(payment.fee, payment.amount) : 0;
     await putEntry({
       date: localClock(new Date(payment.created_at)).date, source: "pembayaran", ref_id: payment.id, actor: null,
       memo: `${payment.kind === "refund" ? "Pengembalian dana" : "Penerimaan"} ${booking.customer}`,
       lines: payment.kind === "refund"
         ? [{ ...receivable, debit: payment.amount }, { ...cash, credit: payment.amount }]
-        : [{ ...cash, debit: payment.amount - fee }, { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" }, { ...receivable, credit: payment.amount }],
+        : [...await gatewayLines(payment.method, Number(payment.amount), Number(payment.surcharge), Number(payment.fee), cash.memo), { ...receivable, credit: payment.amount }],
     });
   }
 }
@@ -218,11 +222,10 @@ export async function syncBooking(bookingId: string) {
  * periode yang sudah dilaporkan tidak berubah. Keduanya hanya dibuat sekali.
  */
 export async function syncCounterSale(saleId: string) {
-  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,fee,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
-    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; tax: number; method: string; fee: number; paid_at: string | null; voided_at: string | null } | undefined;
+  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,fee,surcharge,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
+    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; tax: number; method: string; fee: number; surcharge: number; paid_at: string | null; voided_at: string | null } | undefined;
   // Transaksi Midtrans yang belum atau tidak jadi dibayar tidak menyentuh pembukuan.
   if (!sale || !sale.paid_at) return;
-  const fee = Math.min(Number(sale.fee), Number(sale.total));
   const parts = await db.prepare("SELECT type,SUM(subtotal) amount FROM counter_sale_lines WHERE sale_id=? GROUP BY type ORDER BY type").all(saleId) as { type: string; amount: number }[];
   const revenue = sale.total + sale.discount - sale.tax;
   const shares = allocate(revenue, parts.map(part => Math.max(0, Number(part.amount))));
@@ -230,12 +233,9 @@ export async function syncCounterSale(saleId: string) {
   parts.forEach((part, index) => { const key = addonAccountKey[part.type] ?? "pendapatan_lain"; merged.set(key, (merged.get(key) ?? 0) + shares[index]); });
   const lines = async (sign: 1 | -1): Promise<LineInput[]> => {
     const side = (amount: number, debit: boolean) => (debit === (sign === 1) ? { debit: amount } : { credit: amount });
-    // Potongan payment gateway tidak pernah masuk rekening: dicatat sebagai beban. Saat dibatalkan,
-    // dana yang dikembalikan ke pelanggan tetap penuh dan potongannya tetap menjadi beban.
-    const result: LineInput[] = sign === 1 && fee > 0 ? [
-      { account_id: await cashAccountFor(sale.method), debit: sale.total - fee, memo: sale.number },
-      { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" },
-    ] : [
+    // Saat dibatalkan, harga barang dikembalikan penuh; potongan Midtrans tetap menjadi beban dan
+    // biaya layanan yang sudah dibayar pelanggan tidak ikut dibalik.
+    const result: LineInput[] = sign === 1 ? await gatewayLines(sale.method, Number(sale.total), Number(sale.surcharge), Number(sale.fee), sale.number) : [
       { account_id: await cashAccountFor(sale.method), ...side(sale.total, true), memo: sale.number },
     ];
     result.push(
@@ -257,7 +257,7 @@ export async function syncCounterSale(saleId: string) {
 
 interface MemberInvoiceRow {
   id: string; number: string; membership_id: string; status: string; months: number; dues: number; registration_fee: number; tax: number; amount: number;
-  method: string | null; fee: number; paid_at: string | null; period_start: string | null; member_name: string; member_status: string;
+  method: string | null; fee: number; surcharge: number; paid_at: string | null; period_start: string | null; member_name: string; member_status: string;
 }
 /** Bagian iuran dan biaya daftar dari tagihan, tanpa pajak. */
 function memberShares(invoice: Pick<MemberInvoiceRow, "amount" | "tax" | "dues" | "registration_fee">) {
@@ -270,26 +270,25 @@ const recognitionRef = (invoiceId: string, month: number) => `${invoiceId}:${mon
  * Samakan jurnal sebuah tagihan member dengan keadaannya. Dipanggil di dalam transaksi pemanggil.
  *
  * Saat lunas:   Dr Kas/Bank (bersih potongan gateway) + Dr Beban Gateway
- *             = Cr Pendapatan Keanggotaan (biaya daftar) + Cr Pendapatan Diterima di Muka (iuran) + Cr Utang Pajak.
+ *             = Cr Pendapatan Keanggotaan (biaya daftar) + Cr Pendapatan Diterima di Muka (iuran) + Cr Utang Pajak
+ *               + Cr Pendapatan Biaya Layanan (bila pelanggan menanggung biaya admin).
  * Tiap bulan:   Dr Pendapatan Diterima di Muka = Cr Pendapatan Keanggotaan, bertanggal awal tiap bulan masa
  *               berlaku. Semua jurnal bulanan dibuat sekaligus begitu periodenya diketahui (lunas, atau disetujui
  *               admin), jadi laba rugi dan neraca tiap periode langsung benar tanpa proses tutup buku.
  * Seperti pembayaran booking, jurnal penerimaan tidak pernah ditulis ulang setelah dibuat.
  */
 export async function syncMembershipInvoice(invoiceId: string) {
-  const invoice = await db.prepare(`SELECT i.id,i.number,i.membership_id,i.status,i.months,i.dues,i.registration_fee,i.tax,i.amount,i.method,i.fee,i.paid_at,i.period_start,
+  const invoice = await db.prepare(`SELECT i.id,i.number,i.membership_id,i.status,i.months,i.dues,i.registration_fee,i.tax,i.amount,i.method,i.fee,i.surcharge,i.paid_at,i.period_start,
       m.name member_name,m.status member_status FROM membership_invoices i JOIN memberships m ON m.id=i.membership_id WHERE i.id=?`).get(invoiceId) as MemberInvoiceRow | undefined;
   if (!invoice || invoice.status !== "paid" || !invoice.method || !invoice.paid_at) return;
   const shares = memberShares(invoice);
   const deferred = (await systemAccount("pendapatan_dimuka")).id, income = (await systemAccount("pendapatan_keanggotaan")).id;
   if (!await db.prepare("SELECT 1 FROM journal_entries WHERE source='keanggotaan' AND ref_id=?").get(invoice.id)) {
-    const fee = Math.min(invoice.fee, invoice.amount);
     await putEntry({
       date: localClock(new Date(invoice.paid_at)).date, source: "keanggotaan", ref_id: invoice.id, actor: null,
       memo: `Iuran member ${invoice.member_name} · ${invoice.number}`,
       lines: [
-        { account_id: await cashAccountFor(invoice.method), debit: invoice.amount - fee, memo: invoice.number },
-        { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" },
+        ...await gatewayLines(invoice.method, Number(invoice.amount), Number(invoice.surcharge), Number(invoice.fee), invoice.number),
         { account_id: income, credit: shares.registration, memo: "Biaya pendaftaran member" },
         { account_id: deferred, credit: shares.dues, memo: `Iuran ${invoice.months} bulan` },
         { account_id: (await systemAccount("utang_pajak")).id, credit: invoice.tax, memo: invoice.member_name },
@@ -862,7 +861,6 @@ export const settingsSchema = z.object({
     rate: z.number().min(0).max(100, "Tarif pajak maksimal 100%."),
     inclusive: z.boolean(),
   }).refine(value => !value.enabled || value.rate > 0, "Isi tarif pajak, misalnya 10.").optional(),
-  gateway_fees: z.record(z.string().max(20), z.object({ percent: z.number().min(0).max(20, "Persen potongan gateway terlalu besar."), flat: z.number().int().min(0).max(100000) })).optional(),
 });
 export async function saveSettings(input: unknown, actor: string) {
   const data = settingsSchema.parse(input);
@@ -874,14 +872,8 @@ export async function saveSettings(input: unknown, actor: string) {
       if (id) { await cashFor(id); cashAccounts[method] = id }
     }
     const current = await settings();
-    const fees: Record<string, GatewayFee> = {};
-    // Tunai tidak dipotong apa pun, jadi hanya metode online yang disimpan.
-    for (const method of methodKeys.filter(key => key !== "cash")) {
-      const fee = (data.gateway_fees ?? current.gateway_fees)[method];
-      if (fee && (fee.percent > 0 || fee.flat > 0)) fees[method] = { percent: Math.round(fee.percent * 100) / 100, flat: fee.flat };
-    }
     const tax = data.tax ? { ...data.tax, rate: Math.round(data.tax.rate * 100) / 100 } : current.tax;
-    const next = { cash_accounts: cashAccounts, default_cash_account: data.default_cash_account, locked_until: data.locked_until, tax, gateway_fees: fees, updated_at: new Date().toISOString() };
+    const next = { cash_accounts: cashAccounts, default_cash_account: data.default_cash_account, locked_until: data.locked_until, tax, updated_at: new Date().toISOString() };
     await saveSetting("finance", next);
     await audit(actor, "finance.settings", "finance", { before: { locked_until: current.locked_until, tax: current.tax }, after: { locked_until: next.locked_until, tax: next.tax } });
     return await settings();

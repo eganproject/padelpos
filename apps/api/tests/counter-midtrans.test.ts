@@ -216,6 +216,28 @@ test("kasir: bayar lewat Midtrans, pelanggan dari riwayat, dan tautan ke booking
       assert.equal(Number((await db.prepare("SELECT count(*) n FROM customers WHERE phone='6281211112222'").get() as { n: number }).n), 1);
       assert.equal((await request("/operations/counter/customers?q=andi", "GET", undefined, staff)).data.customers[0].visits, 2);
     });
+
+    await t.test("biaya admin ditanggung pelanggan: ditambahkan ke total kasir dan dicatat sebagai pendapatan layanan", async () => {
+      const saved = await request("/operations/payments/settings", "PUT", { enabled: true, environment: "sandbox", client_key: "SB-Mid-client-kasir", server_key: "", mode: "full", dp_percent: 50, hold_minutes: 20, note: "", fee_bearer: "customer" }, admin);
+      assert.equal(saved.status, 200, JSON.stringify(saved.data));
+      assert.equal((await request("/operations/counter/options", "GET", undefined, staff)).data.midtrans.fees.fee_bearer, "customer");
+      assert.equal((await request("/operations/counter", "POST", { customer: "Budi", lines: [{ addon_id: bola, quantity: 1 }], method: "midtrans" }, staff)).status, 400, "metode wajib dipilih");
+      const created = await request("/operations/counter", "POST", { customer: "Budi", lines: [{ addon_id: bola, quantity: 1 }], method: "midtrans", channel: "qris" }, staff);
+      assert.equal(created.status, 201, JSON.stringify(created.data));
+      const sale = created.data.sale;
+      assert.equal(sale.total, 60000);
+      assert.equal(sale.surcharge, 423, "0,7% QRIS dibulatkan sampai potongannya tertutup");
+      const snap = calls.filter(call => call.url.includes("/snap/")).at(-1)!.body as { transaction_details: { gross_amount: number; order_id: string }; enabled_payments: string[] };
+      assert.equal(snap.transaction_details.gross_amount, 60423);
+      assert.deepEqual(snap.enabled_payments, ["other_qris"]);
+      assert.equal((await request("/public/payments/midtrans/notification", "POST", notify(snap.transaction_details.order_id, 60000))).status, 409, "nominal tanpa biaya layanan ditolak");
+      assert.equal((await request("/public/payments/midtrans/notification", "POST", notify(snap.transaction_details.order_id, 60423))).status, 200);
+      const lines = await journal(sale.id);
+      assert.equal(lines.reduce((sum, l) => sum + Number(l.debit), 0), lines.reduce((sum, l) => sum + Number(l.credit), 0), "jurnal seimbang");
+      assert.equal(Number(lines.find(l => l.system_key === "beban_gateway")!.debit), 423, "0,7% dari 60.423");
+      assert.equal(Number(lines.find(l => l.system_key === "pendapatan_layanan")!.credit), 423);
+      assert.equal(lines.filter(l => l.debit > 0 && l.system_key !== "beban_gateway").reduce((sum, l) => sum + Number(l.debit), 0), 60000, "rekening menerima harga penuh");
+    });
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     await db.close();

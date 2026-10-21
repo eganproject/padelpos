@@ -322,7 +322,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.deepEqual(view.sessions.map((session: { paid: number }) => session.paid), [120000, 120000]);
       const cash = await db.prepare(`SELECT SUM(l.debit) debit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
         WHERE e.source='pembayaran' AND a.is_cash=1 AND l.booking_id IS NULL AND e.ref_id IN (SELECT id FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?))`).get(created.data.order_id) as { debit: number };
-      assert.equal(cash.debit, 240000, "jurnal kas sama dengan uang yang masuk");
+      assert.equal(cash.debit, 240000 - 1680, "jurnal kas sama dengan uang yang masuk, dipotong 0,7% QRIS");
       assert.equal((await request("/operations/payments/settings", "PUT", settings(), admin)).status, 200);
     });
 
@@ -346,7 +346,7 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
         cash_accounts: { cash: await kas("1-100"), transfer: await kas("1-200"), qris: await kas("1-200"), va: await kas("1-200"), ewallet: await kas("1-200"), card: await kas("1-200") },
         default_cash_account: await kas("1-100"), locked_until: "", ...extra,
       }, admin);
-      assert.equal((await finance({ tax: { enabled: true, label: "PB1", rate: 10, inclusive: false }, gateway_fees: { qris: { percent: 0.7, flat: 0 }, va: { percent: 0, flat: 4000 } } })).status, 200);
+      assert.equal((await finance({ tax: { enabled: true, label: "PB1", rate: 10, inclusive: false } })).status, 200);
       const later = { ...item("17:00", "18:00"), date: (() => { const value = new Date(tomorrow + "T12:00:00Z"); value.setUTCDate(value.getUTCDate() + 1); return value.toISOString().slice(0, 10) })() };
       const quoted = await request("/public/cart/quote", "POST", { items: [later] });
       assert.equal(quoted.data.items[0].tax, 30000);
@@ -366,7 +366,47 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal(lines.find(line => line.code === "1-200")!.debit, 330000 - 2310, "yang masuk rekening sudah dipotong");
       assert.equal(lines.find(line => line.code === "5-800")!.debit, 2310, "potongan menjadi biaya payment gateway");
       assert.equal(lines.find(line => line.code === "1-300")!.credit, 330000, "tagihan pelanggan lunas penuh");
-      assert.equal((await finance({ tax: { enabled: false, label: "PB1", rate: 10, inclusive: false }, gateway_fees: {} })).status, 200);
+      assert.equal((await finance({ tax: { enabled: false, label: "PB1", rate: 10, inclusive: false } })).status, 200);
+    });
+
+    await t.test("biaya admin ditanggung pelanggan: ditambahkan ke tagihan sesuai metode dan dicatat sebagai pendapatan", async () => {
+      assert.equal((await request("/operations/payments/settings", "PUT", settings({ server_key: "", fee_bearer: "customer" }), admin)).status, 200);
+      const info = (await request("/public/info", "GET")).data.payment;
+      assert.equal(info.fees.fee_bearer, "customer");
+      assert.ok(info.fees.channels.some((channel: { key: string; flat: number }) => channel.key === "va" && channel.flat === 4000), "tarif standar Midtrans terlihat pelanggan");
+      const day = (() => { const value = new Date(tomorrow + "T12:00:00Z"); value.setUTCDate(value.getUTCDate() + 2); return value.toISOString().slice(0, 10) })();
+      const missing = await request("/public/checkout", "POST", checkout([{ ...item("09:00", "10:00"), date: day }]));
+      assert.equal(missing.status, 400, "metode wajib dipilih karena biayanya berbeda");
+      assert.match(missing.data.message, /metode pembayaran/i);
+
+      const va = await request("/public/checkout", "POST", { ...checkout([{ ...item("09:00", "10:00"), date: day }]), channel: "va" });
+      assert.equal(va.status, 201);
+      assert.equal(va.data.total, 300000, "harga venue tidak berubah");
+      assert.equal(va.data.surcharge, 4440, "VA Rp4.000 + PPN 11%");
+      assert.equal(va.data.amount, 304440);
+      const snap = calls.at(-1)!.body as { item_details: { id: string; price: number; quantity: number }[]; transaction_details: { gross_amount: number }; enabled_payments: string[] };
+      assert.ok(snap.enabled_payments.includes("bca_va") && !snap.enabled_payments.includes("gopay"), "Midtrans hanya menampilkan metode yang dipilih");
+      assert.equal(snap.item_details.find(line => line.id === "biaya-layanan")!.price, 4440);
+      assert.equal(snap.item_details.reduce((sum, line) => sum + line.price * line.quantity, 0), snap.transaction_details.gross_amount);
+      await request("/public/payments/midtrans/notification", "POST", notify(va.data.transaction_id, va.data.amount, "settlement", { payment_type: "bank_transfer" }), "", "");
+      const view = (await request(`/public/orders/${va.data.order_id}`, "GET")).data;
+      assert.equal(view.order.paid, 300000, "biaya layanan tidak dihitung sebagai pelunasan booking");
+      assert.equal(view.order.status, "confirmed");
+      assert.equal(view.payments[0].surcharge, 4440, "kwitansi dapat menampilkan biaya layanan");
+      const lines = await db.prepare(`SELECT a.code,l.debit,l.credit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id JOIN accounts a ON a.id=l.account_id
+        WHERE e.source='pembayaran' AND e.ref_id IN (SELECT id FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?))`).all(va.data.order_id) as { code: string; debit: number; credit: number }[];
+      assert.equal(lines.find(line => line.code === "1-200")!.debit, 300000, "venue tetap menerima harga penuh");
+      assert.equal(lines.find(line => line.code === "5-800")!.debit, 4440, "potongan Midtrans tetap menjadi beban");
+      assert.equal(lines.find(line => line.code === "4-850")!.credit, 4440, "biaya layanan menjadi pendapatan");
+      assert.equal(lines.find(line => line.code === "1-300")!.credit, 300000);
+
+      // Persen dihitung dari nominal yang sudah termasuk biaya layanan, jadi angkanya dinaikkan sampai tertutup.
+      const qris = await request("/public/checkout", "POST", { ...checkout([{ ...item("10:00", "11:00"), date: day }]), channel: "qris" });
+      assert.equal(qris.data.surcharge, 2115);
+      await request("/public/payments/midtrans/notification", "POST", notify(qris.data.transaction_id, qris.data.amount), "", "");
+      const paid = await db.prepare("SELECT amount,fee,surcharge FROM payments WHERE booking_id IN (SELECT id FROM bookings WHERE order_id=?)").get(qris.data.order_id) as { amount: number; fee: number; surcharge: number };
+      assert.deepEqual(paid, { amount: 300000, fee: 2115, surcharge: 2115 }, "0,7% dari 302.115");
+      assert.equal((await request("/operations/payments/settings", "PUT", settings({ server_key: "", fee_bearer: "venue" }), admin)).status, 200);
     });
 
     await t.test("periksa status menanyakan langsung ke Midtrans bila webhook belum masuk", async () => {

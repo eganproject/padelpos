@@ -4,14 +4,14 @@ import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { localClock, minutes } from "./clock.js";
 import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons.js";
-import { gatewayFee, syncBooking } from "./finance.js";
+import { syncBooking } from "./finance.js";
 import { durationProblem } from "./content.js";
 import { allocate, billOf, memberCut, taxSnapshot } from "./bill.js";
 import { accountMember } from "./member-rates.js";
 import { assertScheduleFree, closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, scheduleClash, timeSchema, type Booking } from "./operations.js";
 import {
-  createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod,
-  payableAmount, signatureFor, signatureMatches, type MidtransStatus, type Outcome,
+  createSnapTransaction, fetchTransactionStatus, gatewayFee, outcomeOf, paymentConfig, paymentMethod, payableAmount, pickChannel,
+  signatureFor, signatureMatches, snapPayments, surchargeFor, surchargeItem, type ChannelKey, type MidtransStatus, type Outcome,
 } from "./midtrans.js";
 import { publicUrl } from "./config.js";
 import { customerEmail, notifyBill, notifyExpired, notifyOrderPaid } from "./notifications.js";
@@ -29,8 +29,9 @@ import { customerEmail, notifyBill, notifyExpired, notifyOrderPaid } from "./not
  * Staf juga dapat membuat link tagihan untuk satu booking yang sudah berjalan (kind `tagihan`);
  * link itu hanya mencatat pembayaran, tidak mengubah status booking.
  */
+/** `amount` adalah nominal yang ditagih Midtrans, sudah termasuk `surcharge` (biaya layanan yang ditanggung pelanggan). */
 export interface PaymentIntent {
-  order_id: string; booking_id: string; order_ref: string | null; amount: number; kind: "booking" | "tagihan"; status: Outcome;
+  order_id: string; booking_id: string; order_ref: string | null; amount: number; surcharge: number; channel: ChannelKey | null; kind: "booking" | "tagihan"; status: Outcome;
   snap_token: string | null; redirect_url: string | null; payment_type: string | null; transaction_id: string | null;
   environment: string; expires_at: number; created_by: string | null; created_at: string; updated_at: string; raw_status: string | null;
 }
@@ -93,6 +94,8 @@ export const checkoutSchema = z.object({
   phone: z.string().trim().max(20).refine(value => /^628\d{7,12}$/.test(normalizePhone(value)), "Masukkan nomor WhatsApp Indonesia yang aktif, mis. 0812 3456 7890."),
   email: z.union([z.email("Email tidak valid."), z.literal("")]).default(""),
   notes: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
+  /** Metode yang dipilih pelanggan; wajib bila biaya admin Midtrans ditanggung pelanggan. */
+  channel: z.string().max(20).nullable().optional(),
 });
 export const cartSchema = z.object({ items: z.array(cartItemSchema).max(maxCartItems) });
 type CartItem = z.infer<typeof cartItemSchema>;
@@ -248,7 +251,8 @@ async function itemsFor(bookings: Booking[], amount: number, full: boolean) {
 async function openSnap(bookings: Booking[], intent: PaymentIntent, contact: { name: string; phone: string; email: string }, expiryMinutes: number, full: boolean) {
   const snap = await createSnapTransaction({
     transaction_details: { order_id: intent.order_id, gross_amount: intent.amount },
-    item_details: await itemsFor(bookings, intent.amount, full),
+    item_details: [...await itemsFor(bookings, intent.amount - intent.surcharge, full), ...surchargeItem(intent.surcharge, intent.channel)],
+    ...await snapPayments(intent.channel),
     customer_details: { first_name: contact.name.slice(0, 20), phone: contact.phone.slice(0, 19), ...(contact.email ? { email: contact.email.slice(0, 45) } : {}) },
     // Tanpa start_time, Midtrans memakai waktu transaksi sebagai awal hitungan.
     expiry: { unit: "minute", duration: expiryMinutes },
@@ -259,10 +263,12 @@ async function openSnap(bookings: Booking[], intent: PaymentIntent, contact: { n
   return snap;
 }
 const newTransactionId = (reference: string) => `PDX-${reference.slice(0, 8).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
-async function insertIntent(bookingId: string, orderRef: string | null, amount: number, kind: "booking" | "tagihan", expiresAt: number, actor: string | null) {
+/** `amount` adalah tagihan venue; biaya layanan untuk kanal itu (bila ditanggung pelanggan) ditambahkan di sini. */
+async function insertIntent(bookingId: string, orderRef: string | null, amount: number, channel: ChannelKey | null, kind: "booking" | "tagihan", expiresAt: number, actor: string | null) {
   const stamp = new Date().toISOString(), orderId = newTransactionId(orderRef ?? bookingId);
-  await db.prepare("INSERT INTO payment_intents (order_id,booking_id,order_ref,amount,kind,status,environment,expires_at,created_by,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?,?,?,?)")
-    .run(orderId, bookingId, orderRef, amount, kind, (await paymentConfig()).environment, expiresAt, actor, stamp, stamp);
+  const config = await paymentConfig(), surcharge = surchargeFor(channel, amount, config);
+  await db.prepare("INSERT INTO payment_intents (order_id,booking_id,order_ref,amount,surcharge,channel,kind,status,environment,expires_at,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'pending',?,?,?,?,?)")
+    .run(orderId, bookingId, orderRef, amount + surcharge, surcharge, channel, kind, config.environment, expiresAt, actor, stamp, stamp);
   return (await intentOf(orderId))!;
 }
 
@@ -271,6 +277,7 @@ export async function createCheckout(input: unknown, accountId: string | null = 
   const data = checkoutSchema.parse(input);
   const config = await paymentConfig();
   check(config.enabled && config.serverKey, 409, "Pembayaran online belum aktif. Silakan hubungi venue lewat WhatsApp.");
+  const channel = await pickChannel(data.channel);
   for (const [index, item] of data.items.entries()) {
     const duration = minutes(item.end_time) - minutes(item.start_time);
     const problem = await durationProblem(duration);
@@ -315,17 +322,17 @@ export async function createCheckout(input: unknown, accountId: string | null = 
   });
 
   const amount = bookings.reduce((sum, booking) => sum + payableAmount(booking.total, config), 0);
-  const intent = await insertIntent(bookings[0].id, order.id, amount, "booking", bookings[0].hold_expires_at!, null);
+  const intent = await insertIntent(bookings[0].id, order.id, amount, channel, "booking", bookings[0].hold_expires_at!, null);
   try {
     const snap = await openSnap(bookings, intent, { name: data.customer, phone: data.phone, email: data.email }, config.hold_minutes, config.mode === "full");
     // Tagihan ikut dikirim agar pelanggan yang menutup tab tetap punya tautan untuk membayar.
     await notifyBill({
       key: intent.order_id, booking_id: bookings[0].id, order_id: order.id, code: order.code, customer: data.customer, email: data.email,
-      amount, total: order.total, expires_at: Number(bookings[0].hold_expires_at), sessions: bookings, pay_url: `${publicUrl}/pesanan/${order.id}`, from_staff: false,
+      amount: intent.amount, total: order.total, expires_at: Number(bookings[0].hold_expires_at), sessions: bookings, pay_url: `${publicUrl}/pesanan/${order.id}`, from_staff: false,
     }).catch(error => console.error("Gagal menyiapkan tagihan", order.code, (error as Error).message));
     return {
       order_id: order.id, code: order.code, transaction_id: intent.order_id, sessions: bookings.length,
-      amount, total: order.total, expires_at: bookings[0].hold_expires_at,
+      amount: intent.amount, surcharge: intent.surcharge, total: order.total, expires_at: bookings[0].hold_expires_at,
       redirect_url: snap.redirect_url, token: snap.token,
     };
   } catch (error) {
@@ -345,9 +352,10 @@ export async function createCheckout(input: unknown, accountId: string | null = 
 
 /** Staf membuat link pembayaran untuk sisa tagihan satu booking yang sudah ada. */
 export async function createPaymentLink(bookingId: string, input: unknown, actor: string) {
-  const { amount: requested } = z.object({ amount: z.number().int().positive().max(240000000).optional() }).parse(input ?? {});
+  const { amount: requested, channel: chosen } = z.object({ amount: z.number().int().positive().max(240000000).optional(), channel: z.string().max(20).nullable().optional() }).parse(input ?? {});
   const config = await paymentConfig();
   check(config.enabled && config.serverKey, 409, "Pembayaran online belum aktif. Atur dulu di menu Pembayaran.");
+  const channel = await pickChannel(chosen);
   const booking = await getBooking(bookingId);
   check(booking.status === "confirmed", 409, "Link pembayaran hanya untuk booking yang masih aktif.");
   const remaining = booking.total - booking.paid;
@@ -356,12 +364,12 @@ export async function createPaymentLink(bookingId: string, input: unknown, actor
   check(amount >= 1000, 400, "Nominal minimal Rp1.000.");
   check(amount <= remaining, 400, "Nominal melebihi sisa tagihan.");
   const hours = 24;
-  const intent = await insertIntent(booking.id, null, amount, "tagihan", Math.floor(Date.now() / 1000) + hours * 3600, actor);
+  const intent = await insertIntent(booking.id, null, amount, channel, "tagihan", Math.floor(Date.now() / 1000) + hours * 3600, actor);
   const snap = await openSnap([booking], intent, { name: booking.customer, phone: booking.phone, email: "" }, hours * 60, amount === booking.total);
   await audit(actor, "payment.link", booking.id);
   const notified = await notifyBill({
     key: intent.order_id, booking_id: booking.id, order_id: booking.order_id, code: bookingCode(booking.id), customer: booking.customer,
-    amount, total: remaining, expires_at: intent.expires_at, sessions: [booking], pay_url: snap.redirect_url, from_staff: true,
+    amount: intent.amount, total: remaining, expires_at: intent.expires_at, sessions: [booking], pay_url: snap.redirect_url, from_staff: true,
   }).catch(error => { console.error("Gagal mengirim tagihan", booking.id, (error as Error).message); return 0; });
   return { ...(await intentOf(intent.order_id))!, redirect_url: snap.redirect_url, notified };
 }
@@ -390,15 +398,17 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
       const reference = status.transaction_id ?? intent.order_id;
       // Satu pembayaran Midtrans dibagi ke tiap sesi agar pembukuan per booking tetap utuh. Nominal yang
       // ditagih Midtrans adalah patokannya, jadi persen DP yang diubah setelah checkout tidak berpengaruh.
-      const shares = allocate(intent.amount, bookings.map(booking => payableAmount(booking.total, config)));
+      // Biaya layanan yang dibayar pelanggan bukan pelunasan booking, jadi dipisahkan dari bagian tiap sesi.
+      const shares = allocate(intent.amount - intent.surcharge, bookings.map(booking => payableAmount(booking.total, config)));
       // Potongan gateway dihitung sekali per transaksi (biaya tetap VA tidak boleh terhitung per sesi).
       const method = paymentMethod(status.payment_type);
-      const fees = allocate(await gatewayFee(method, intent.amount), shares);
+      const fees = allocate(await gatewayFee(status.payment_type, intent.amount), shares);
+      const surcharges = allocate(intent.surcharge, shares);
       for (const [index, booking] of bookings.entries()) {
         const key = `${reference}:${booking.id.slice(0, 8)}`;
         if (shares[index] > 0 && !await db.prepare("SELECT 1 FROM payments WHERE gateway_ref=?").get(key)) {
-          await db.prepare("INSERT INTO payments (id,booking_id,amount,fee,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,?,'payment',?,'gateway',?,?,?)")
-            .run(randomUUID(), booking.id, shares[index], Math.min(fees[index], shares[index]), method, key, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
+          await db.prepare("INSERT INTO payments (id,booking_id,amount,fee,surcharge,kind,method,source,gateway_ref,note,created_at) VALUES (?,?,?,?,?,'payment',?,'gateway',?,?,?)")
+            .run(randomUUID(), booking.id, shares[index], Math.min(fees[index], shares[index] + surcharges[index]), surcharges[index], method, key, `Midtrans ${status.payment_type ?? ""}`.trim(), stamp);
         }
         if (booking.status === "expired") {
           // Uang masuk setelah batas bayar lewat: slotnya sudah dilepas, jadi booking ditutup sebagai batal
@@ -424,7 +434,7 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
       const order = intent.order_ref ? await db.prepare("SELECT id,code,customer,email FROM orders WHERE id=?").get(intent.order_ref) as { id: string; code: string; customer: string; email: string } | undefined : undefined;
       await notifyOrderPaid({
         key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
-        customer: order?.customer ?? settled[0].customer, email: order?.email || await customerEmail(intent.booking_id), amount: intent.amount,
+        customer: order?.customer ?? settled[0].customer, email: order?.email || await customerEmail(intent.booking_id), amount: intent.amount, surcharge: intent.surcharge,
         total: settled.reduce((sum, booking) => sum + booking.total, 0), paid: settled.reduce((sum, booking) => sum + booking.paid, 0),
         sessions: settled, payment_type: status.payment_type ?? intent.payment_type,
         cancelled: settled.every(booking => booking.status === "cancelled"),
@@ -455,7 +465,7 @@ export async function handleNotification(input: unknown) {
     const invoice = await membership.invoiceByOrder(data.order_id);
     if (invoice) {
       check(signatureMatches(signatureFor(data.order_id, data.status_code, data.gross_amount, config.serverKey), data.signature_key), 403, "Tanda tangan notifikasi tidak sah.");
-      check(Math.round(Number(data.gross_amount)) === invoice.amount, 409, "Nominal notifikasi tidak cocok dengan tagihan.");
+      check(Math.round(Number(data.gross_amount)) === invoice.amount + Number(invoice.surcharge), 409, "Nominal notifikasi tidak cocok dengan tagihan.");
       return await membership.applyInvoiceStatus(invoice, data);
     }
     // Transaksi kasir yang dibayar lewat Midtrans.
@@ -463,7 +473,7 @@ export async function handleNotification(input: unknown) {
     const sale = await counter.saleByOrder(data.order_id);
     if (sale) {
       check(signatureMatches(signatureFor(data.order_id, data.status_code, data.gross_amount, config.serverKey), data.signature_key), 403, "Tanda tangan notifikasi tidak sah.");
-      check(Math.round(Number(data.gross_amount)) === sale.total, 409, "Nominal notifikasi tidak cocok dengan tagihan.");
+      check(Math.round(Number(data.gross_amount)) === sale.total + Number(sale.surcharge), 409, "Nominal notifikasi tidak cocok dengan tagihan.");
       return await counter.applySaleStatus(sale, data);
     }
   }
@@ -529,11 +539,11 @@ export async function orderView(id: string) {
       }))),
     },
     /** Riwayat uang masuk dan keluar untuk kwitansi; catatan kasir tidak ikut karena tautannya bisa diteruskan. */
-    payments: (await db.prepare(`SELECT p.id,p.booking_id,p.amount,p.kind,p.method,p.source,p.created_at FROM payments p JOIN bookings b ON b.id=p.booking_id
-      WHERE b.order_id=? ORDER BY p.created_at,p.id`).all(order.id) as { id: string; booking_id: string; amount: number; kind: string; method: string; source: string; created_at: string }[])
+    payments: (await db.prepare(`SELECT p.id,p.booking_id,p.amount,p.surcharge,p.kind,p.method,p.source,p.created_at FROM payments p JOIN bookings b ON b.id=p.booking_id
+      WHERE b.order_id=? ORDER BY p.created_at,p.id`).all(order.id) as { id: string; booking_id: string; amount: number; surcharge: number; kind: string; method: string; source: string; created_at: string }[])
       .map(row => ({ ...row, session_code: bookingCode(row.booking_id) })),
     payment: intent ? {
-      order_id: intent.order_id, status: intent.status, amount: intent.amount, kind: intent.kind,
+      order_id: intent.order_id, status: intent.status, amount: intent.amount, surcharge: intent.surcharge, channel: intent.channel, kind: intent.kind,
       redirect_url: intent.status === "pending" ? intent.redirect_url : null,
       snap_token: intent.status === "pending" ? intent.snap_token : null,
       expires_at: intent.expires_at, payment_type: intent.payment_type, updated_at: intent.updated_at,

@@ -48,3 +48,28 @@
 .notif-preview pre{margin:var(--s2) 0 0;padding:var(--s3);max-width:420px;border-radius:var(--r-md);background:var(--green-bg,#e8f5e9);color:var(--text);font:inherit;font-size:var(--fs-sm);line-height:var(--lh-snug);white-space:pre-wrap;word-break:break-word}
 @media(max-width:900px){.notif-channels,.notif-providers{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.notif-channels,.notif-providers,.notif-events{grid-template-columns:1fr}}
+
+/* Pilihan metode Midtrans (kasir, link tagihan). Versi situs pelanggan ada di shop-checkout.css. */
+.pay-channels{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:6px;min-width:0}
+.pay-channels legend{padding:0;margin-bottom:6px;font-size:var(--fs-sm);font-weight:600;color:var(--label)}
+.pay-channels label,.modal-fields .pay-channels label{display:flex;flex-direction:row;align-items:center;gap:10px;text-align:left;font-weight:400;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel);cursor:pointer}
+.pay-channels label.on{border-color:var(--text);box-shadow:inset 0 0 0 1px var(--text)}
+.pay-channels input{flex:none;margin:0;accent-color:var(--primary)}
+.pay-channels .what{flex:1;min-width:0;display:flex;flex-direction:column}
+.pay-channels .what b{font-size:var(--fs-md);font-weight:600;color:var(--text)}
+.pay-channels .what small{font-size:var(--fs-xs);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pay-channels .cost{flex:none;font-size:var(--fs-sm);font-weight:600;font-variant-numeric:tabular-nums;color:var(--text-soft)}
+.pay-channels.compact{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+.pay-channels.compact legend{grid-column:1/-1}
+
+/* Tabel tarif biaya admin per metode di Pembayaran Online. */
+.fee-table{width:100%;border-collapse:collapse;font-size:var(--fs-md)}
+.fee-table th{padding:6px 8px;text-align:left;font-size:var(--fs-xs);font-weight:600;color:var(--muted);border-bottom:1px solid var(--line)}
+.fee-table td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+.fee-table td small{display:block;font-size:var(--fs-xs);color:var(--muted)}
+.fee-table input[type=number]{width:96px}
+.fee-table .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.fee-table tr.off td:not(:first-child){opacity:.45}
+.fee-scroll{overflow-x:auto;margin:0 -4px;padding:0 4px}
+.fee-example{margin-top:var(--s3);padding:var(--s3);border-radius:var(--r-md);background:var(--subtle);font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--text-soft)}
+.modal-fields .pay-channels input{width:auto}

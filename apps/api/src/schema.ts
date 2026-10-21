@@ -677,6 +677,22 @@ export const schemaV7: string[] = [
   // Transaksi lama selalu lunas saat dicatat.
   "UPDATE counter_sales SET paid_at=created_at WHERE paid_at IS NULL",
 ];
+/**
+ * Versi 8: biaya admin Midtrans. `surcharge` adalah biaya layanan yang dibayar pelanggan di atas tagihan
+ * (bila venue mengatur biaya admin ditanggung pelanggan), `channel` adalah metode yang dipilih sebelum
+ * membuka Midtrans. Potongan Midtrans yang sesungguhnya tetap dicatat di kolom `fee`.
+ */
+export const schemaV8: string[] = [
+  `ALTER TABLE payment_intents ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0, ADD COLUMN channel VARCHAR(20) NULL`,
+  `ALTER TABLE payments ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0`,
+  `ALTER TABLE membership_invoices ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0, ADD COLUMN channel VARCHAR(20) NULL`,
+  `ALTER TABLE counter_sales ADD COLUMN surcharge BIGINT NOT NULL DEFAULT 0, ADD COLUMN channel VARCHAR(20) NULL`,
+];
+/** Akun sistem untuk biaya layanan yang dibayar pelanggan, dengan format yang sama seperti `membershipAccounts`. */
+export const gatewayAccounts: typeof membershipAccounts = [
+  [["4-850", "4-851", "4-852"], "Pendapatan Biaya Layanan Pembayaran", "pendapatan", "pendapatan", "pendapatan_layanan",
+    "Biaya admin Midtrans yang dibayar pelanggan. Diimbangi oleh Biaya Bank & Payment Gateway."],
+];
 /** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
 export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
   [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],
