@@ -327,7 +327,7 @@ export async function notifyExpired(orderId: string) {
  * Pembayaran online diterima: pelanggan menerima bukti booking bergaya kwitansi berisi rincian
  * lapangan, tambahan, potongan, pajak, metode bayar, dan sisa tagihan, plus tautan ke kwitansi PDF.
  */
-export async function notifyOrderPaid(input: { key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; total: number; paid: number; sessions: Booking[]; cancelled: boolean; payment_type?: string | null }) {
+export async function notifyOrderPaid(input: { key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; surcharge?: number; total: number; paid: number; sessions: Booking[]; cancelled: boolean; payment_type?: string | null }) {
   const remaining = Math.max(0, input.total - input.paid);
   const target = input.booking_id ? await contactOf(input.booking_id) : {};
   const method = payTypeLabel(input.payment_type);
@@ -342,7 +342,7 @@ export async function notifyOrderPaid(input: { key: string; booking_id?: string;
       : `Halo ${input.customer}, terima kasih. Pembayaran Anda sudah kami terima dan jadwal berikut sudah dikunci untuk Anda. Simpan email ini sebagai bukti booking.`,
     sessions: input.sessions,
     items: input.cancelled ? undefined : await billItems(input.sessions),
-    totals: input.cancelled ? undefined : [["Total", rupiah(input.total)]],
+    totals: input.cancelled ? undefined : [["Total", rupiah(input.total)], ...(input.surcharge ? [["Biaya layanan pembayaran", rupiah(input.surcharge)] as [string, string]] : [])],
     rows,
     link: input.cancelled ? orderLink(input.order_id) : receiptLink(input.order_id, remaining > 0 ? "Lihat tagihan" : "Lihat kwitansi"),
     outro: input.cancelled ? undefined : "Tunjukkan kode pesanan saat datang dan mohon tiba 10 menit sebelum jam main. Kwitansi bisa dicetak atau disimpan sebagai PDF dari tautan di atas.",

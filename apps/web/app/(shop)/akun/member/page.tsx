@@ -7,9 +7,32 @@ import { toast } from "sonner";
 import { claimMembership, fetchMembership, joinMembership, payMembership, renewMembership, useAccount, validPhone, type MemberCheckout, type MyMembership } from "@/lib/account";
 import { money } from "@/lib/api";
 import { type MemberInvoice, type PublicPlan, discountSummary, longDate, monthsLabel, percentLabel } from "@/lib/members";
+import { billOf } from "@/lib/bill";
+import { surchargeFor, type ChannelKey } from "@/lib/payments";
+import { ChannelPicker, cheapestChannel } from "@/components/channel-picker";
 
 /** Ke halaman bayar Midtrans; kembali ke halaman ini setelah selesai. */
 const goPay = (checkout: MemberCheckout) => { window.location.href = checkout.redirect_url; };
+
+/**
+ * Bila venue membebankan biaya admin Midtrans ke pelanggan, metode dipilih dulu agar biaya layanannya
+ * terlihat sebelum membayar. `base` adalah tagihan iuran (sudah termasuk pajak).
+ */
+function useMemberPay(data: MyMembership, base: number) {
+  const fees = data.settings.fees;
+  const active = fees?.fee_bearer === "customer" && fees.channels.length > 0 ? fees : undefined;
+  const [channel, setChannel] = useState<ChannelKey | null>(null);
+  useEffect(() => {
+    if (active && (!channel || !active.channels.some(entry => entry.key === channel))) setChannel(cheapestChannel(active, base));
+  }, [active, channel, base]);
+  const surcharge = active ? surchargeFor(active, active.channels.find(entry => entry.key === channel), base) : 0;
+  const picker = active ? <>
+    <ChannelPicker fees={active} base={base} value={channel} onChange={setChannel} name="metode-member" />
+    {surcharge > 0 && <small className="member-fine">Termasuk biaya layanan {money(surcharge)} (biaya admin Midtrans, ditanggung pembayar).</small>}
+  </> : null;
+  return { channel: active ? channel : null, total: base + surcharge, picker };
+}
+const withTax = (data: MyMembership, amount: number) => billOf(amount, 0, data.settings.tax).total;
 
 export default function MemberPage() {
   const account = useAccount();
@@ -95,9 +118,10 @@ function Join({ data, defaults }: { data: MyMembership; defaults: { name: string
   const [name, setName] = useState(defaults.name), [phone, setPhone] = useState(defaults.phone), [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const plan = data.plans.find(item => item.id === planId), closed = closedReason(data);
+  const pay = useMemberPay(data, plan ? withTax(data, plan.price + plan.registration_fee) : 0);
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setError("");
-    try { goPay(await joinMembership({ plan_id: planId, name: name.trim(), phone, agree })); }
+    try { goPay(await joinMembership({ plan_id: planId, name: name.trim(), phone, agree, channel: pay.channel })); }
     catch (problem) { setError((problem as Error).message); setBusy(false); }
   }
   return (
@@ -111,11 +135,11 @@ function Join({ data, defaults }: { data: MyMembership; defaults: { name: string
           <label>Nomor WhatsApp<input required inputMode="tel" maxLength={20} value={phone} aria-invalid={phone !== "" && !validPhone(phone)} onChange={event => setPhone(event.target.value)} /><small>Untuk kabar masa berlaku dan pengingat perpanjangan.</small></label>
           <label className="member-agree"><input type="checkbox" checked={agree} onChange={event => setAgree(event.target.checked)} /> <span>Saya menyetujui {data.settings.terms ? "syarat & ketentuan member di bawah" : "syarat & ketentuan member venue"}.</span></label>
           {data.settings.approval && <p className="shop-note">Pendaftaran diperiksa venue setelah dibayar. Masa berlaku dimulai saat disetujui.</p>}
+          {pay.picker}
           {error && <p className="shop-note error" role="alert">{error}</p>}
           <button className="shop-btn primary wide" type="submit" disabled={busy || !plan || !agree || !validPhone(phone)}>
-            {busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} Bayar {plan ? money(plan.price + plan.registration_fee) : ""}
+            {busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} Bayar {plan ? money(pay.total) : ""}
           </button>
-          <small className="member-fine">Pajak, bila ada, ditambahkan di halaman pembayaran.</small>
         </form>
       )}
     </section>
@@ -125,19 +149,21 @@ function Join({ data, defaults }: { data: MyMembership; defaults: { name: string
 /** Sudah mengisi pendaftaran tetapi belum membayar: lanjutkan, atau ganti paket. */
 function PendingSignup({ data, invoice, defaults, refresh }: { data: MyMembership; invoice?: MemberInvoice; defaults: { name: string; phone: string }; refresh: () => void }) {
   const [changing, setChanging] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const payment = useMemberPay(data, invoice?.amount ?? 0);
   async function pay() {
     if (!invoice) return;
     setBusy(true); setError("");
-    try { goPay(await payMembership(invoice.id)); } catch (problem) { setError((problem as Error).message); setBusy(false); }
+    try { goPay(await payMembership(invoice.id, payment.channel)); } catch (problem) { setError((problem as Error).message); setBusy(false); }
   }
   if (changing) return <Join data={data} defaults={defaults} />;
   return (
     <section className="acct-card">
       <h2>Selesaikan pendaftaran member</h2>
       {invoice ? <p>{invoice.plan_name} · {monthsLabel(invoice.months)} · <b>{money(invoice.amount)}</b>. Keanggotaan aktif begitu pembayaran diterima.</p> : <p>Tagihan pendaftaran tidak ditemukan. Pilih paket lagi untuk membuat tagihan baru.</p>}
+      {invoice && payment.picker}
       {error && <p className="shop-note error" role="alert">{error}</p>}
       <div className="member-row-actions">
-        {invoice && <button type="button" className="shop-btn primary" disabled={busy} onClick={() => void pay()}>{busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} Bayar sekarang</button>}
+        {invoice && <button type="button" className="shop-btn primary" disabled={busy} onClick={() => void pay()}>{busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} Bayar {money(payment.total)}</button>}
         <button type="button" className="shop-btn outline" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" /> Cek status</button>
         <button type="button" className="shop-btn outline" disabled={busy} onClick={() => setChanging(true)}>Ganti paket</button>
       </div>
@@ -150,7 +176,9 @@ function Renew({ data, invoice, refresh }: { data: MyMembership; invoice?: Membe
   const [planId, setPlanId] = useState(data.plans.some(plan => plan.id === member.plan.id) ? member.plan.id : data.plans[0]?.id ?? "");
   const [open, setOpen] = useState(member.state === "expired" || (member.days_left ?? 99) <= 14);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const plan = data.plans.find(item => item.id === planId), closed = data.settings.online_payment ? (data.plans.length ? "" : "Perpanjangan lewat situs belum tersedia. Silakan perpanjang di kasir venue.") : "Pembayaran online belum tersedia. Silakan perpanjang di kasir venue.";
+  const plan = data.plans.find(item => item.id === planId);
+  const pay = useMemberPay(data, invoice ? invoice.amount : plan ? withTax(data, plan.price) : 0);
+  const closed = data.settings.online_payment ? (data.plans.length ? "" : "Perpanjangan lewat situs belum tersedia. Silakan perpanjang di kasir venue.") : "Pembayaran online belum tersedia. Silakan perpanjang di kasir venue.";
   async function run(work: () => Promise<MemberCheckout>) {
     setBusy(true); setError("");
     try { goPay(await work()); } catch (problem) { setError((problem as Error).message); setBusy(false); }
@@ -159,9 +187,10 @@ function Renew({ data, invoice, refresh }: { data: MyMembership; invoice?: Membe
     <section className="acct-card">
       <h2>Perpanjangan belum dibayar</h2>
       <p>{invoice.plan_name} · {monthsLabel(invoice.months)} · <b>{money(invoice.amount)}</b>. Periode baru menyambung setelah masa berlaku sekarang.</p>
+      {pay.picker}
       {error && <p className="shop-note error" role="alert">{error}</p>}
       <div className="member-row-actions">
-        <button type="button" className="shop-btn primary" disabled={busy} onClick={() => void run(() => payMembership(invoice.id))}><CreditCard size={18} aria-hidden="true" /> Bayar sekarang</button>
+        <button type="button" className="shop-btn primary" disabled={busy} onClick={() => void run(() => payMembership(invoice.id, pay.channel))}><CreditCard size={18} aria-hidden="true" /> Bayar {money(pay.total)}</button>
         <button type="button" className="shop-btn outline" disabled={busy} onClick={refresh}><RefreshCw size={16} aria-hidden="true" /> Cek status</button>
       </div>
     </section>
@@ -172,9 +201,10 @@ function Renew({ data, invoice, refresh }: { data: MyMembership; invoice?: Membe
       <p>{member.state === "expired" ? "Masa berlaku baru dimulai hari pembayaran diterima." : "Bayar sekarang pun tidak ada hari yang hilang: periode baru menyambung setelah masa berlaku sekarang."}</p>
       {!open ? <button type="button" className="shop-btn outline" onClick={() => setOpen(true)}>Lihat paket perpanjangan</button> : closed ? <p className="shop-note warn">{closed}</p> : <>
         <PlanChoice plans={data.plans} value={planId} onChange={setPlanId} registration={false} />
+        {pay.picker}
         {error && <p className="shop-note error" role="alert">{error}</p>}
-        <button type="button" className="shop-btn primary wide" disabled={busy || !plan} onClick={() => void run(() => renewMembership(planId))}>
-          {busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} Perpanjang {plan ? money(plan.price) : ""}
+        <button type="button" className="shop-btn primary wide" disabled={busy || !plan} onClick={() => void run(() => renewMembership(planId, pay.channel))}>
+          {busy ? <Loader2 size={18} className="spin" aria-hidden="true" /> : <CreditCard size={18} aria-hidden="true" />} Perpanjang {plan ? money(pay.total) : ""}
         </button>
       </>}
     </section>

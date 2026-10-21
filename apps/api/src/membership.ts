@@ -5,8 +5,11 @@ import { check, HttpError } from "./errors.js";
 import { daysBetween, localClock, shiftDate, shiftMonths } from "./clock.js";
 import { publicUrl } from "./config.js";
 import { billOf, taxSnapshot } from "./bill.js";
-import { closeMembershipBooks, gatewayFee, syncMembershipInvoice, unearnedDues } from "./finance.js";
-import { createSnapTransaction, fetchTransactionStatus, outcomeOf, paymentConfig, paymentMethod, type MidtransStatus } from "./midtrans.js";
+import { closeMembershipBooks, syncMembershipInvoice, unearnedDues } from "./finance.js";
+import {
+  createSnapTransaction, fetchTransactionStatus, gatewayFee, outcomeOf, paymentConfig, paymentMethod, pickChannel, publicFees, snapPayments, surchargeFor, surchargeItem,
+  type ChannelKey, type MidtransStatus,
+} from "./midtrans.js";
 import { notifyMemberApproved, notifyMemberBill, notifyMemberPaid, type MemberContact } from "./notifications.js";
 
 /**
@@ -115,7 +118,7 @@ interface Membership {
 interface Invoice {
   id: string; number: string; membership_id: string; kind: "daftar" | "perpanjang"; plan_id: string; plan_name: string; months: number; dues: number;
   registration_fee: number; tax: number; tax_rate: number; tax_inclusive: number; tax_label: string; amount: number; status: "pending" | "paid" | "cancelled";
-  method: string | null; fee: number; paid_at: string | null; period_start: string | null; period_end: string | null; order_id: string | null;
+  method: string | null; fee: number; surcharge: number; channel: ChannelKey | null; paid_at: string | null; period_start: string | null; period_end: string | null; order_id: string | null;
   snap_token: string | null; redirect_url: string | null; payment_type: string | null; transaction_id: string | null; expires_at: number | null;
   created_by: string | null; created_at: string; updated_at: string;
 }
@@ -178,7 +181,7 @@ export type MemberView = Awaited<ReturnType<typeof view>>;
 const invoiceView = (invoice: Invoice) => ({
   id: invoice.id, number: invoice.number, kind: invoice.kind, plan_name: invoice.plan_name, months: invoice.months, dues: invoice.dues,
   registration_fee: invoice.registration_fee, tax: invoice.tax, tax_label: invoice.tax_label, tax_rate: invoice.tax_rate, tax_inclusive: invoice.tax_inclusive,
-  amount: invoice.amount, status: invoice.status, method: invoice.method, paid_at: invoice.paid_at, period_start: invoice.period_start, period_end: invoice.period_end,
+  amount: invoice.amount, surcharge: invoice.surcharge, channel: invoice.channel, status: invoice.status, method: invoice.method, paid_at: invoice.paid_at, period_start: invoice.period_start, period_end: invoice.period_end,
   online: !!invoice.order_id, created_at: invoice.created_at,
   // Tautan bayar hanya selama halaman Midtrans-nya masih berlaku.
   pay_url: invoice.status === "pending" && invoice.redirect_url && (invoice.expires_at ?? 0) > Date.now() / 1000 ? invoice.redirect_url : null,
@@ -221,8 +224,9 @@ async function startPeriod(member: Membership, invoice: Invoice, on = today()) {
  */
 async function settle(invoice: Invoice, payment: { method: string; fee: number; actor: string; online: boolean; payment_type?: string | null; transaction_id?: string | null }) {
   const stamp = new Date().toISOString();
-  const changed = await db.prepare("UPDATE membership_invoices SET status='paid',method=?,fee=?,paid_at=?,payment_type=COALESCE(?,payment_type),transaction_id=COALESCE(?,transaction_id),updated_at=? WHERE id=? AND status<>'paid'")
-    .run(payment.method, payment.fee, stamp, payment.payment_type ?? null, payment.transaction_id ?? null, stamp, invoice.id);
+  // Dibayar di kasir berarti biaya layanan dari halaman Midtrans yang pernah dibuka tidak berlaku.
+  const changed = await db.prepare("UPDATE membership_invoices SET status='paid',method=?,fee=?,surcharge=IF(?,surcharge,0),paid_at=?,payment_type=COALESCE(?,payment_type),transaction_id=COALESCE(?,transaction_id),updated_at=? WHERE id=? AND status<>'paid'")
+    .run(payment.method, payment.fee, payment.online ? 1 : 0, stamp, payment.payment_type ?? null, payment.transaction_id ?? null, stamp, invoice.id);
   if (!changed.changes) return null;
   const member = await getMember(invoice.membership_id);
   const paid = await getInvoice(invoice.id);
@@ -498,7 +502,10 @@ export async function customerMembership(accountId: string) {
   const member = await mine(accountId);
   const invoices = member ? (await invoicesOf(member.id)).slice(0, 10).map(invoiceView) : [];
   return {
-    settings: { open: settings.enabled, approval: settings.approval, terms: settings.terms, online_payment: config.enabled && !!config.serverKey },
+    settings: {
+      open: settings.enabled, approval: settings.approval, terms: settings.terms, online_payment: config.enabled && !!config.serverKey,
+      fees: await publicFees(), tax: await taxSnapshot(),
+    },
     plans: await publicPlans(),
     membership: member ? await view(member) : null,
     invoices,
@@ -506,9 +513,13 @@ export async function customerMembership(accountId: string) {
   };
 }
 
-/** Halaman bayar Midtrans untuk satu tagihan member. Nomor ordernya baru setiap kali dibuka ulang. */
-async function openSnap(invoice: Invoice, member: Membership) {
+/**
+ * Halaman bayar Midtrans untuk satu tagihan member. Nomor ordernya baru setiap kali dibuka ulang, begitu
+ * pula biaya layanannya, karena pelanggan boleh memilih metode lain.
+ */
+async function openSnap(invoice: Invoice, member: Membership, channel: ChannelKey | null) {
   const minutes = 60, orderId = `${invoice.number}-${Date.now().toString(36).toUpperCase()}`;
+  const surcharge = surchargeFor(channel, invoice.amount, await paymentConfig()), gross = invoice.amount + surcharge;
   const items = [
     { id: "iuran", price: invoice.dues, quantity: 1, name: `Iuran ${invoice.plan_name} ${invoice.months} bln`.slice(0, 50) },
     ...(invoice.registration_fee ? [{ id: "daftar", price: invoice.registration_fee, quantity: 1, name: "Biaya pendaftaran member" }] : []),
@@ -517,18 +528,19 @@ async function openSnap(invoice: Invoice, member: Membership) {
   const sum = items.reduce((total, item) => total + item.price, 0);
   if (sum !== invoice.amount) items.push({ id: "penyesuaian", price: invoice.amount - sum, quantity: 1, name: "Penyesuaian pembulatan" });
   const snap = await createSnapTransaction({
-    transaction_details: { order_id: orderId, gross_amount: invoice.amount },
-    item_details: items,
+    transaction_details: { order_id: orderId, gross_amount: gross },
+    item_details: [...items, ...surchargeItem(surcharge, channel)],
+    ...await snapPayments(channel),
     customer_details: { first_name: member.name.slice(0, 20), phone: member.phone.slice(0, 19), ...(member.email ? { email: member.email.slice(0, 45) } : {}) },
     expiry: { unit: "minute", duration: minutes },
     callbacks: { finish: `${publicUrl}/akun/member` },
   });
   const expires = Math.floor(Date.now() / 1000) + minutes * 60;
-  await db.prepare("UPDATE membership_invoices SET order_id=?,snap_token=?,redirect_url=?,expires_at=?,updated_at=? WHERE id=?")
-    .run(orderId, snap.token, snap.redirect_url, expires, new Date().toISOString(), invoice.id);
-  await notifyMemberBill({ member: contact(member), invoice_id: invoice.id, number: invoice.number, plan: invoice.plan_name, months: invoice.months, amount: invoice.amount, expires_at: expires, pay_url: snap.redirect_url })
+  await db.prepare("UPDATE membership_invoices SET order_id=?,snap_token=?,redirect_url=?,expires_at=?,surcharge=?,channel=?,updated_at=? WHERE id=?")
+    .run(orderId, snap.token, snap.redirect_url, expires, surcharge, channel, new Date().toISOString(), invoice.id);
+  await notifyMemberBill({ member: contact(member), invoice_id: invoice.id, number: invoice.number, plan: invoice.plan_name, months: invoice.months, amount: gross, expires_at: expires, pay_url: snap.redirect_url })
     .catch(error => console.error("Gagal menyiapkan tagihan member", invoice.number, (error as Error).message));
-  return { invoice_id: invoice.id, redirect_url: snap.redirect_url, token: snap.token, amount: invoice.amount };
+  return { invoice_id: invoice.id, redirect_url: snap.redirect_url, token: snap.token, amount: gross, surcharge };
 }
 async function requireOnlinePayment() {
   const config = await paymentConfig();
@@ -540,6 +552,7 @@ export const signupSchema = z.object({
   name: z.string().trim().min(2, "Isi nama lengkap.").max(80, "Nama maksimal 80 karakter."),
   phone: phoneSchema,
   agree: z.literal(true, "Setujui syarat & ketentuan member terlebih dahulu."),
+  channel: z.string().max(20).nullable().optional(),
 });
 /** Pelanggan mendaftar dari akunnya dan membayar lewat Midtrans. */
 export async function signup(accountId: string, input: unknown) {
@@ -547,6 +560,7 @@ export async function signup(accountId: string, input: unknown) {
   const settings = await membershipSettings();
   check(settings.enabled, 409, "Pendaftaran member online sedang ditutup. Silakan daftar di kasir venue.");
   await requireOnlinePayment();
+  const channel = await pickChannel(data.channel);
   const { invoice, member } = await guarded(() => transaction(async () => {
     const plan = await getPlan(data.plan_id);
     check(plan.active && plan.online, 409, "Paket ini tidak dijual lewat situs.");
@@ -568,12 +582,13 @@ export async function signup(accountId: string, input: unknown) {
     current = (await mine(accountId))!;
     return { invoice: await createInvoice(current, plan, "daftar", null), member: current };
   }));
-  return await openSnapSafely(invoice, member);
+  return await openSnapSafely(invoice, member, channel);
 }
 /** Member memperpanjang dari akunnya. Paket boleh diganti; potongannya berubah saat periode baru lunas. */
 export async function renewOnline(accountId: string, input: unknown) {
-  const { plan_id } = z.object({ plan_id: z.string().min(1).max(64).optional() }).parse(input ?? {});
+  const { plan_id, channel: chosen } = z.object({ plan_id: z.string().min(1).max(64).optional(), channel: z.string().max(20).nullable().optional() }).parse(input ?? {});
   await requireOnlinePayment();
+  const channel = await pickChannel(chosen);
   const { invoice, member } = await transaction(async () => {
     const member = await mine(accountId);
     check(member && (member.status === "active" || member.status === "frozen"), 409, "Akun Anda belum menjadi member aktif.");
@@ -582,18 +597,20 @@ export async function renewOnline(accountId: string, input: unknown) {
     await dropPending(member.id);
     return { invoice: await createInvoice(member, plan, "perpanjang", null), member };
   });
-  return await openSnapSafely(invoice, member);
+  return await openSnapSafely(invoice, member, channel);
 }
-async function openSnapSafely(invoice: Invoice, member: Membership) {
-  try { return await openSnap(invoice, member); } catch (error) {
+async function openSnapSafely(invoice: Invoice, member: Membership, channel: ChannelKey | null) {
+  try { return await openSnap(invoice, member, channel); } catch (error) {
     console.error("Snap gagal untuk tagihan member", invoice.number, (error as Error).message);
     if (error instanceof HttpError && error.status < 500) throw error;
     check(false, 502, "Pembayaran lewat Midtrans belum dapat dimulai. Coba lagi sebentar lagi atau hubungi venue.");
   }
 }
 /** Buka lagi halaman bayar untuk tagihan yang tautannya sudah kedaluwarsa. */
-export async function payAgain(accountId: string, invoiceId: string) {
+export async function payAgain(accountId: string, invoiceId: string, input: unknown = {}) {
   await requireOnlinePayment();
+  const { channel: chosen } = z.object({ channel: z.string().max(20).nullable().optional() }).parse(input ?? {});
+  const channel = await pickChannel(chosen);
   const member = await mine(accountId);
   const invoice = await getInvoice(invoiceId);
   check(member && invoice.membership_id === member.id, 404, "Tagihan member tidak ditemukan.");
@@ -601,8 +618,10 @@ export async function payAgain(accountId: string, invoiceId: string) {
   if (invoice.order_id) await refreshInvoice(invoice);
   const fresh = await getInvoice(invoiceId);
   check(fresh.status === "pending", 409, "Tagihan ini sudah lunas.");
-  if (fresh.redirect_url && (fresh.expires_at ?? 0) > Date.now() / 1000 + 60) return { invoice_id: fresh.id, redirect_url: fresh.redirect_url, token: fresh.snap_token, amount: fresh.amount };
-  return await openSnapSafely(fresh, member);
+  // Halaman bayar lama dipakai lagi hanya bila metodenya sama; metode lain berarti biaya layanan lain.
+  if (fresh.redirect_url && (fresh.expires_at ?? 0) > Date.now() / 1000 + 60 && (fresh.channel ?? null) === channel)
+    return { invoice_id: fresh.id, redirect_url: fresh.redirect_url, token: fresh.snap_token, amount: fresh.amount + fresh.surcharge, surcharge: fresh.surcharge };
+  return await openSnapSafely(fresh, member, channel);
 }
 
 /** Hubungkan keanggotaan yang didaftarkan kasir ke akun ini, dengan kode member dan nomor HP-nya. */
@@ -634,7 +653,7 @@ export async function applyInvoiceStatus(invoice: Invoice, status: MidtransStatu
       .run(status.payment_type ?? null, status.transaction_id ?? null, new Date().toISOString(), invoice.id);
     if (outcome === "paid" && invoice.status !== "paid") {
       const method = paymentMethod(status.payment_type);
-      await settle(invoice, { method, fee: await gatewayFee(method, invoice.amount), actor: "midtrans", online: true, payment_type: status.payment_type, transaction_id: status.transaction_id });
+      await settle(invoice, { method, fee: await gatewayFee(status.payment_type, invoice.amount + invoice.surcharge), actor: "midtrans", online: true, payment_type: status.payment_type, transaction_id: status.transaction_id });
     } else if (outcome !== "paid" && outcome !== "pending" && invoice.status === "pending") {
       // Halaman bayar ditutup atau kedaluwarsa: tagihan tetap terbuka agar pelanggan bisa membayar lagi.
       await db.prepare("UPDATE membership_invoices SET expires_at=LEAST(COALESCE(expires_at,0),UNIX_TIMESTAMP()) WHERE id=?").run(invoice.id);

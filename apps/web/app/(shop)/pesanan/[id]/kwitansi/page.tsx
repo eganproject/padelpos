@@ -40,6 +40,7 @@ export default function ReceiptPage() {
   const title = void_ ? "Pesanan dibatalkan" : settled ? "Kwitansi" : "Tagihan";
   const stamp = void_ ? { label: order.status === "expired" ? "Kedaluwarsa" : "Dibatalkan", tone: "off" } : settled ? { label: "Lunas", tone: "on" } : { label: order.paid > 0 ? "Belum lunas" : "Belum dibayar", tone: "wait" };
   const payments = data.payments ?? [];
+  const serviceFee = payments.reduce((sum, entry) => sum + (entry.kind === "payment" ? entry.surcharge ?? 0 : 0), 0);
   const onlineType = data.payment?.status === "paid" ? payTypeLabel(data.payment.payment_type) : "";
 
   return (
@@ -101,6 +102,7 @@ export default function ReceiptPage() {
             ))}
             {!payments.length && order.paid > 0 && <tr><td>Sudah dibayar</td><td className="num">−{money(order.paid)}</td></tr>}
             {!void_ && <tr className="due"><td>Sisa tagihan</td><td className="num">{money(remaining)}</td></tr>}
+            {serviceFee > 0 && <tr className="sub"><td>Biaya layanan pembayaran online (biaya admin Midtrans, dibayar pemesan di luar tagihan)</td><td className="num">{money(serviceFee)}</td></tr>}
           </tfoot>
         </table>
 

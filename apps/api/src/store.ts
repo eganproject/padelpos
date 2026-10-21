@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -187,17 +187,7 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
       for (const row of checks) await db.exec(`ALTER TABLE journal_entries DROP CHECK \`${row.name.replace(/`/g, "``")}\``);
       await db.exec("ALTER TABLE journal_entries ADD CONSTRAINT journal_entries_source CHECK (source IN ('manual','catatan','pelunasan','transfer','modal','booking','pembayaran','keanggotaan'))");
       const stamp = new Date().toISOString();
-      let position = Number((await db.prepare("SELECT COALESCE(MAX(position),0) n FROM accounts").get() as { n: number }).n);
-      for (const [codes, name, type, subtype, key, description] of membershipAccounts) {
-        if (await db.prepare("SELECT 1 FROM accounts WHERE system_key=?").get(key)) continue;
-        // Kode dan nama boleh sudah dipakai akun buatan admin; pilih yang masih kosong.
-        let code = "";
-        for (const candidate of codes) if (!await db.prepare("SELECT 1 FROM accounts WHERE code=?").get(candidate)) { code = candidate; break; }
-        code ||= `${codes[0]}-${randomUUID().slice(0, 3)}`;
-        const label = await db.prepare("SELECT 1 FROM accounts WHERE name=?").get(name) ? `${name} (sistem)` : name;
-        await db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,0,?,?,1,?,?)")
-          .run(randomUUID(), code, label, type, subtype, key, description, ++position, stamp);
-      }
+      await addSystemAccounts(membershipAccounts);
       // Menu Member: database baru sudah mendapatkannya dari versi 1, database lama ditambahkan di sini.
       const seed = menuSeed.find(([menuId]) => menuId === "members")!;
       if (!await db.prepare("SELECT 1 FROM menus WHERE id='members' OR path_key=?").get(seed[2])) {
@@ -237,7 +227,28 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
       await db.exec("ALTER TABLE counter_sales ADD CONSTRAINT counter_sales_method CHECK (method IN ('cash','transfer','qris','va','ewallet','card','midtrans'))");
     },
   },
+  {
+    version: 8, async up() {
+      for (const statement of schemaV8) await db.exec(statement);
+      await addSystemAccounts(gatewayAccounts);
+    },
+  },
 ];
+
+/** Tambahkan akun sistem yang belum ada. Kode dan nama boleh sudah dipakai akun buatan admin; pilih yang masih kosong. */
+async function addSystemAccounts(list: typeof membershipAccounts) {
+  const stamp = new Date().toISOString();
+  let position = Number((await db.prepare("SELECT COALESCE(MAX(position),0) n FROM accounts").get() as { n: number }).n);
+  for (const [codes, name, type, subtype, key, description] of list) {
+    if (await db.prepare("SELECT 1 FROM accounts WHERE system_key=?").get(key)) continue;
+    let code = "";
+    for (const candidate of codes) if (!await db.prepare("SELECT 1 FROM accounts WHERE code=?").get(candidate)) { code = candidate; break; }
+    code ||= `${codes[0]}-${randomUUID().slice(0, 3)}`;
+    const label = await db.prepare("SELECT 1 FROM accounts WHERE name=?").get(name) ? `${name} (sistem)` : name;
+    await db.prepare("INSERT INTO accounts (id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at) VALUES (?,?,?,?,?,0,?,?,1,?,?)")
+      .run(randomUUID(), code, label, type, subtype, key, description, ++position, stamp);
+  }
+}
 
 async function ensureDatabase() {
   try {

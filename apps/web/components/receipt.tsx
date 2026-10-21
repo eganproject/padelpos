@@ -66,12 +66,13 @@ export const Receipt = forwardRef<HTMLElement, { data: ReceiptData }>(function R
           {booking.discount > 0 && <tr><td>Potongan{booking.discount_note ? ` (${booking.discount_note})` : ""}</td><td className="num">−{money(booking.discount)}</td></tr>}
           {booking.tax > 0 && <tr><td>{taxName(booking)}</td><td className="num">{booking.tax_inclusive ? "" : "+"}{money(booking.tax)}</td></tr>}
           <tr className="total"><td>Total</td><td className="num">{money(booking.total)}</td></tr>
-          {settings.show_payments && payments.map(entry => (
+          {settings.show_payments && payments.map(entry => [
             <tr key={entry.id} className="pay">
               <td>{entry.kind === "refund" ? "Dikembalikan" : "Bayar"} {methodLabel[entry.method] ?? entry.method}<span>{stamp.format(new Date(entry.created_at))}</span></td>
               <td className="num">{entry.kind === "refund" ? "−" : ""}{money(entry.amount)}</td>
-            </tr>
-          ))}
+            </tr>,
+            (entry.surcharge ?? 0) > 0 && entry.kind === "payment" ? <tr key={`${entry.id}-fee`} className="pay"><td>Biaya layanan Midtrans (dibayar pelanggan)</td><td className="num">{money(entry.surcharge!)}</td></tr> : null,
+          ])}
           {!settings.show_payments && booking.paid > 0 && <tr><td>Sudah dibayar</td><td className="num">{money(booking.paid)}</td></tr>}
           {closed && booking.forfeited > 0 && <tr><td>Ditahan sebagai denda</td><td className="num">{money(booking.forfeited)}</td></tr>}
           {!closed && <tr className="due"><td>{remaining > 0 ? "Sisa tagihan" : "Sisa"}</td><td className="num">{money(remaining)}</td></tr>}
@@ -138,7 +139,8 @@ export const SaleReceipt = forwardRef<HTMLElement, { data: SaleReceiptData }>(fu
           {sale.discount > 0 && <tr><td>Potongan{sale.discount_note ? ` (${sale.discount_note})` : ""}</td><td className="num">−{money(sale.discount)}</td></tr>}
           {sale.tax > 0 && <tr><td>{taxName(sale)}</td><td className="num">{sale.tax_inclusive ? "" : "+"}{money(sale.tax)}</td></tr>}
           <tr className="total"><td>Total</td><td className="num">{money(sale.total)}</td></tr>
-          {settings.show_payments && <tr className="pay"><td>Bayar {methodName[sale.method] ?? sale.method}{sale.pay_order_id ? " (Midtrans)" : ""}</td><td className="num">{money(sale.tendered ?? sale.total)}</td></tr>}
+          {(sale.surcharge ?? 0) > 0 && <tr><td>Biaya layanan Midtrans</td><td className="num">+{money(sale.surcharge!)}</td></tr>}
+          {settings.show_payments && <tr className="pay"><td>Bayar {methodName[sale.method] ?? sale.method}{sale.pay_order_id ? " (Midtrans)" : ""}</td><td className="num">{money(sale.tendered ?? sale.total + (sale.surcharge ?? 0))}</td></tr>}
           {settings.show_payments && sale.tendered !== null && sale.tendered > sale.total && <tr className="pay"><td>Kembali</td><td className="num">{money(sale.tendered - sale.total)}</td></tr>}
           {voided && <tr className="due"><td>Dibatalkan: {sale.void_reason}</td><td className="num">{money(sale.total)}</td></tr>}
         </tfoot>

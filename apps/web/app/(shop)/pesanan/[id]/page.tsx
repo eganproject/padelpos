@@ -12,7 +12,7 @@ import { useVenueInfo } from "@/lib/use-venue-info";
 import { mapsLink, whatsappLink } from "@/lib/venue-info";
 import { downloadCalendar } from "@/components/account-bookings";
 import { OrderProgress } from "@/components/order-progress";
-import { countdown, fetchOrder, intentLabel, methodLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
+import { channelName, countdown, fetchOrder, intentLabel, methodLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
 import { loadSnap } from "@/lib/snap";
 
@@ -154,6 +154,7 @@ export default function OrderPage() {
                 <div>
                   <small>Bayar sekarang</small>
                   <b>{money(payment.amount)}</b>
+                  {(payment.surcharge ?? 0) > 0 && <small>Termasuk biaya layanan {money(payment.surcharge!)}{payment.channel ? ` (${channelName(payment.channel)})` : ""}</small>}
                 </div>
                 <span className={`timer${timeLeft ? "" : " late"}`}><Clock3 size={16} aria-hidden="true" /> {timeLeft || "Hampir habis"}</span>
               </div>

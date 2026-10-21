@@ -173,3 +173,15 @@
   .shop .invoice{border:0;box-shadow:none;padding:0}
   .shop .invoice-stamp,.shop .invoice-head{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
+
+/* Pilihan metode Midtrans saat biaya admin ditanggung pelanggan. */
+.shop .pay-channels{margin:4px 0 14px;padding:0;border:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+.shop .pay-channels legend{padding:0;margin-bottom:8px;font-size:14px;font-weight:700;color:var(--ink)}
+.shop .pay-channels label{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--rule);border-radius:14px;background:var(--card);cursor:pointer}
+.shop .pay-channels label.on{border-color:var(--green);box-shadow:inset 0 0 0 1px var(--green);background:var(--lime-wash)}
+.shop .pay-channels input{flex:none;margin:0;width:18px;height:18px;accent-color:var(--green)}
+.shop .pay-channels .what{flex:1;min-width:0;display:flex;flex-direction:column}
+.shop .pay-channels .what b{font-size:14.5px;color:var(--ink)}
+.shop .pay-channels .what small{font-size:12.5px;color:var(--ink-3)}
+.shop .pay-channels .cost{flex:none;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--ink-2)}
+.shop .bill .fee dt small{display:block;font-size:12px;color:var(--ink-3)}
