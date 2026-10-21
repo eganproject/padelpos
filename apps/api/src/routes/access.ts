@@ -8,6 +8,7 @@ import { check } from "../errors.js";
 import { passwordSchema,publicUser,staffName } from "./auth.js";
 import { contactPhoneSchema } from "../operations.js";
 import type { AccessMenu,AccessRole,User } from "../types.js";
+import { dropAvatar } from "../avatars.js";
 const router=Router();
 router.use(requireAdmin);
 router.get("/overview",async (_req,res)=>res.json({users:(await getUsers()).map(publicUser),roles:await getRoles(),menus:await getMenus()}));
@@ -46,7 +47,7 @@ router.delete("/users/:id",async (req:AuthRequest,res)=>{await transaction(async
   check(target,404,"Pengguna tidak ditemukan.");
   check(target.id!==req.auth!.sub,400,"Anda tidak dapat menghapus akun sendiri.");
   check(!(target.role==="admin"&&users.filter(u=>u.role==="admin").length===1),400,"Admin terakhir tidak dapat dihapus.");
-  await saveUsers(users.filter(u=>u.id!==target.id));await revokeSessions(target.id);await audit(req.auth!.sub,"user.delete",target.id);
+  await saveUsers(users.filter(u=>u.id!==target.id));await dropAvatar("user",target.id);await revokeSessions(target.id);await audit(req.auth!.sub,"user.delete",target.id);
 });res.status(204).send()});
 const roleSchema=z.object({name:z.string().trim().min(3,"Nama role minimal 3 karakter.").max(40,"Nama role maksimal 40 karakter."),slug:z.string().trim().min(2,"Slug minimal 2 karakter.").max(30,"Slug maksimal 30 karakter.").regex(/^[a-z0-9-]+$/,"Slug hanya boleh huruf kecil, angka, dan tanda hubung (-)."),description:z.string().trim().max(160,"Deskripsi maksimal 160 karakter."),menuIds:z.array(z.string())});
 async function validateMenus(ids:string[]){const menus=await getMenus();check(ids.every(id=>menus.some(m=>m.id===id)),400,"Menu tidak tersedia.");}

@@ -1,5 +1,7 @@
-import { Router, type NextFunction, type Request, type Response } from "express";
+import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { limiter } from "../ratelimit.js";
+import { maxAvatarSize, removeCustomerAvatar, setCustomerAvatar } from "../avatars.js";
+import { photoTypes } from "../photos.js";
 import { createCustomerSession, customerAccountId, endCustomerSession } from "../auth.js";
 import { claim, deleteAccount, history, overview, publicAccount, rescheduleOwn, signIn, getAccount, updateProfile } from "../customers.js";
 import { inbox, markRead, savePreferences, unreadCount } from "../inbox.js";
@@ -40,6 +42,15 @@ router.post("/logout", async (req, res) => { await endCustomerSession(req, res);
 
 router.get("/me", requireCustomer, async (req: CustomerRequest, res) => res.json({ account: publicAccount(await getAccount(req.accountId!)) }));
 router.put("/me", requireCustomer, async (req: CustomerRequest, res) => res.json({ account: await updateProfile(req.accountId!, req.body) }));
+const avatarLimit = limit(15, 30, "Terlalu sering mengganti foto. Coba lagi dalam 15 menit.");
+router.post("/me/avatar", requireCustomer, avatarLimit, express.raw({ type: [...photoTypes], limit: maxAvatarSize }), async (req: CustomerRequest, res) => {
+  await setCustomerAvatar(req.accountId!, req.get("content-type"), req.body);
+  res.json({ account: publicAccount(await getAccount(req.accountId!)) });
+});
+router.delete("/me/avatar", requireCustomer, avatarLimit, async (req: CustomerRequest, res) => {
+  await removeCustomerAvatar(req.accountId!);
+  res.json({ account: publicAccount(await getAccount(req.accountId!)) });
+});
 router.delete("/me", requireCustomer, async (req: CustomerRequest, res) => {
   await deleteAccount(req.accountId!);
   await endCustomerSession(req, res);

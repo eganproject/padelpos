@@ -8,6 +8,7 @@ import { bookingAddons } from "./addons.js";
 import { customerMaxReschedules, getBooking, rescheduleBooking, type Booking } from "./operations.js";
 import { getPolicies } from "./content.js";
 import { bookingCode, expireHolds, normalizePhone } from "./payments.js";
+import { dropAvatar } from "./avatars.js";
 
 /**
  * Akun pelanggan dengan login Google lewat Firebase Authentication.
@@ -180,7 +181,12 @@ export async function verifyIdToken(token: string, projectId: string): Promise<G
 export interface Account {
   id: string; firebase_uid: string; email: string; name: string; phone: string | null;
   photo_url: string; created_at: string; last_login_at: string; notify_email?: number; notify_whatsapp?: number;
+  /** Foto yang diunggah pelanggan sendiri; bila ada, menggantikan foto Google. */
+  avatar_id?: string | null;
 }
+/** Foto unggahan pelanggan didahulukan; tanpa itu dipakai foto akun Google (bisa kosong). */
+export const accountPhoto = (account: Pick<Account, "photo_url" | "avatar_id">) =>
+  account.avatar_id ? `/api/public/photos/${account.avatar_id}` : account.photo_url;
 const findAccount = async (id: string) => await db.prepare("SELECT * FROM customer_accounts WHERE id=?").get(id) as Account | undefined;
 export async function getAccount(id: string) {
   const account = await findAccount(id);
@@ -195,7 +201,7 @@ export const displayPhone = (phone: string | null) => {
 };
 export const publicAccount = (account: Account) => ({
   id: account.id, email: account.email, name: account.name, phone: displayPhone(account.phone),
-  photo_url: account.photo_url, created_at: account.created_at, needs_profile: !account.phone,
+  photo_url: accountPhoto(account), custom_photo: !!account.avatar_id, created_at: account.created_at, needs_profile: !account.phone,
   notify: { email: account.notify_email !== 0, whatsapp: account.notify_whatsapp !== 0 },
 });
 
@@ -249,6 +255,7 @@ export async function deleteAccount(accountId: string) {
     // Keanggotaan tetap ada dan bisa dihubungkan lagi dengan kode member; hanya tautan ke akunnya yang lepas.
     await db.prepare("UPDATE memberships SET account_id=NULL WHERE account_id=?").run(accountId);
     await db.prepare("DELETE FROM sessions WHERE subject_id=? AND subject_type='customer'").run(accountId);
+    await dropAvatar("customer", accountId);
     await db.prepare("DELETE FROM customer_accounts WHERE id=?").run(accountId);
     await audit(accountId, "customer.delete", accountId);
   });
@@ -407,7 +414,7 @@ export async function adminAccounts() {
       (SELECT max(date) FROM bookings WHERE account_id=a.id AND status NOT IN ('cancelled','expired')) last_booking
     FROM customer_accounts a ORDER BY a.last_login_at DESC`).all() as (Account & { bookings: number; last_booking: string | null })[];
   return rows.map(row => ({
-    id: row.id, name: row.name, email: row.email, phone: displayPhone(row.phone), photo_url: row.photo_url,
+    id: row.id, name: row.name, email: row.email, phone: displayPhone(row.phone), photo_url: accountPhoto(row),
     created_at: row.created_at, last_login_at: row.last_login_at, bookings: row.bookings, last_booking: row.last_booking,
   }));
 }

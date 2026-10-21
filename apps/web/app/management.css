@@ -478,3 +478,14 @@ body:has(.desk) [data-sonner-toaster],body:has(.auth-page) [data-sonner-toaster]
   --border-radius:var(--r-sm);font-family:var(--font-ui);
 }
 body:has(.desk) [data-sonner-toast],body:has(.auth-page) [data-sonner-toast]{font-size:var(--fs-sm);letter-spacing:.02em;box-shadow:var(--shadow-3)}
+
+/* --- Foto profil staf ---------------------------------------------------- */
+.desk-avatar,.user-cell>span{overflow:hidden}
+.desk-avatar .avatar-img,.user-cell .avatar-img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.desk-avatar.xl{position:relative;width:64px;height:64px;font-size:var(--fs-xl)}
+.desk-avatar.xl i{position:absolute;inset:0;display:grid;place-items:center;background:rgb(0 0 0 / .45);color:#fff}
+.desk-avatar.xl i svg{width:20px;height:20px;animation:spin 1s linear infinite}
+.profile-photo{display:flex;align-items:center;gap:var(--s3)}
+.profile-photo>div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.profile-photo-actions{display:flex;flex-wrap:wrap;gap:var(--s2)}
+.profile-photo-actions svg{width:14px;height:14px}

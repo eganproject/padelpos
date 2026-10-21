@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { Bell, Loader2, LogOut, Mail, MessageCircle, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Bell, Camera, Loader2, LogOut, Mail, MessageCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { deleteAccount, saveNotifyPreferences, signOut, useAccount } from "@/lib/account";
+import { deleteAccount, removeAvatar, saveNotifyPreferences, signOut, uploadAvatar, useAccount } from "@/lib/account";
+import { squareAvatar } from "@/lib/image";
 import { ProfileForm } from "@/components/account-ui";
 import { Avatar } from "@/components/shop-header";
 
@@ -15,12 +16,29 @@ export default function ProfilePage() {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState("");
+  const picker = useRef<HTMLInputElement>(null);
   if (!account) return null;
   const notify = account.notify ?? { email: true, whatsapp: true };
 
   async function savePref(next: { email: boolean; whatsapp: boolean }) {
     setBusy("kabar");
     try { await saveNotifyPreferences(next); toast.success("Pilihan notifikasi disimpan"); }
+    catch (problem) { toast.error((problem as Error).message); }
+    finally { setBusy(""); }
+  }
+
+  async function choosePhoto(files: FileList | null) {
+    const file = files?.[0];
+    if (picker.current) picker.current.value = "";
+    if (!file) return;
+    setBusy("foto");
+    try { await uploadAvatar(await squareAvatar(file)); toast.success("Foto profil diperbarui"); }
+    catch (problem) { toast.error((problem as Error).message); }
+    finally { setBusy(""); }
+  }
+  async function dropPhoto() {
+    setBusy("hapus-foto");
+    try { await removeAvatar(); toast.success("Foto profil dihapus"); }
     catch (problem) { toast.error((problem as Error).message); }
     finally { setBusy(""); }
   }
@@ -38,6 +56,29 @@ export default function ProfilePage() {
 
   return (
     <div className="acct-profile">
+      <section className="acct-card">
+        <h2>Foto profil</h2>
+        <p>Tampil di akun Anda. {account.custom_photo ? "Hapus foto untuk kembali memakai foto akun Google." : account.photo_url ? "Saat ini memakai foto akun Google Anda." : "Belum ada foto, jadi yang tampil inisial nama Anda."}</p>
+        <div className="acct-photo">
+          <span className="acct-photo-frame">
+            <Avatar account={account} size={72} />
+            {(busy === "foto" || busy === "hapus-foto") && <i><Loader2 size={22} className="spin" aria-hidden="true" /></i>}
+          </span>
+          <div>
+            <button type="button" className="shop-btn outline sm" onClick={() => picker.current?.click()} disabled={!!busy}>
+              <Camera size={16} aria-hidden="true" /> {account.custom_photo ? "Ganti foto" : "Unggah foto"}
+            </button>
+            {account.custom_photo && (
+              <button type="button" className="shop-btn ghost sm danger-text" onClick={() => void dropPhoto()} disabled={!!busy}>
+                <Trash2 size={16} aria-hidden="true" /> Hapus foto
+              </button>
+            )}
+            <small>JPG, PNG, atau WebP. Dipotong persegi otomatis.</small>
+          </div>
+          <input ref={picker} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event => void choosePhoto(event.target.files)} />
+        </div>
+      </section>
+
       <section className="acct-card">
         <h2>Data pemesan</h2>
         <p>Dipakai untuk mengisi keranjang otomatis dan dikirim ke venue saat Anda memesan.</p>
@@ -71,7 +112,7 @@ export default function ProfilePage() {
             <span>Anggota sejak {since.format(new Date(account.created_at))}</span>
           </div>
         </div>
-        <p>Foto dan email mengikuti akun Google Anda dan diperbarui setiap kali masuk.</p>
+        <p>Email mengikuti akun Google Anda dan diperbarui setiap kali masuk.</p>
         <button type="button" className="shop-btn outline" onClick={() => void leave()} disabled={!!busy}>
           {busy === "keluar" ? <Loader2 size={16} className="spin" aria-hidden="true" /> : <LogOut size={16} aria-hidden="true" />} Keluar
         </button>
