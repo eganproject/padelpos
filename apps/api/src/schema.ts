@@ -708,6 +708,73 @@ export const schemaV9: string[] = [
   )`,
 ];
 /**
+ * Versi 10: voucher dan kode promo. Satu kode berlaku untuk satu pesanan online, satu booking kasir,
+ * atau satu transaksi kasir. Nilai potongannya disalin ke booking/transaksi (`voucher_discount`) dan
+ * tidak berubah lagi, walau voucher-nya diubah atau dihapus setelahnya.
+ *
+ * `voucher_redemptions` mencatat siapa memakai kode apa. Pemakaian dihitung dari baris yang
+ * transaksinya masih hidup (booking aktif atau menunggu bayar, transaksi kasir lunas atau menunggu
+ * bayar), jadi kuota otomatis kembali saat pesanan kedaluwarsa atau dibatalkan.
+ */
+export const schemaV10: string[] = [
+  `CREATE TABLE vouchers (
+    id ${id} PRIMARY KEY,
+    code VARCHAR(32) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    description TEXT NOT NULL DEFAULT (''),
+    kind VARCHAR(16) NOT NULL CHECK(kind IN ('percent','amount')),
+    value BIGINT NOT NULL CHECK(value > 0),
+    max_discount BIGINT NULL CHECK(max_discount IS NULL OR max_discount > 0),
+    min_order BIGINT NOT NULL DEFAULT 0 CHECK(min_order >= 0),
+    target VARCHAR(16) NOT NULL DEFAULT 'all' CHECK(target IN ('all','court')),
+    channel VARCHAR(16) NOT NULL DEFAULT 'all' CHECK(channel IN ('all','online','kasir')),
+    quota INT NULL CHECK(quota IS NULL OR quota > 0),
+    per_customer INT NULL CHECK(per_customer IS NULL OR per_customer > 0),
+    starts_on ${date} NULL,
+    ends_on ${date} NULL,
+    active TINYINT NOT NULL DEFAULT 1,
+    created_by ${id},
+    created_at ${stamp} NOT NULL,
+    updated_at ${stamp} NOT NULL,
+    UNIQUE KEY vouchers_code (code)
+  )`,
+  `CREATE TABLE voucher_redemptions (
+    id ${id} PRIMARY KEY,
+    voucher_id ${id} NOT NULL,
+    code VARCHAR(32) NOT NULL,
+    order_id ${id} NULL,
+    booking_id ${id} NULL,
+    sale_id ${id} NULL,
+    customer_id ${id} NULL,
+    account_id ${id} NULL,
+    customer VARCHAR(255) NOT NULL DEFAULT '',
+    phone VARCHAR(32) NOT NULL DEFAULT '',
+    channel VARCHAR(16) NOT NULL CHECK(channel IN ('online','kasir')),
+    amount BIGINT NOT NULL CHECK(amount > 0),
+    created_by ${id},
+    created_at ${stamp} NOT NULL,
+    KEY voucher_redemptions_voucher (voucher_id, created_at),
+    KEY voucher_redemptions_phone (voucher_id, phone),
+    KEY voucher_redemptions_order (order_id),
+    KEY voucher_redemptions_booking (booking_id),
+    KEY voucher_redemptions_sale (sale_id),
+    CONSTRAINT voucher_redemptions_voucher_fk FOREIGN KEY (voucher_id) REFERENCES vouchers(id)
+  )`,
+  `ALTER TABLE bookings
+    ADD COLUMN voucher_id ${id} NULL,
+    ADD COLUMN voucher_code VARCHAR(32) NOT NULL DEFAULT '',
+    ADD COLUMN voucher_discount BIGINT NOT NULL DEFAULT 0 CHECK(voucher_discount >= 0)`,
+  `ALTER TABLE counter_sales
+    ADD COLUMN voucher_id ${id} NULL,
+    ADD COLUMN voucher_code VARCHAR(32) NOT NULL DEFAULT '',
+    ADD COLUMN voucher_discount BIGINT NOT NULL DEFAULT 0 CHECK(voucher_discount >= 0)`,
+];
+/** Akun sistem untuk potongan voucher, dengan format yang sama seperti `membershipAccounts`. */
+export const voucherAccounts: typeof membershipAccounts = [
+  [["4-970", "4-971", "4-972"], "Potongan Voucher", "pendapatan", "pendapatan", "potongan_voucher",
+    "Potongan dari kode voucher dan promo. Saldonya mengurangi pendapatan."],
+];
+/**
  * Versi 11: keanggotaan fase 2.
  *
  * - `membership_plan_rates`: tarif tetap per jam untuk member, per paket dan per tarif lapangan.
@@ -766,9 +833,9 @@ export const membershipAccounts: [codes: string[], name: string, type: string, s
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
   "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "member_slots", "customer_accounts", "avatars", "brand_assets",
-  "membership_plans", "membership_plan_rates", "memberships", "membership_invoices", "orders",
+  "membership_plans", "membership_plan_rates", "memberships", "membership_invoices", "orders", "vouchers",
   "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
-  "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
+  "voucher_redemptions", "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
 ];
 
 type MenuSeed = [id: string, name: string, path: string, icon: string, group: string, order: number];
@@ -778,6 +845,7 @@ export const menuSeed: MenuSeed[] = [
   ["bookings", "Booking", "/admin/bookings", "CalendarDays", "Operasional", 2],
   ["customers", "Pelanggan", "/admin/customers", "Contact", "Operasional", 3],
   ["members", "Member", "/admin/member", "BadgeCheck", "Operasional", 4],
+  ["vouchers", "Voucher & Promo", "/admin/voucher", "TicketPercent", "Operasional", 5],
   ["finance", "Ringkasan Keuangan", "/admin/keuangan", "ChartPie", "Keuangan", 51],
   ["finance-records", "Kas & Transaksi", "/admin/keuangan/transaksi", "ArrowLeftRight", "Keuangan", 52],
   ["finance-journal", "Jurnal Umum", "/admin/keuangan/jurnal", "BookOpenText", "Keuangan", 53],

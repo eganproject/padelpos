@@ -18,6 +18,7 @@ export type CounterSale = {
   pay_order_id: string | null; snap_token: string | null; pay_url: string | null; pay_expires_at: number | null; payment_type: string | null;
   /** Potongan member (sudah termasuk dalam `total`) dan paket yang dipakai. */
   membership_id?: string | null; member_plan?: string; member_addon_rate?: number; member_discount?: number;
+  voucher_id?: string | null; voucher_code?: string; voucher_discount?: number;
 };
 /** Booking lapangan hari ini yang bisa dihubungkan ke transaksi kasir. */
 export type LinkedBooking = { id: string; code: string; court_name: string; customer: string; phone: string; customer_id: string | null; date: string; start_time: string; end_time: string; status: string; member_code?: string | null };

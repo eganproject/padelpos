@@ -48,3 +48,16 @@
 p.member-invalid{margin:0;font-size:var(--fs-sm)}
 p.member-invalid>svg,p.ops-muted>svg{display:inline-block;vertical-align:-2px;margin-right:2px}
 @media(max-width:560px){.modal-fields .member-rate-row{grid-template-columns:1fr;gap:6px}}
+/* Voucher & promo */
+.voucher-code{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);letter-spacing:.04em}
+.voucher-code-field{display:flex;gap:var(--s2,8px);align-items:stretch}
+.voucher-code-field input{flex:1;min-width:0;text-transform:uppercase;font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);letter-spacing:.04em}
+.voucher-code-field .ops-secondary{flex:none}
+.ops-history.muted{opacity:.6}
+.ops-history.muted strong{text-decoration:line-through}
+.voucher-line{display:flex;gap:var(--s2,8px);align-items:flex-end}
+.voucher-line label{flex:1;min-width:0}
+.voucher-line input{text-transform:uppercase;letter-spacing:.04em}
+.voucher-note{font-size:var(--fs-sm);margin:-4px 0 0}
+.voucher-note.ok{color:var(--green-text)}
+.voucher-note.bad{color:var(--red-text)}

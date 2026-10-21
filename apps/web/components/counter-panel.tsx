@@ -16,6 +16,8 @@ import { AddonLinesEditor, type Draft, clampDrafts, draftPayload, draftsTotal } 
 import { ErrorBox, Modal } from "./operation-ui";
 import { MemberPicker } from "./member-picker";
 import { type LookupMember, percentLabel } from "@/lib/members";
+import { VoucherField } from "./voucher-field";
+import { type VoucherCheck } from "@/lib/vouchers";
 import { DateInput, MoneyInput, Select } from "./form-controls";
 
 const printSale = (id: string) => window.open(`/cetak/nota/${id}?jenis=kasir&cetak=1`, "_blank", "noopener");
@@ -116,10 +118,15 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
   const duration = followsBooking ? windowMinutes : options ? Math.max(30, Math.min(form.duration, 1440 - Number(options.window.start.slice(0, 2)) * 60 - Number(options.window.start.slice(3)))) : form.duration;
   const subtotal = draftsTotal(chosen, duration);
   // Diskon tambahan member untuk barang katalog; biaya lain yang diketik tidak ikut (sama dengan server).
+  // Voucher memotong sisa tagihan setelah potongan member.
   const memberRate = member?.valid ? member.plan.addon_discount : 0;
-  const memberDiscount = Math.round(draftsTotal(chosen.filter(draft => draft.type !== "lainnya"), duration) * memberRate / 10000);
+  const discountable = draftsTotal(chosen.filter(draft => draft.type !== "lainnya"), duration);
+  const memberDiscount = Math.round(discountable * memberRate / 10000);
   const discount = showDiscount ? Math.min(form.discount, subtotal - memberDiscount) : 0;
-  const bill = billOf(subtotal, discount + memberDiscount, options?.tax);
+  const [voucher, setVoucher] = useState<VoucherCheck | null>(null);
+  const voucherCut = voucher?.ok ? voucher.amount : 0;
+  const bill = billOf(subtotal, discount + memberDiscount + voucherCut, options?.tax);
+  const salePhone = customer?.customer_id || !customer?.isNew ? customer?.phone ?? "" : form.phone.trim();
   const tendered = form.tendered === "" ? null : Number(form.tendered);
   const change = form.method === "cash" && tendered !== null ? tendered - bill.total : 0;
   const midtrans = form.method === "midtrans";
@@ -139,6 +146,7 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
         id: form.id, customer: name, phone: customer?.customer_id ? "" : (customer?.isNew ? form.phone.trim() : customer?.phone ?? ""), customer_id: customer?.customer_id ?? null,
         booking_id: form.booking_id || null, membership_id: member?.valid ? member.id : null, duration: form.duration, lines: draftPayload(chosen), method: form.method, channel: channel?.key ?? null,
         tendered: form.method === "cash" ? tendered : null, discount, discount_note: discount ? form.discount_note : "", notes: form.notes,
+        voucher_code: voucher?.ok ? voucher.code : "",
       }) });
       toast.success(result.sale.status === "pending" ? `${result.sale.number} menunggu pembayaran Midtrans` : `${result.sale.number} tercatat · ${money(result.sale.total)}`);
       done(result.sale.id);
@@ -170,9 +178,12 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     {!showDiscount ? <button type="button" className="ops-link-button counter-discount-toggle" onClick={() => setShowDiscount(true)}>Beri potongan harga</button>
       : <div className="field-grid"><label>Potongan<MoneyInput min={0} max={subtotal - memberDiscount} value={form.discount} onChange={e => set("discount", Number(e.target.value))} /></label><label>Alasan potongan<input required={form.discount > 0} minLength={form.discount > 0 ? 3 : undefined} maxLength={120} value={form.discount_note} placeholder="Mis. pelanggan tetap" onChange={e => set("discount_note", e.target.value)} /></label></div>}
 
+    {subtotal > 0 && <VoucherField extras={discountable} subtotal={subtotal} cap={subtotal - discount - memberDiscount} phone={salePhone} value={voucher} onChange={setVoucher} disabled={busy} />}
+
     <div className="ops-total"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>
     {memberDiscount > 0 && <div className="ops-total"><span>Potongan member · {member!.plan.name} {percentLabel(memberRate)}</span><strong>−{money(memberDiscount)}</strong></div>}
     {discount > 0 && <div className="ops-total"><span>Potongan</span><strong>−{money(discount)}</strong></div>}
+    {voucherCut > 0 && <div className="ops-total"><span>Voucher · {voucher!.code}</span><strong>−{money(voucherCut)}</strong></div>}
     {bill.tax > 0 && options?.tax && <div className="ops-total"><span>{taxName(options.tax)}</span><strong>{money(bill.tax)}</strong></div>}
     {surcharge > 0 && <div className="ops-total"><span>Biaya layanan {channel?.label}</span><strong>{money(surcharge)}</strong></div>}
     <div className="ops-total counter-grand"><span>Total bayar</span><strong>{money(charge)}</strong></div>
@@ -300,6 +311,7 @@ export function SaleDetailModal({ id, close, changed }: { id: string; close: () 
       <div className="ops-total"><span>Subtotal</span><strong>{money(sale.subtotal)}</strong></div>
       {(sale.member_discount ?? 0) > 0 && <div className="ops-total"><span>Potongan member · {sale.member_plan}</span><strong>−{money(sale.member_discount!)}</strong></div>}
       {sale.discount > 0 && <div className="ops-total"><span>Potongan · {sale.discount_note}</span><strong>−{money(sale.discount)}</strong></div>}
+      {(sale.voucher_discount ?? 0) > 0 && <div className="ops-total"><span>Voucher · {sale.voucher_code}</span><strong>−{money(sale.voucher_discount!)}</strong></div>}
       {sale.tax > 0 && <div className="ops-total"><span>{taxName(sale)}</span><strong>{money(sale.tax)}</strong></div>}
       <div className="ops-total"><span>Total{pending ? "" : ` · ${methodName[sale.method] ?? sale.method}${sale.pay_order_id && sale.status === "paid" ? " via Midtrans" : ""}`}</span><strong>{money(sale.total)}</strong></div>
       {(sale.surcharge ?? 0) > 0 && <div className="ops-total"><span>Biaya layanan Midtrans · dibayar pelanggan</span><strong>{money(sale.surcharge!)}</strong></div>}

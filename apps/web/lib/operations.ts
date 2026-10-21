@@ -14,7 +14,9 @@ export type Booking={id:string;court_id:string;court_name:string;customer:string
   /** Bagian potongan member dari sewa lapangan, dan salinan tarif tetap member (JSON). */
   member_court_cut?:number;member_fixed?:string|null;
   /** Keterangan harga member dari server saat menyimpan, mis. kuota habis. */
-  member_note?:string};
+  member_note?:string;
+  /** Voucher yang dipakai; `voucher_discount` sudah termasuk dalam `total` dan tetap sejak kode dipakai. */
+  voucher_id?:string|null;voucher_code?:string;voucher_discount?:number};
 export type Payment={id:string;amount:number;kind:"payment"|"refund";method:string;note:string;created_at:string;/** Biaya layanan Midtrans yang dibayar pelanggan di luar tagihan booking. */surcharge?:number};
 export type Maintenance={id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string};
 export type PriceRule={id:string;label:string;days:number[];start_time:string;end_time:string;hourly_rate:number;court_ids:string[]};

@@ -1,6 +1,6 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
-import { BadgeCheck,CalendarClock,CalendarDays,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer,ShoppingBag } from "lucide-react";
+import { BadgeCheck,CalendarClock,CalendarDays,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer,ShoppingBag,TicketPercent } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,slotRates,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
@@ -16,6 +16,8 @@ import { MemberPicker } from "./member-picker";
 import { type LookupMember,hoursText,memberCourtCut,memberCut,memberOnlyAt,parseFixed } from "@/lib/members";
 import { Select, DateInput, MoneyInput } from "./form-controls";
 import { CounterPanel,SaleDetailModal } from "./counter-panel";
+import { VoucherField } from "./voucher-field";
+import { type VoucherCheck } from "@/lib/vouchers";
 import { type BookingSale,methodName,saleStatus } from "@/lib/counter";
 
 const optionsUrl=(date:string,start:string,end:string,booking?:string)=>`/operations/addons/options?date=${date}&start=${start}&end=${end}${booking?`&booking=${booking}`:""}`;
@@ -139,6 +141,7 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[refreshing,setRefreshing]=useState(true);
   const [drafts,setDrafts]=useState<Draft[]>([]),[options,setOptions]=useState<AddonOption[]|null>(null);
   const [member,setMember]=useState<LookupMember|null>(null);
+  const [voucher,setVoucher]=useState<VoucherCheck|null>(null);
   const pickMember=useCallback((next:LookupMember|null)=>{
     setMember(next);
     // Nama dan nomor diisi dari data member bila kolomnya masih kosong.
@@ -170,8 +173,10 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
   // Kuota harga member habis: sewa lapangan harga normal, diskon tambahan tetap (sama dengan server).
   const overQuota=!!plan&&!!member&&duration>0&&quotaShort(member,duration);
   const courtCut=plan&&court&&context&&validTime&&!overQuota?memberCourtCut(slotRates(court,context.price_rules,form.date,form.start_time,form.end_time),plan.court_discount,plan.fixed):0;
-  const cut=plan?memberCut(courtCut,draftsTotal(drafts.filter(d=>d.type!=="lainnya"),duration),plan.addon_discount):0;
-  const bill=billOf(price+extras,cut,context?.tax);
+  const discountable=draftsTotal(drafts.filter(d=>d.type!=="lainnya"),duration);
+  const cut=plan?memberCut(courtCut,discountable,plan.addon_discount):0;
+  const voucherCut=voucher?.ok?voucher.amount:0;
+  const bill=billOf(price+extras,cut+voucherCut,context?.tax);
   const exclusive=court&&validTime?memberOnlyAt(context?.member_slots,court.id,form.date,form.start_time,form.end_time):undefined;
   const blocked=!!exclusive&&!(plan&&plan.member_slots);
   // Stok raket dan barang sewa lain bergantung pada jam main, jadi dimuat ulang setiap jam berubah.
@@ -181,7 +186,7 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
     api<{addons:AddonOption[]}>(optionsUrl(form.date,form.start_time,form.end_time)).then(result=>{if(!active)return;setOptions(result.addons);setDrafts(current=>clampDrafts(current,result.addons))}).catch(()=>{if(active)setOptions([])});
     return()=>{active=false};
   },[form.date,form.start_time,form.end_time,validTime]);
-  async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError("");try{const result=await api<{booking:Booking}>("/operations/bookings",{method:"POST",body:JSON.stringify({...form,membership_id:member?.valid?member.id:null,addons:draftPayload(drafts)})});toast.success("Booking berhasil dibuat");if(result.booking.member_note)toast.info(result.booking.member_note);done(result.booking.id)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+  async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError("");try{const result=await api<{booking:Booking}>("/operations/bookings",{method:"POST",body:JSON.stringify({...form,membership_id:member?.valid?member.id:null,addons:draftPayload(drafts),voucher_code:voucher?.ok?voucher.code:""})});toast.success("Booking berhasil dibuat");if(result.booking.member_note)toast.info(result.booking.member_note);done(result.booking.id)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
   return <Modal title="Booking baru" close={close}><form onSubmit={submit}><div className="modal-fields">{error&&<ErrorBox message={error}/>}<p className="ops-muted">Waktu lapangan: {context?.timezone||"…"}. Durasi kelipatan 30 menit.</p>
     {context&&!context.courts.some(c=>c.active)?<p>Belum ada lapangan aktif. Tambahkan melalui menu Lapangan terlebih dahulu.</p>:<>
     <label>Lapangan<Select required value={form.court_id} onChange={e=>{const selected=context?.courts.find(c=>c.id===e.target.value);const start=selected?firstStart(selected,form.date,context):"";setForm({...form,court_id:e.target.value,start_time:start,end_time:start?timeSlots(minute(start)+30,minute(start)+30)[0]:""})}}><option value="" disabled>Pilih lapangan</option>{context?.courts.filter(c=>c.active).map(c=><option key={c.id} value={c.id}>{c.name} · {money(c.hourly_rate)}/jam</option>)}</Select></label>
@@ -198,6 +203,8 @@ function BookingForm({close,done}:{close:()=>void;done:(id:string)=>void}){
     <div className="ops-total"><span>Sewa lapangan</span><strong>{money(price)}</strong></div>
     {extras>0&&<div className="ops-total"><span>Tambahan</span><strong>{money(extras)}</strong></div>}
     {cut>0&&<div className="ops-total"><span>Potongan member · {member!.plan.name}</span><strong>−{money(cut)}</strong></div>}
+    {validTime&&price>0&&<VoucherField court={price} extras={discountable} subtotal={price+extras} cap={price+extras-cut} phone={form.phone} value={voucher} onChange={setVoucher}/>}
+    {voucherCut>0&&<div className="ops-total"><span>Voucher · {voucher!.code}</span><strong>−{money(voucherCut)}</strong></div>}
     {bill.tax>0&&context?.tax&&<div className="ops-total"><span>{taxName(context.tax)}</span><strong>{money(bill.tax)}</strong></div>}
     <div className="ops-total"><span>Total tagihan</span><strong>{money(bill.total)}</strong></div><p className="ops-muted">Booking langsung dikonfirmasi. Catat DP atau pelunasan pada halaman detail setelah menyimpan.</p></>}
     </div><div className="modal-actions"><button type="button" onClick={close}>Batal</button><Submit busy={busy} disabled={refreshing||!validTime||conflict||blocked}>Simpan booking</Submit></div></form></Modal>;
@@ -216,6 +223,28 @@ function BookingMember({booking,busy,onSaved}:{booking:Booking;busy:boolean;onSa
   return <div className="ops-payment"><h3>Pakai harga member</h3>{error&&<ErrorBox message={error}/>}
     <MemberPicker date={booking.date} value={member} onChange={setMember} disabled={saving}/>
     <div className="addon-edit-actions"><button type="button" className="ops-secondary" disabled={saving} onClick={()=>setOpen(false)}>Batal</button><button type="button" className="ops-primary" disabled={saving||busy||!member?.valid} onClick={()=>void save(member!.id)}>{saving?"Menyimpan…":"Pasang harga member"}</button></div>
+  </div>;
+}
+
+/**
+ * Pasang atau lepas kode voucher pada booking aktif, mis. pelanggan menunjukkan kode promo saat
+ * datang. Nilai potongannya tetap seperti saat dipasang walau tambahan atau jadwalnya berubah.
+ */
+function BookingVoucher({booking,extras,busy,onSaved}:{booking:Booking;extras:BookingAddon[];busy:boolean;onSaved:(booking:Booking)=>void}){
+  const [open,setOpen]=useState(false),[voucher,setVoucher]=useState<VoucherCheck|null>(null),[saving,setSaving]=useState(false),[error,setError]=useState("");
+  async function save(code:string|null){
+    setSaving(true);setError("");
+    try{const result=await api<{booking:Booking}>(`/operations/bookings/${booking.id}/voucher`,{method:"PUT",body:JSON.stringify({code})});onSaved(result.booking);setOpen(false);toast.success(code?`Voucher ${code} dipakai`:"Voucher dilepas")}
+    catch(e){setError((e as Error).message)}finally{setSaving(false)}
+  }
+  if(booking.voucher_id)return <div className="ops-card-head"><span className="ops-muted"><TicketPercent size={14} aria-hidden="true"/> Voucher <b className="voucher-code">{booking.voucher_code}</b> · −{money(booking.voucher_discount??0)}</span><button type="button" className="ops-link-button" disabled={busy||saving} onClick={()=>{if(confirm(`Lepas voucher ${booking.voucher_code}? Tagihan naik ${money(booking.voucher_discount??0)} dan kodenya bisa dipakai lagi.`))void save(null)}}>Lepas voucher</button>{error&&<ErrorBox message={error}/>}</div>;
+  if(!open)return <div className="ops-card-head"><span className="ops-muted">Pelanggan punya kode promo?</span><button type="button" className="ops-secondary" disabled={busy} onClick={()=>setOpen(true)}><TicketPercent size={14}/> Pakai voucher</button></div>;
+  const all=extras.reduce((sum,line)=>sum+line.subtotal,0),discountable=extras.filter(line=>line.type!=="lainnya").reduce((sum,line)=>sum+line.subtotal,0);
+  const subtotal=booking.court_total+all;
+  return <div className="ops-payment"><h3>Pakai voucher</h3>{error&&<ErrorBox message={error}/>}
+    <VoucherField court={booking.court_total} extras={discountable} subtotal={subtotal} cap={subtotal-booking.discount-(booking.member_discount??0)} phone={booking.phone} value={voucher} onChange={setVoucher} disabled={saving}/>
+    {voucher?.ok&&<p className="ops-muted">Tagihan menjadi <b>{money(billOf(subtotal,booking.discount+(booking.member_discount??0)+voucher.amount,booking).total)}</b> (sebelumnya {money(booking.total)}).</p>}
+    <div className="addon-edit-actions"><button type="button" className="ops-secondary" disabled={saving} onClick={()=>setOpen(false)}>Batal</button><button type="button" className="ops-primary" disabled={saving||busy||!voucher?.ok} onClick={()=>void save(voucher!.code)}>{saving?"Menyimpan…":"Pakai voucher"}</button></div>
   </div>;
 }
 
@@ -273,7 +302,7 @@ function Reschedule({booking,extras,busy,onSaved}:{booking:Booking;extras:Bookin
   const courtCut=booking.membership_id&&court&&context&&validTime?memberCourtCut(slotRates(court,context.price_rules,form.date,form.start_time,form.end_time),booking.member_court_rate??0,parseFixed(booking.member_fixed)):0;
   const member=booking.membership_id?memberCut(courtCut,extras.filter(l=>l.type!=="lainnya").reduce((sum,line)=>sum+(line.pricing==="per_hour"?Math.round(line.unit_price*line.quantity*duration/60):line.subtotal),0),booking.member_addon_rate??0):0;
   const exclusive=court&&validTime?memberOnlyAt(context?.member_slots,court.id,form.date,form.start_time,form.end_time):undefined;
-  const total=billOf(courtPrice+extrasPrice,booking.discount+member,booking).total;
+  const total=billOf(courtPrice+extrasPrice,booking.discount+(booking.voucher_discount??0)+member,booking).total;
   const same=form.court_id===booking.court_id&&form.date===booking.date&&form.start_time===booking.start_time&&form.end_time===booking.end_time;
   async function save(e:React.FormEvent){
     e.preventDefault();setSaving(true);setError("");
@@ -364,7 +393,7 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
       <div className="ops-card-head"><h3>Sewa & tambahan</h3>{booking.status==="confirmed"&&!editing&&<button type="button" className="ops-secondary" disabled={busy} onClick={()=>void editAddons()}><PackagePlus size={14}/> {lines.length?"Ubah tambahan":"Tambah"}</button>}</div>
       {editing?<>
         <AddonLinesEditor options={options} drafts={drafts} onChange={setDrafts} duration={duration} allowCustom/>
-        <p className="ops-muted">Tagihan baru: {money(booking.court_total)} lapangan + {money(draftSum)} tambahan{booking.discount>0?` − ${money(booking.discount)} potongan`:""}{booking.membership_id?` − ${money(memberCutOf(booking,drafts,duration))} potongan member`:""}{booking.tax>0&&!booking.tax_inclusive?` + ${booking.tax_label||"pajak"}`:""} = <b>{money(billOf(booking.court_total+draftSum,booking.discount+memberCutOf(booking,drafts,duration),booking).total)}</b>{booking.paid>0?`. Sudah dibayar ${money(booking.paid)}; tagihan tidak dapat turun di bawah angka ini.`:"."}</p>
+        <p className="ops-muted">Tagihan baru: {money(booking.court_total)} lapangan + {money(draftSum)} tambahan{booking.discount>0?` − ${money(booking.discount)} potongan`:""}{(booking.voucher_discount??0)>0?` − ${money(booking.voucher_discount!)} voucher`:""}{booking.membership_id?` − ${money(memberCutOf(booking,drafts,duration))} potongan member`:""}{booking.tax>0&&!booking.tax_inclusive?` + ${booking.tax_label||"pajak"}`:""} = <b>{money(billOf(booking.court_total+draftSum,booking.discount+(booking.voucher_discount??0)+memberCutOf(booking,drafts,duration),booking).total)}</b>{booking.paid>0?`. Sudah dibayar ${money(booking.paid)}; tagihan tidak dapat turun di bawah angka ini.`:"."}</p>
         <div className="addon-edit-actions"><button type="button" className="ops-secondary" disabled={busy} onClick={()=>setEditing(false)}>Batal</button><button type="button" className="ops-primary" disabled={busy||!options} onClick={()=>void saveAddons()}>{busy?"Menyimpan…":"Simpan tambahan"}</button></div>
       </>:lines.length?<ul className="addon-summary-lines">{lines.map(line=><li key={line.id}>
         <div><b>{line.quantity}× {line.name}</b><small>{money(line.unit_price)} {unitLabel(line.type,line.pricing)}{line.pricing==="per_hour"?` × ${hoursLabel(duration)}`:""}{line.type==="lainnya"?" · biaya lain":""}</small>
@@ -373,9 +402,10 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
       </li>)}</ul>:<p className="ops-muted">Belum ada sewa raket, bola, atau tambahan lain.</p>}
       {!editing&&canReturn&&unreturned.length>1&&<button type="button" className="ops-secondary addon-return-all" disabled={busy} onClick={()=>void markReturned(unreturned.map(l=>l.id),true)}><PackageCheck size={14}/> Tandai semua barang sewa kembali</button>}
     </section>}
-    <div className="ops-total"><span>Sewa lapangan</span><strong>{money(booking.court_total)}</strong></div>{extrasTotal>0&&<div className="ops-total"><span>Tambahan</span><strong>{money(extrasTotal)}</strong></div>}{(booking.member_discount??0)>0&&<div className="ops-total"><span>Potongan member · {booking.member_plan}</span><strong>−{money(booking.member_discount!)}</strong></div>}{booking.discount>0&&<div className="ops-total"><span>Potongan · {booking.discount_note}</span><strong>−{money(booking.discount)}</strong></div>}{booking.tax>0&&<div className="ops-total"><span>{taxName(booking)}</span><strong>{money(booking.tax)}</strong></div>}<div className="ops-total"><span>Total tagihan</span><strong>{money(booking.total)}</strong></div><div className="ops-total"><span>Pembayaran neto</span><strong>{money(booking.paid)}</strong></div><div className="ops-total"><span>{refundDue(booking)>0?"Perlu dikembalikan":"Sisa tagihan"}</span><strong>{money(due(booking))}</strong></div>
+    <div className="ops-total"><span>Sewa lapangan</span><strong>{money(booking.court_total)}</strong></div>{extrasTotal>0&&<div className="ops-total"><span>Tambahan</span><strong>{money(extrasTotal)}</strong></div>}{(booking.member_discount??0)>0&&<div className="ops-total"><span>Potongan member · {booking.member_plan}</span><strong>−{money(booking.member_discount!)}</strong></div>}{(booking.voucher_discount??0)>0&&<div className="ops-total"><span>Voucher · {booking.voucher_code}</span><strong>−{money(booking.voucher_discount!)}</strong></div>}{booking.discount>0&&<div className="ops-total"><span>Potongan · {booking.discount_note}</span><strong>−{money(booking.discount)}</strong></div>}{booking.tax>0&&<div className="ops-total"><span>{taxName(booking)}</span><strong>{money(booking.tax)}</strong></div>}<div className="ops-total"><span>Total tagihan</span><strong>{money(booking.total)}</strong></div><div className="ops-total"><span>Pembayaran neto</span><strong>{money(booking.paid)}</strong></div><div className="ops-total"><span>{refundDue(booking)>0?"Perlu dikembalikan":"Sisa tagihan"}</span><strong>{money(due(booking))}</strong></div>
     {booking.cancel_reason&&<p>Alasan pembatalan: {booking.cancel_reason}</p>}
     {booking.status==="confirmed"&&<BookingMember key={`${booking.id}-${booking.membership_id??""}`} booking={booking} busy={busy} onSaved={next=>{merge({booking:next});changed()}}/>}
+    {booking.status==="confirmed"&&<BookingVoucher key={`${booking.id}-${booking.voucher_id??""}`} booking={booking} extras={lines} busy={busy} onSaved={next=>{merge({booking:next});changed()}}/>}
     <BillAdjust key={`${booking.id}-${booking.status}`} booking={booking} busy={busy} onSaved={next=>{merge({booking:next});changed()}}/>
     {(payable||refundable)&&<form onSubmit={pay} className="ops-payment"><h3>{refundable?"Catat pengembalian dana":"Catat DP / pelunasan"}</h3><p className="ops-muted">Pastikan uang sudah {refundable?"dikembalikan":"diterima"}. Formulir ini mencatat transaksi manual.</p><div className="field-grid"><label>Nominal<MoneyInput required min={1} max={refundable?refundDue(booking):booking.total-booking.paid} value={form.amount} onChange={e=>setForm({...form,id:crypto.randomUUID(),amount:Number(e.target.value)})}/></label><label>Metode<Select value={form.method} onChange={e=>setForm({...form,id:crypto.randomUUID(),method:e.target.value})}><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="qris">QRIS</option></Select></label></div><label>Catatan / referensi{refundable?" (wajib)":" (opsional)"}<input required={!!refundable} minLength={refundable?3:undefined} maxLength={200} value={form.note} onChange={e=>setForm({...form,id:crypto.randomUUID(),note:e.target.value})}/></label><Submit busy={busy}>{refundable?"Catat pengembalian":"Catat pembayaran"}</Submit></form>}
     {(payable||(data!.intents.length>0))&&<section className="ops-addons" aria-label="Tagihan online">

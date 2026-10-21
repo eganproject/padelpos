@@ -187,6 +187,22 @@ test("member fase 2: tarif tetap member, kuota jam, jam khusus member, dan disko
       assert.equal(Number(trial.n), 0);
     });
 
+    await t.test("kasir: potongan member dihitung dulu, voucher memotong sisanya, jurnal seimbang", async () => {
+      const promo = await request("/operations/vouchers", "POST", { code: "MEMBER10", name: "Promo member", kind: "percent", value: 1000, starts_on: today }, admin);
+      assert.equal(promo.status, 201, JSON.stringify(promo.data));
+      const sale = await request("/operations/counter", "POST", {
+        customer: "Rina", membership_id: rinaId, method: "cash", voucher_code: "MEMBER10",
+        lines: [{ addon_id: racketId, quantity: 1 }, { addon_id: drinkId, quantity: 2 }, { name: "Senar", unit_price: 30000, quantity: 1 }],
+      }, admin);
+      assert.equal(sale.status, 201, JSON.stringify(sale.data));
+      // Member 20% × 70.000 = 14.000; voucher 10% × 70.000 (barang katalog) = 7.000; senar tidak didiskon.
+      assert.equal(sale.data.sale.member_discount, 14000);
+      assert.equal(sale.data.sale.voucher_discount, 7000);
+      assert.equal(sale.data.sale.total, 79000);
+      const trial = await db.prepare("SELECT SUM(debit)-SUM(credit) n FROM journal_lines").get() as { n: number };
+      assert.equal(Number(trial.n), 0);
+    });
+
     await t.test("kasir: booking hari ini dengan harga member membawa kode membernya", async () => {
       const now = localClock();
       const start = `${String(Math.min(21, Math.max(6, Number(now.time.slice(0, 2)) + 1))).padStart(2, "0")}:00`;

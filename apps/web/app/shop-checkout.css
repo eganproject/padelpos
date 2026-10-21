@@ -40,6 +40,21 @@
 .shop .bill .due dt,.shop .bill .due dd{color:var(--amber);font-weight:800}
 .shop .policy-chip{display:flex;align-items:center;gap:8px;margin-top:14px;padding:10px 12px;border-radius:12px;background:var(--sunk);font-size:13.5px;font-weight:600;color:var(--green)}
 .shop .policy-chip svg{flex:none}
+/* Kode promo di rincian pembayaran. */
+.shop .voucher-toggle{margin:12px -10px 0}
+.shop .voucher-box{margin-top:14px;padding-top:12px;border-top:1px dashed var(--rule-2)}
+.shop .voucher-box .field{margin:0}
+.shop .voucher-input{display:flex;gap:8px}
+.shop .voucher-input input{flex:1;min-width:0;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+.shop .voucher-input input::placeholder{text-transform:none;letter-spacing:0;font-weight:500}
+.shop .voucher-input .shop-btn{flex:none;min-width:76px}
+.shop .voucher-applied{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 8px 10px 12px;border-radius:12px;background:var(--lime-wash);border:1px dashed var(--lime-edge);color:var(--lime-deep)}
+.shop .voucher-applied svg{flex:none}
+.shop .voucher-applied div{flex:1;min-width:0;display:flex;flex-direction:column}
+.shop .voucher-applied b{font-size:14.5px;letter-spacing:.04em;color:var(--ink)}
+.shop .voucher-applied small{font-size:12.5px;color:var(--ink-2)}
+.shop .voucher-applied .icon-btn{flex:none;display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:10px;background:none;color:var(--ink-2)}
+.shop .voucher-applied .icon-btn:hover{background:var(--card)}
 
 .shop .checkout .account-note{display:flex;align-items:center;gap:10px;margin-bottom:16px;padding:12px;border-radius:12px;background:var(--sunk);font-size:13.5px;color:var(--ink-2)}
 .shop .checkout .account-note svg{flex:none;color:var(--green)}

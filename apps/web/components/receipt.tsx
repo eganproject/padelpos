@@ -75,8 +75,9 @@ export const Receipt = forwardRef<HTMLElement, { data: ReceiptData }>(function R
           ))}
         </tbody>
         <tfoot>
-          {(booking.discount > 0 || booking.tax > 0 || (booking.member_discount ?? 0) > 0) && <tr><td>Subtotal</td><td className="num">{money(subtotal)}</td></tr>}
+          {(booking.discount > 0 || booking.tax > 0 || (booking.member_discount ?? 0) > 0 || (booking.voucher_discount ?? 0) > 0) && <tr><td>Subtotal</td><td className="num">{money(subtotal)}</td></tr>}
           {(booking.member_discount ?? 0) > 0 && <tr><td>Potongan member{booking.member_plan ? ` (${booking.member_plan})` : ""}</td><td className="num">−{money(booking.member_discount!)}</td></tr>}
+          {(booking.voucher_discount ?? 0) > 0 && <tr><td>Voucher {booking.voucher_code}</td><td className="num">−{money(booking.voucher_discount!)}</td></tr>}
           {booking.discount > 0 && <tr><td>Potongan{booking.discount_note ? ` (${booking.discount_note})` : ""}</td><td className="num">−{money(booking.discount)}</td></tr>}
           {booking.tax > 0 && <tr><td>{taxName(booking)}</td><td className="num">{booking.tax_inclusive ? "" : "+"}{money(booking.tax)}</td></tr>}
           <tr className="total"><td>Total</td><td className="num">{money(booking.total)}</td></tr>
@@ -149,8 +150,9 @@ export const SaleReceipt = forwardRef<HTMLElement, { data: SaleReceiptData }>(fu
           ))}
         </tbody>
         <tfoot>
-          {(sale.discount > 0 || sale.tax > 0 || (sale.member_discount ?? 0) > 0) && <tr><td>Subtotal</td><td className="num">{money(sale.subtotal)}</td></tr>}
+          {(sale.discount > 0 || sale.tax > 0 || (sale.member_discount ?? 0) > 0 || (sale.voucher_discount ?? 0) > 0) && <tr><td>Subtotal</td><td className="num">{money(sale.subtotal)}</td></tr>}
           {(sale.member_discount ?? 0) > 0 && <tr><td>Potongan member{sale.member_plan ? ` (${sale.member_plan})` : ""}</td><td className="num">−{money(sale.member_discount!)}</td></tr>}
+          {(sale.voucher_discount ?? 0) > 0 && <tr><td>Voucher {sale.voucher_code}</td><td className="num">−{money(sale.voucher_discount!)}</td></tr>}
           {sale.discount > 0 && <tr><td>Potongan{sale.discount_note ? ` (${sale.discount_note})` : ""}</td><td className="num">−{money(sale.discount)}</td></tr>}
           {sale.tax > 0 && <tr><td>{taxName(sale)}</td><td className="num">{sale.tax_inclusive ? "" : "+"}{money(sale.tax)}</td></tr>}
           <tr className="total"><td>Total</td><td className="num">{money(sale.total)}</td></tr>

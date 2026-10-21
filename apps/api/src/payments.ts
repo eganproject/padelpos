@@ -8,7 +8,8 @@ import { syncBooking } from "./finance.js";
 import { durationProblem } from "./content.js";
 import { allocate, billOf, memberCut, taxSnapshot } from "./bill.js";
 import { accountMember, courtPricing, memberSlotProblem } from "./member-rates.js";
-import { assertScheduleFree, closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, scheduleClash, slotRates, timeSchema, type Booking } from "./operations.js";
+import { assertScheduleFree, bookingVoucherPart, closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, scheduleClash, setVoucherOn, slotRates, timeSchema, type Booking } from "./operations.js";
+import { minimumLeft, previewVoucher, recordRedemption, resolveVoucher } from "./vouchers.js";
 import {
   createSnapTransaction, fetchTransactionStatus, gatewayFee, outcomeOf, paymentConfig, paymentMethod, payableAmount, pickChannel,
   signatureFor, signatureMatches, snapPayments, surchargeFor, surchargeItem, type ChannelKey, type MidtransStatus, type Outcome,
@@ -96,8 +97,14 @@ export const checkoutSchema = z.object({
   notes: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
   /** Metode yang dipilih pelanggan; wajib bila biaya admin Midtrans ditanggung pelanggan. */
   channel: z.string().max(20).nullable().optional(),
+  voucher_code: z.string().trim().max(40).default(""),
 });
-export const cartSchema = z.object({ items: z.array(cartItemSchema).max(maxCartItems) });
+export const cartSchema = z.object({
+  items: z.array(cartItemSchema).max(maxCartItems),
+  /** Kode promo yang diketik pelanggan; nomor HP dipakai untuk memeriksa batas pemakaian per pelanggan. */
+  voucher_code: z.string().trim().max(40).default(""),
+  phone: z.string().trim().max(20).default(""),
+});
 type CartItem = z.infer<typeof cartItemSchema>;
 
 const label = (item: { date: string; start_time: string; end_time: string }, courtName: string) =>
@@ -119,7 +126,7 @@ async function slotTaken(item: CartItem) {
  * Tidak mengubah apa pun, jadi aman dipanggil setiap kali halaman keranjang dibuka.
  */
 export async function quoteCart(input: unknown, accountId: string | null = null) {
-  const { items } = cartSchema.parse(input);
+  const { items, voucher_code, phone } = cartSchema.parse(input);
   await expireHolds();
   const rules = await priceRules();
   const snapshot = await taxSnapshot();
@@ -131,7 +138,7 @@ export async function quoteCart(input: unknown, accountId: string | null = null)
     const duration = minutes(item.end_time) - minutes(item.start_time);
     const court = await db.prepare("SELECT id,name,hourly_rate,opens_at,closes_at,active FROM courts WHERE id=?").get(item.court_id) as
       { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; active: number } | undefined;
-    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0, member_discount: 0, member_plan: "", member_note: "" };
+    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0, member_discount: 0, member_plan: "", member_note: "", voucher_discount: 0, extras: 0 };
     if (!court || !court.active) return { ...base, ok: false, reason: "Lapangan ini sedang tidak tersedia.", court_total: 0, total: 0, addons: [] };
     // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat. Batasnya sama dengan
     // jadwal publik: slot yang dimulai tepat pada menit ini masih boleh dipesan.
@@ -168,17 +175,27 @@ export async function quoteCart(input: unknown, accountId: string | null = null)
     const cut = member ? memberCut(pricing.court_cut, extras, member) : 0;
     const { total, tax } = billOf(courtTotal + extras, cut, snapshot);
     return {
-      ...base, member_discount: cut, member_plan: member?.member_plan ?? "", member_note: pricing.note, ok: !taken && !exclusive && addons.every(line => line.ok),
+      ...base, member_discount: cut, member_plan: member?.member_plan ?? "", member_note: pricing.note, extras, ok: !taken && !exclusive && addons.every(line => line.ok),
       reason: taken ? `Jam ini ${taken}.` : exclusive
         || (addons.some(line => !line.ok) ? addonProblem(addons.filter(line => !line.ok), catalog) : ""),
       court_total: courtTotal, tax, total, addons,
     };
   })());
   const ok = results.filter(item => item.ok);
+  // Voucher dihitung atas sesi yang bisa dipesan, dengan rumus yang sama seperti saat checkout.
+  const voucher = voucher_code && ok.length ? await previewVoucher(voucher_code, ok.map(item => ({
+    court: item.court_total, extras: item.extras, subtotal: item.court_total + item.extras, cap: item.court_total + item.extras - item.member_discount,
+  })), { channel: "online", phone: phone || null, accountId, deferCustomerCheck: true }) : null;
+  if (voucher?.ok) ok.forEach((item, index) => {
+    item.voucher_discount = voucher.shares[index];
+    Object.assign(item, billOf(item.court_total + item.extras, item.member_discount + item.voucher_discount, snapshot));
+  });
   const config = await paymentConfig();
   return {
     items: results, total: ok.reduce((sum, item) => sum + item.total, 0), tax: ok.reduce((sum, item) => sum + item.tax, 0),
     member_discount: ok.reduce((sum, item) => sum + item.member_discount, 0),
+    voucher: voucher_code ? voucher ?? { ok: false, code: voucher_code.toUpperCase(), name: "", summary: "", amount: 0, shares: [], message: "Belum ada sesi yang bisa dipesan." } : null,
+    voucher_discount: ok.reduce((sum, item) => sum + item.voucher_discount, 0),
     tax_label: snapshot.tax_label, tax_inclusive: !!snapshot.tax_inclusive,
     amount: ok.reduce((sum, item) => sum + payableAmount(item.total, config), 0),
   };
@@ -241,6 +258,7 @@ async function itemsFor(bookings: Booking[], amount: number, full: boolean) {
         id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50),
       })),
       ...(booking.member_discount ? [{ id: `member-${booking.id.slice(0, 8)}`, price: -booking.member_discount, quantity: 1, name: `Potongan member ${booking.member_plan}`.slice(0, 50) }] : []),
+      ...(booking.voucher_discount ? [{ id: `voucher-${booking.id.slice(0, 8)}`, price: -booking.voucher_discount, quantity: 1, name: `Voucher ${booking.voucher_code}`.slice(0, 50) }] : []),
       ...(booking.discount ? [{ id: `diskon-${booking.id.slice(0, 8)}`, price: -booking.discount, quantity: 1, name: `Potongan ${booking.discount_note}`.slice(0, 50) }] : []),
       // Pajak yang sudah termasuk harga tidak ditambahkan lagi.
       ...(booking.tax && !booking.tax_inclusive ? [{ id: `pajak-${booking.id.slice(0, 8)}`, price: booking.tax, quantity: 1, name: `${booking.tax_label || "Pajak"} ${booking.tax_rate / 100}%`.slice(0, 50) }] : []),
@@ -323,6 +341,14 @@ export async function createCheckout(input: unknown, accountId: string | null = 
           member?.membership_id ?? null, member?.member_plan ?? "", pricing.member_court_rate, member?.member_addon_rate ?? 0, cut, cut, pricing.member_fixed);
       if (item.addons.length) await applyLines(await getBooking(id), item.addons, customerId);
       created.push(await getBooking(id));
+    }
+    if (data.voucher_code) {
+      // Kuota diperiksa di bawah kunci tulis yang sama, jadi dua pesanan bersamaan tidak bisa melampauinya.
+      const parts = await Promise.all(created.map(booking => bookingVoucherPart(booking)));
+      const { voucher, shares, amount } = await resolveVoucher(data.voucher_code, parts, { channel: "online", phone: data.phone, accountId });
+      for (const [index, booking] of created.entries()) if (shares[index] > 0) created[index] = await setVoucherOn(booking, voucher, shares[index]);
+      await recordRedemption({ voucher, amount, channel: "online", order_id: orderId, customer_id: customerId, account_id: accountId, customer: data.customer, phone: data.phone, actor: null });
+      check(created.reduce((sum, booking) => sum + payableAmount(booking.total, config), 0) >= minimumLeft, 409, "Nominal yang dibayar setelah voucher terlalu kecil untuk pembayaran online. Hubungi venue lewat WhatsApp.");
     }
     const total = created.reduce((sum, booking) => sum + booking.total, 0);
     await db.prepare("INSERT INTO orders (id,code,customer_id,customer,phone,email,notes,total,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
@@ -545,6 +571,7 @@ export async function orderView(id: string) {
         court_total: booking.court_total, total: booking.total, paid: booking.paid, cancel_reason: booking.cancel_reason,
         discount: booking.discount, discount_note: booking.discount_note,
         member_discount: booking.member_discount, member_plan: booking.member_plan,
+        voucher_discount: booking.voucher_discount, voucher_code: booking.voucher_code,
         tax: booking.tax, tax_rate: booking.tax_rate, tax_inclusive: booking.tax_inclusive, tax_label: booking.tax_label,
         addons: (await bookingAddons(booking.id)).map(line => ({ name: line.name, quantity: line.quantity, subtotal: line.subtotal })),
       }))),

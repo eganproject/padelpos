@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, CreditCard, Loader2, Lock, MessageCircle, PackagePlus, Plus, ShieldCheck, ShoppingBag, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, CreditCard, Loader2, Lock, MessageCircle, PackagePlus, Plus, ShieldCheck, ShoppingBag, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { ApiError, money } from "@/lib/api";
 import { ShopAddonPicker } from "@/components/shop-addons";
 import { ShopSteps } from "@/components/shop-steps";
@@ -33,6 +33,10 @@ export default function CartPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [channel, setChannel] = useState<ChannelKey | null>(null);
+  /** Kode promo yang sedang dipakai, dan isian kotak kodenya. */
+  const [voucherCode, setVoucherCode] = useState("");
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucherOpen, setVoucherOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
   const account = useAccount();
@@ -49,18 +53,20 @@ export default function CartPage() {
   }, [account]);
 
   // Harga dan ketersediaan selalu datang dari server, bukan dari angka yang tersimpan di browser.
+  // Nomor HP ikut dikirim agar batas pemakaian voucher per pelanggan sudah terlihat sebelum bayar.
+  const quotePhone = voucherCode && validPhone(form.phone) ? form.phone.trim() : "";
   useEffect(() => {
     if (!items.length) { setQuote(null); return; }
     let active = true;
     setChecking(true);
     const timer = window.setTimeout(() => {
-      quoteCart(cartPayload(items))
+      quoteCart(cartPayload(items), { voucher_code: voucherCode, phone: quotePhone })
         .then(result => { if (active) setQuote(result); })
         .catch(() => { if (active) setQuote(null); })
         .finally(() => { if (active) setChecking(false); });
     }, 300);
     return () => { active = false; window.clearTimeout(timer); setChecking(false); };
-  }, [items, account?.id]);
+  }, [items, account?.id, voucherCode, quotePhone]);
 
   const info = venue?.info;
   const payment = venue?.payment;
@@ -80,6 +86,7 @@ export default function CartPage() {
       memberCut: matches ? checked.member_discount ?? 0 : 0,
       memberPlan: matches ? checked.member_plan ?? "" : "",
       memberNote: matches ? checked.member_note ?? "" : "",
+      voucherCut: matches ? checked.voucher_discount ?? 0 : 0,
     };
   }), [items, quote, payment?.tax]);
   const valid = priced.filter(entry => !entry.problem);
@@ -88,7 +95,9 @@ export default function CartPage() {
   const inclusive = quote ? quote.tax_inclusive : !!payment?.tax?.tax_inclusive;
   const memberCut = valid.reduce((sum, entry) => sum + entry.memberCut, 0);
   const memberPlan = valid.find(entry => entry.memberPlan)?.memberPlan ?? "";
-  const subtotal = valid.reduce((sum, entry) => sum + entry.total - (inclusive ? 0 : entry.tax), 0) + memberCut;
+  const voucherCut = valid.reduce((sum, entry) => sum + entry.voucherCut, 0);
+  const voucher = voucherCode && quote?.voucher && quote.voucher.code === voucherCode.toUpperCase() ? quote.voucher : null;
+  const subtotal = valid.reduce((sum, entry) => sum + entry.total - (inclusive ? 0 : entry.tax), 0) + memberCut + voucherCut;
   const blocked = priced.some(entry => entry.problem);
   // DP dibulatkan per sesi oleh server, jadi nominalnya dijumlah per sesi, bukan dari total keranjang.
   const payNow = quote && priced.every(entry => entry.matches)
@@ -132,6 +141,7 @@ export default function CartPage() {
         items: cartPayload(items),
         customer: form.customer.trim(), phone: form.phone.trim(), email: form.email.trim(), notes: form.notes.trim(),
         channel: customerPays ? channel : null,
+        voucher_code: voucher?.ok ? voucher.code : "",
       });
       // Sesi sudah menjadi pesanan di server; keranjang tidak perlu disimpan lagi.
       clearCart();
@@ -141,7 +151,7 @@ export default function CartPage() {
       setError(problem instanceof ApiError ? problem.message : "Pemesanan gagal. Coba lagi sebentar lagi.");
       setBusy(false);
       // Tandai sesi mana yang bermasalah supaya pelanggan tahu apa yang harus dihapus.
-      quoteCart(cartPayload(items)).then(setQuote).catch(() => { });
+      quoteCart(cartPayload(items), { voucher_code: voucherCode, phone: quotePhone }).then(setQuote).catch(() => { });
     }
   }
 
@@ -243,6 +253,7 @@ export default function CartPage() {
             <dl className="bill">
               <div><dt>Subtotal ({valid.length} sesi)</dt><dd>{money(subtotal)}</dd></div>
               {memberCut > 0 && <div className="member-cut"><dt>Potongan member · {memberPlan}</dt><dd>−{money(memberCut)}</dd></div>}
+              {voucherCut > 0 && voucher?.ok && <div className="member-cut"><dt>Voucher · {voucher.code}</dt><dd>−{money(voucherCut)}</dd></div>}
               {tax > 0 && payment?.tax && <div><dt>{taxName(payment.tax)}</dt><dd>{money(tax)}</dd></div>}
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
@@ -258,6 +269,10 @@ export default function CartPage() {
                 </>
               )}
             </dl>
+            {payment?.enabled && <VoucherBox open={voucherOpen || !!voucherCode} onOpen={() => setVoucherOpen(true)} input={voucherInput} setInput={setVoucherInput}
+              applied={voucherCode} result={voucher} checking={checking}
+              apply={() => { const code = voucherInput.trim().toUpperCase(); if (code) setVoucherCode(code); }}
+              remove={() => { setVoucherCode(""); setVoucherInput(""); }} />}
             {blocked && <p className="shop-note error" role="alert">Ada sesi yang tidak bisa dipesan. Hapus sesi itu untuk melanjutkan.</p>}
             {policyLine && <Link className="policy-chip" href="/kebijakan#pembatalan"><ShieldCheck size={16} aria-hidden="true" /> {policyLine}</Link>}
           </section>
@@ -340,6 +355,43 @@ export default function CartPage() {
           <a className="shop-btn primary" href={whatsappLink(info.whatsapp, message)} target="_blank" rel="noopener"><MessageCircle size={18} aria-hidden="true" /> Kirim</a>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Kotak kode promo. Kode dikirim ke server bersama isi keranjang, jadi potongan yang tampil sama
+ * dengan yang ditagih. Kode yang tidak berlaku tetap tampil dengan alasannya agar mudah diperbaiki.
+ */
+function VoucherBox({ open, onOpen, input, setInput, applied, result, checking, apply, remove }: {
+  open: boolean; onOpen: () => void; input: string; setInput: (value: string) => void; applied: string;
+  result: CartQuote["voucher"] | null; checking: boolean; apply: () => void; remove: () => void;
+}) {
+  if (!open) return (
+    <button type="button" className="link-btn voucher-toggle" onClick={onOpen}><TicketPercent size={16} aria-hidden="true" /> Punya kode promo?</button>
+  );
+  if (applied && result?.ok) return (
+    <div className="voucher-applied" role="status">
+      <TicketPercent size={18} aria-hidden="true" />
+      <div><b>{result.code}</b><small>{result.name}{result.summary ? ` · ${result.summary}` : ""}</small></div>
+      <button type="button" className="icon-btn" aria-label="Hapus kode promo" onClick={remove}><X size={16} aria-hidden="true" /></button>
+    </div>
+  );
+  return (
+    <div className="voucher-box">
+      <label className="field">
+        <span>Kode promo</span>
+        <div className="voucher-input">
+          <input value={input} maxLength={32} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="Mis. MAINPAGI"
+            aria-invalid={!!applied && !!result && !result.ok}
+            onChange={event => setInput(event.target.value.toUpperCase().replace(/\s+/g, ""))}
+            onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); apply(); } }} />
+          <button type="button" className="shop-btn outline sm" disabled={!input.trim() || (checking && applied === input.trim())} onClick={apply}>
+            {checking && applied && applied === input.trim() ? <Loader2 size={16} className="spin" aria-hidden="true" /> : "Pakai"}
+          </button>
+        </div>
+        {applied && result && !result.ok && <small className="field-error">{result.message}</small>}
+      </label>
     </div>
   );
 }
