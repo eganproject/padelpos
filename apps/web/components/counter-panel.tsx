@@ -7,7 +7,7 @@ import { api, money } from "@/lib/api";
 import { unitLabel } from "@/lib/addons";
 import { billOf, taxName } from "@/lib/bill";
 import { formatShortDay } from "@/lib/shop";
-import { surchargeFor, type ChannelKey } from "@/lib/payments";
+import { channelName, surchargeFor, type ChannelKey } from "@/lib/payments";
 import { ChannelPicker } from "./channel-picker";
 import { type SaleDetail, type SaleList, type SaleMethod, type SaleOptions, bookingLabel, cashPresets, durationLabel, durations, methodName, saleMethods, saleStatus, walkInName } from "@/lib/counter";
 import { loadSnap } from "@/lib/snap";
@@ -213,7 +213,7 @@ function PaymentWait({ data, refreshed }: { data: SaleDetail; refreshed: (next: 
   return <section className="counter-pay" aria-label="Pembayaran Midtrans">
     <div className="counter-pay-amount"><span>Total tagihan{(sale.surcharge ?? 0) > 0 ? ` · termasuk biaya layanan ${money(sale.surcharge!)}` : ""}</span><strong>{money(sale.total + (sale.surcharge ?? 0))}</strong>{countdown && <small className={countdown.left < 120 ? "late" : ""}>{countdown.left ? `Berlaku ${countdown.label} lagi` : "Batas bayar lewat, memeriksa status…"}</small>}</div>
     <div className="counter-pay-qr">{qr ? <img src={qr} alt={`QR tagihan ${sale.number}`} width={220} height={220} /> : <span className="ops-muted">Membuat QR…</span>}</div>
-    <p className="counter-pay-hint">Minta pelanggan memindai QR ini dengan kamera ponsel, lalu pilih QRIS, GoPay/ShopeePay, virtual account, atau kartu di halaman Midtrans.</p>
+    <p className="counter-pay-hint">Minta pelanggan memindai QR ini dengan kamera ponsel, lalu {sale.channel ? `bayar lewat ${channelName(sale.channel)}` : "pilih QRIS, GoPay/ShopeePay, virtual account, atau kartu"} di halaman Midtrans.</p>
     <p className="counter-pay-live"><span className="counter-pay-dot" aria-hidden="true" /> Menunggu pembayaran. Status diperbarui otomatis.</p>
     {problem && <ErrorBox message={problem} />}
     <div className="counter-pay-actions">
