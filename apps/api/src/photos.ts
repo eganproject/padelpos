@@ -81,9 +81,10 @@ export async function orderPhotos(courtId: string, input: unknown, actor: string
   });
 }
 
-/** Foto lapangan, foto item tambahan, atau foto profil; semuanya memakai id acak sehingga tidak bisa tertukar. */
+/** Foto lapangan, foto item tambahan, foto profil, atau logo/favicon merek; semuanya memakai id acak sehingga tidak bisa tertukar. */
 export async function photoFile(id: string) {
   return (await db.prepare("SELECT mime,data FROM court_photos WHERE id=?").get(id)
     ?? await db.prepare("SELECT photo_mime mime,photo_data data FROM addons WHERE photo_id=?").get(id)
-    ?? await db.prepare("SELECT mime,data FROM avatars WHERE id=?").get(id)) as { mime: PhotoType; data: Uint8Array } | undefined;
+    ?? await db.prepare("SELECT mime,data FROM avatars WHERE id=?").get(id)
+    ?? await db.prepare("SELECT mime,data FROM brand_assets WHERE id=?").get(id)) as { mime: PhotoType; data: Uint8Array } | undefined;
 }

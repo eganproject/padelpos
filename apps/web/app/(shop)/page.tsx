@@ -14,6 +14,7 @@ import { FaqList, RefundTiers } from "@/components/shop-policy";
 import { availability, venueInfo } from "@/lib/server-data";
 import { environmentLabel, facilityLabels, hasCancellationPolicy, mapsEmbed, mapsLink, rescheduleLine, whatsappLink } from "@/lib/venue-info";
 import { floorLabel, venueNow } from "@/lib/shop";
+import { brandName } from "@/lib/brand";
 
 /** Sama dengan batas jendela jadwal di API publik. */
 const horizonDays = 90;
@@ -25,7 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const data = await venueInfo();
   const name = data?.info.name?.trim();
   return {
-    title: { absolute: name ? `${name} — Booking Lapangan Padel` : "Padelix — Booking Lapangan Padel" },
+    title: { absolute: `${brandName(data?.info)} — Booking Lapangan Padel` },
     description: data?.info.tagline?.trim() || "Cek ketersediaan lapangan padel dan pesan jam main Anda secara online.",
   };
 }

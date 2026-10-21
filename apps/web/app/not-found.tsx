@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { ArrowLeft, CalendarDays } from "lucide-react";
 import { ShopBrand } from "@/components/shop-header";
+import { brandInfo } from "@/lib/server-data";
+import { brandName } from "@/lib/brand";
 
 export const metadata = { title: "Halaman tidak ditemukan" };
 
 /** Digambar di luar rangka situs pelanggan, jadi kepala halamannya dibuat sendiri di sini. */
-export default function NotFound() {
+export default async function NotFound() {
+  const brand = await brandInfo();
   return (
     <div className="shop">
       <header className="shop-head">
-        <div className="shop-head-inner shop-wrap"><ShopBrand name="Padelix" /></div>
+        <div className="shop-head-inner shop-wrap"><ShopBrand name={brandName(brand)} /></div>
       </header>
       <main className="shop-body">
         <div className="shop-wrap empty-state">

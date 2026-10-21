@@ -19,6 +19,7 @@ import * as backups from "../backups.js";
 import * as receipts from "../receipts.js";
 import * as members from "../membership.js";
 import * as counter from "../counter.js";
+import * as brand from "../brand.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 const router=Router();
@@ -73,6 +74,11 @@ router.get("/content",requireMenu("info"),async (_req,res)=>{
 router.put("/content/info",requireMenu("info"),async (req:AuthRequest,res)=>res.json({info:await content.saveInfo(req.body,req.auth!.sub)}));
 router.put("/content/policies",requireMenu("info"),async (req:AuthRequest,res)=>res.json({policies:await content.savePolicies(req.body,req.auth!.sub)}));
 router.put("/content/faqs",requireMenu("info"),async (req:AuthRequest,res)=>res.json({faqs:await content.saveFaqs(req.body,req.auth!.sub)}));
+// Pengaturan > Brand: nama, kontak, warna, logo, dan favicon. Logo diperkecil di browser sebelum diunggah.
+router.get("/brand",requireMenu("brand"),async (_req,res)=>res.json(await brand.brandForAdmin()));
+router.put("/brand",requireMenu("brand"),async (req:AuthRequest,res)=>res.json(await brand.saveBrand(req.body,req.auth!.sub)));
+router.post("/brand/assets/:kind",requireMenu("brand"),express.raw({type:[...photoTypes],limit:brand.maxBrandAssetSize}),async (req:AuthRequest,res)=>res.json(await brand.setBrandAsset(String(req.params.kind),req.get("content-type"),req.body,req.auth!.sub)));
+router.delete("/brand/assets/:kind",requireMenu("brand"),async (req:AuthRequest,res)=>res.json(await brand.removeBrandAsset(String(req.params.kind),req.auth!.sub)));
 router.post("/maintenance",requireMenu("courts"),async (req:AuthRequest,res)=>res.status(201).json({maintenance:await ops.createMaintenance(req.body,req.auth!.sub)}));
 router.delete("/maintenance/:id",requireMenu("courts"),async (req:AuthRequest,res)=>{await ops.removeMaintenance(String(req.params.id),req.auth!.sub);res.status(204).send()});
 router.get("/bookings",requireMenu("bookings"),async (req,res)=>{

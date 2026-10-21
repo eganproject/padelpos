@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV9 } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -235,6 +235,20 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
       for (const row of checks) await db.exec(`ALTER TABLE counter_sales DROP CHECK \`${row.name.replace(/`/g, "``")}\``);
       await db.exec("ALTER TABLE counter_sales ADD CONSTRAINT counter_sales_status CHECK (status IN ('pending','paid','void','expired'))");
       await db.exec("ALTER TABLE counter_sales ADD CONSTRAINT counter_sales_method CHECK (method IN ('cash','transfer','qris','va','ewallet','card','midtrans'))");
+    },
+  },
+  {
+    // Pengaturan > Brand: tabel berkas logo dan favicon, serta menunya untuk database yang sudah berjalan.
+    // Nomor 8 dipakai biaya admin Midtrans; urutan penerapan keduanya tidak saling bergantung.
+    version: 9, async up() {
+      for (const statement of schemaV9) await db.exec(statement);
+      const seed = menuSeed.find(([menuId]) => menuId === "brand")!;
+      if (await db.prepare("SELECT 1 FROM menus WHERE id='brand' OR path_key=?").get(seed[2])) return;
+      const [menuId, name, path, icon, group, order] = seed;
+      await db.prepare("INSERT INTO menus (id, document) VALUES (?, ?)").run(menuId, JSON.stringify({ id: menuId, name, path, icon, group, order, active: true, createdAt: new Date().toISOString() }));
+      const row = await db.prepare("SELECT document FROM roles WHERE id='admin'").get() as { document: string } | undefined;
+      const role = row ? JSON.parse(row.document) as AccessRole : null;
+      if (role && !role.menuIds.includes(menuId)) await db.prepare("UPDATE roles SET document=? WHERE id='admin'").run(JSON.stringify({ ...role, menuIds: [...role.menuIds, menuId] }));
     },
   },
 ];

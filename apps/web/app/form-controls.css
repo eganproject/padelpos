@@ -61,7 +61,7 @@ html[data-theme="dark"] .rs__option--is-focused{background:var(--btn-hover)}
 html[data-theme="dark"] .flatpickr-calendar.dp-desk{--dp-bg:var(--panel2);--dp-line:var(--line-strong);--dp-hover:var(--btn-hover)}
 .flatpickr-calendar.dp-shop{
   --dp-bg:#ffffff;--dp-line:#e3e7de;--dp-text:#111811;--dp-soft:#454c43;--dp-muted:#a3aaa1;
-  --dp-hover:#eef1ea;--dp-accent:#0f3326;--dp-accent-ink:#ffffff;--dp-today:#bfe075;--dp-radius:16px;--dp-cell:10px;
+  --dp-hover:#eef1ea;--dp-accent:var(--brand-primary,#0f3326);--dp-accent-ink:#ffffff;--dp-today:var(--brand-accent-edge,#bfe075);--dp-radius:16px;--dp-cell:10px;
   width:308px;box-shadow:0 1px 2px #11181108,0 12px 32px #1118111f;
 }
 .flatpickr-calendar.dp-desk::before,.flatpickr-calendar.dp-desk::after,

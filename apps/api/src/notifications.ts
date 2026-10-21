@@ -6,6 +6,7 @@ import { check } from "./errors.js";
 import { publicUrl } from "./config.js";
 import { localClock } from "./clock.js";
 import { getInfo } from "./content.js";
+import { publicBrand } from "./brand.js";
 import { defaultEvents, eventsSchema, type NotifyEvent } from "./notify-events.js";
 import { deliverDueWhatsApp, enqueueWhatsApp, staffNumbers, waNumber, whatsappConfig, whatsappReady } from "./whatsapp.js";
 import { notifyInbox } from "./inbox.js";
@@ -98,8 +99,15 @@ const toneColor: Record<Tone, string> = { info: "#0f766e", success: "#15803d", w
 /** Satu tata letak untuk semua email: teks biasa untuk klien sederhana, HTML untuk yang lain. */
 async function render(message: Message) {
   const venue = await getInfo();
+  const brand = await publicBrand();
+  const brandColor = brand.primary_color || "#0f766e";
+  const name = await venueName();
+  // Logo memakai alamat publik karena email dibuka di luar situs. Tanpa logo, nama ditulis berwarna merek.
+  const masthead = brand.logo
+    ? `<img src="${escape(`${publicUrl}/api/public/photos/${brand.logo}`)}" alt="${escape(name)}" height="40" style="display:block;height:40px;width:auto;max-width:220px;border:0">${brand.show_name ? `<span style="display:block;margin-top:6px;font-size:14px;font-weight:700;color:${brandColor}">${escape(name)}</span>` : ""}`
+    : `<span style="font-size:14px;font-weight:700;color:${brandColor}">${escape(name)}</span>`;
   const contact = [venue.whatsapp && `WhatsApp +${venue.whatsapp}`, venue.phone, venue.email].filter(Boolean).join(" · ");
-  const accent = toneColor[message.tone ?? "info"];
+  const accent = (message.tone ?? "info") === "info" ? brandColor : toneColor[message.tone!];
   const text = [
     message.heading, "", message.intro, "",
     ...(message.items?.length ? [] : (message.sessions ?? []).map(session => "• " + sessionLine(session))),
@@ -121,7 +129,7 @@ async function render(message: Message) {
 <body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#111827">
 <span style="display:none;max-height:0;overflow:hidden">${escape(message.intro)}</span>
 <div style="max-width:560px;margin:0 auto;padding:24px 16px">
-<p style="margin:0 0 12px;font-size:14px;font-weight:700;color:#0f766e">${escape(await venueName())}</p>
+<div style="margin:0 0 12px">${masthead}</div>
 <div style="background:#ffffff;border:1px solid #e5e7eb;border-top:4px solid ${accent};border-radius:8px;padding:24px">
 <h1 style="margin:0 0 12px;font-size:20px;line-height:1.3">${escape(message.heading)}</h1>
 <p style="margin:0 0 16px;line-height:1.5">${escape(message.intro)}</p>
@@ -132,6 +140,7 @@ ${message.link ? `<p style="margin:0 0 16px"><a href="${escape(message.link.url)
 ${message.outro ? `<p style="margin:0;line-height:1.5;color:#374151">${escape(message.outro)}</p>` : ""}
 </div>
 <p style="margin:12px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escape([venue.address, contact].filter(Boolean).join(" · "))}</p>
+${brand.footer_text ? `<p style="margin:6px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escape(brand.footer_text)}</p>` : ""}
 </div></body></html>`;
   return { subject: message.subject, text, html };
 }

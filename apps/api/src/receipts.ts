@@ -5,6 +5,7 @@ import { bookingAddons } from "./addons.js";
 import { bookingCode } from "./payments.js";
 import { getInfo } from "./content.js";
 import { detail } from "./counter.js";
+import { publicBrand } from "./brand.js";
 
 /**
  * Nota yang dicetak kasir dari panel admin, untuk booking di kasir maupun booking online.
@@ -22,6 +23,8 @@ export const receiptSettingsSchema = z.object({
   footer_note: z.string().trim().max(300, "Teks kaki nota maksimal 300 karakter.").default("Terima kasih sudah bermain di tempat kami."),
   show_payments: z.boolean().default(true),
   show_cashier: z.boolean().default(true),
+  // Logo dari Pengaturan > Brand di kepala nota. Printer thermal mencetaknya hitam-putih.
+  show_logo: z.boolean().default(true),
 });
 export type ReceiptSettings = z.infer<typeof receiptSettingsSchema> & { updated_at: string | null };
 
@@ -44,9 +47,9 @@ export async function saveReceiptSettings(input: unknown, actor: string) {
 /** Profil venue, pengaturan nota, dan nama kasir yang mencetak: sama untuk semua jenis nota. */
 async function receiptFrame(actor: string) {
   const cashier = await db.prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(document,'$.name')) name FROM users WHERE id=?").get(actor) as { name: string | null } | undefined;
-  const info = await getInfo();
+  const [info, brand] = await Promise.all([getInfo(), publicBrand()]);
   return {
-    venue: { name: info.name, address: info.address, phone: info.phone, whatsapp: info.whatsapp, email: info.email, instagram: info.instagram },
+    venue: { name: info.name, address: info.address, phone: info.phone, whatsapp: info.whatsapp, email: info.email, instagram: info.instagram, logo: brand.logo, show_name: brand.show_name },
     settings: await receiptSettings(),
     cashier: cashier?.name ?? "",
     printed_at: new Date().toISOString(),

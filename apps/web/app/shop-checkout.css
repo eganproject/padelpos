@@ -135,6 +135,7 @@
 .shop .invoice-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;padding-bottom:16px;border-bottom:2px solid var(--green)}
 .shop .invoice-head>div:first-child{display:flex;flex-direction:column;gap:2px;font-size:13px;color:var(--ink-2)}
 .shop .invoice-venue{font-family:var(--font-display);font-size:20px;color:var(--green)}
+.shop .invoice-logo{display:block;height:44px;width:auto;max-width:200px;object-fit:contain;margin-bottom:6px}
 .shop .invoice-title{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
 .shop .invoice-title h1{margin:0;font-size:24px;letter-spacing:.06em;text-transform:uppercase}
 .shop .invoice-stamp{padding:4px 12px;border:2px solid currentColor;border-radius:8px;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;transform:rotate(-3deg)}

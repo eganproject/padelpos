@@ -6,6 +6,19 @@ import { methodLabel } from "@/lib/payments";
 import { minute } from "@/lib/operations";
 import { isRoll, rollWidth, type ReceiptData, type ReceiptSettings, type ReceiptVenue } from "@/lib/receipt";
 import { type SaleReceiptData, methodName } from "@/lib/counter";
+import { assetUrl } from "@/lib/brand";
+
+/** Logo merek (bila diatur dan diizinkan di Pengaturan nota) lalu nama venue. */
+function ReceiptLogo({ venue, settings }: { venue: ReceiptVenue; settings: ReceiptSettings }) {
+  const logo = settings.show_logo !== false && venue.logo ? venue.logo : null;
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element -- logo kecil dari API sendiri, ikut tercetak */}
+      {logo && <img className="receipt-logo" src={assetUrl(logo)} alt={venue.show_name === false ? venue.name : ""} />}
+      {(!logo || venue.show_name !== false) && <b className="receipt-venue">{venue.name || "Venue padel"}</b>}
+    </>
+  );
+}
 
 const stamp = new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" });
 const hours = (start: string, end: string) => `${((minute(end) - minute(start)) / 60).toLocaleString("id-ID")} jam`;
@@ -29,7 +42,7 @@ export const Receipt = forwardRef<HTMLElement, { data: ReceiptData }>(function R
   return (
     <article ref={ref} className={`receipt ${roll ? "roll" : "sheet"} size-${size}`} style={roll ? { width: `${width}mm` } : undefined} aria-label={`Nota ${booking.code}`}>
       <header className="receipt-head">
-        <b className="receipt-venue">{venue.name || "Venue padel"}</b>
+        <ReceiptLogo venue={venue} settings={settings} />
         {venue.address && <span>{venue.address}</span>}
         {contacts.length > 0 && <span>{contacts.join(" · ")}</span>}
         {settings.header_note && <span className="receipt-note">{settings.header_note}</span>}
@@ -92,7 +105,7 @@ function Head({ venue, settings }: { venue: ReceiptVenue; settings: ReceiptSetti
   const contacts = [venue.whatsapp && `WA +${venue.whatsapp}`, venue.phone, venue.email, venue.instagram && `@${venue.instagram}`].filter(Boolean);
   return (
     <header className="receipt-head">
-      <b className="receipt-venue">{venue.name || "Venue padel"}</b>
+      <ReceiptLogo venue={venue} settings={settings} />
       {venue.address && <span>{venue.address}</span>}
       {contacts.length > 0 && <span>{contacts.join(" · ")}</span>}
       {settings.header_note && <span className="receipt-note">{settings.header_note}</span>}

@@ -19,11 +19,11 @@
 .shop .acct-alert b{color:var(--ink);font-size:14.5px}
 .shop .acct-alert em{flex-basis:100%;padding-left:32px;display:inline-flex;align-items:center;gap:4px;font-style:normal;font-weight:800;white-space:nowrap}
 
-.shop .acct-next{padding:20px;border-radius:22px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff;box-shadow:0 14px 34px #0f332640}
+.shop .acct-next{padding:20px;border-radius:22px;background:radial-gradient(120% 120% at 100% 0,var(--green-glow),var(--green));color:#fff;box-shadow:0 14px 34px color-mix(in srgb,var(--green) 25%,transparent)}
 .shop .acct-next h2{margin:10px 0 4px;font-size:26px;color:#fff}
 .shop .acct-next-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .shop .acct-next-label{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--lime)}
-.shop .acct-next-meta{font-size:14px;color:#c9d7cd;text-transform:capitalize}
+.shop .acct-next-meta{font-size:14px;color:var(--on-green-soft);text-transform:capitalize}
 .shop .acct-next-court{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:15px;font-weight:700}
 .shop .acct-next-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
 .shop .acct-next .shop-btn.primary{background:var(--lime);color:var(--lime-ink);box-shadow:none}
@@ -150,9 +150,9 @@
 .shop .faq details[open] summary svg{transform:rotate(45deg);background:var(--green);color:var(--lime)}
 .shop .faq .rich-text{padding-bottom:16px;font-size:14.5px;color:var(--ink-2)}
 
-.shop .help-card{display:flex;flex-direction:column;gap:14px;margin-top:20px;padding:20px;border-radius:20px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff}
+.shop .help-card{display:flex;flex-direction:column;gap:14px;margin-top:20px;padding:20px;border-radius:20px;background:radial-gradient(120% 120% at 100% 0,var(--green-glow),var(--green));color:#fff}
 .shop .help-card h2{color:#fff;font-size:20px}
-.shop .help-card p{margin-top:4px;font-size:14px;color:#c9d7cd}
+.shop .help-card p{margin-top:4px;font-size:14px;color:var(--on-green-soft)}
 .shop .help-card .actions{display:flex;flex-wrap:wrap;gap:8px}
 .shop .help-card .shop-btn.primary{background:var(--lime);color:var(--lime-ink);box-shadow:none}
 .shop .help-card .shop-btn.outline{background:#ffffff14;border-color:#ffffff33;color:#fff}
@@ -177,7 +177,7 @@
 .shop .acct-move{margin:12px 0;padding:14px;border-radius:14px;background:var(--bg-2,#f4f6f3);border:1px solid var(--rule)}
 .shop .acct-move-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .shop .acct-move select{min-height:44px;width:100%;padding:0 12px;border:1px solid var(--rule);border-radius:10px;background:var(--card);color:var(--ink);font:inherit;font-size:15px;font-weight:500}
-.shop .acct-move select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px #0f33261a}
+.shop .acct-move select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 10%,transparent)}
 @media (max-width:560px){.shop .acct-move-row{grid-template-columns:1fr}}
 
 /* --- Tab akun dengan hitungan notifikasi ---------------------------------- */
@@ -231,7 +231,7 @@
 .shop .acct-inbox .acct-section-head{flex-wrap:wrap;gap:8px}
 
 /* --- Member ------------------------------------------------------------- */
-.shop .member-pass{display:flex;flex-direction:column;gap:6px;padding:20px;border-radius:22px;background:radial-gradient(120% 120% at 100% 0,#1f5a40,var(--green));color:#fff;box-shadow:0 14px 34px #0f332640}
+.shop .member-pass{display:flex;flex-direction:column;gap:6px;padding:20px;border-radius:22px;background:radial-gradient(120% 120% at 100% 0,var(--green-glow),var(--green));color:#fff;box-shadow:0 14px 34px color-mix(in srgb,var(--green) 25%,transparent)}
 .shop .member-pass.expired,.shop .member-pass.frozen,.shop .member-pass.pending_approval{background:radial-gradient(120% 120% at 100% 0,#4b524a,#262b26)}
 .shop .member-pass-top{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .shop .member-pass-top span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--lime)}
@@ -239,9 +239,9 @@
 .shop .member-pass h2{margin:6px 0 0;font-size:26px;color:#fff}
 .shop .member-pass-perk{font-size:15px;font-weight:700;color:#e3ffa3}
 .shop .member-pass dl{display:flex;flex-wrap:wrap;gap:10px 24px;margin:8px 0 4px}
-.shop .member-pass dt{font-size:12px;color:#c9d7cd}
+.shop .member-pass dt{font-size:12px;color:var(--on-green-soft)}
 .shop .member-pass dd{margin:0;font-size:15px;font-weight:700}
-.shop .member-pass small{font-size:12.5px;line-height:1.5;color:#c9d7cd}
+.shop .member-pass small{font-size:12.5px;line-height:1.5;color:var(--on-green-soft)}
 .shop .member-plans{display:grid;gap:10px;margin-bottom:14px}
 .shop .member-plan{position:relative;display:flex;flex-direction:column;gap:4px;padding:14px 14px 14px 44px;border-radius:14px;border:1.5px solid var(--rule);background:var(--card);cursor:pointer}
 .shop .member-plan[data-checked=true]{border-color:var(--green);background:var(--green-wash)}

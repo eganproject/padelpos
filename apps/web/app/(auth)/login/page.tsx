@@ -31,7 +31,7 @@ export default function LoginPage() {
       <p className="auth-subtitle">Masuk untuk melanjutkan ke pusat kendali Anda.</p>
       <form onSubmit={submit} className="auth-form">
         <label>Email operator</label>
-        <div className="input-wrap"><AtSign size={18} /><input required type="email" placeholder="nama@padelix.id" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+        <div className="input-wrap"><AtSign size={18} /><input required type="email" placeholder="nama@email.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
         <div className="label-row"><label>Password</label><span className="password-hint">Reset password melalui admin</span></div>
         <PasswordField required placeholder="Masukkan password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         <button className="primary-button" disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <>Masuk ke dashboard <ArrowRight size={19} /></>}</button>

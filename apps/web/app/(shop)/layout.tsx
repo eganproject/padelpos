@@ -2,6 +2,7 @@ import { ShopFooter } from "@/components/shop-footer";
 import { ShopHeader, ShopTabBar } from "@/components/shop-header";
 import { venueInfo } from "@/lib/server-data";
 import { hasPolicies } from "@/lib/venue-info";
+import { brandName } from "@/lib/brand";
 
 /**
  * Rangka situs pelanggan. Profil venue diambil di server sehingga kepala dan kaki
@@ -18,9 +19,9 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   return (
     <div className="shop">
       <a className="shop-skip" href="#konten">Lewati ke konten</a>
-      <ShopHeader name={info?.name?.trim() || "Padelix"} hasLocation={!!info?.address} hasFaq={hasFaq} hasPolicies={policies} loginEnabled={loginEnabled} />
+      <ShopHeader name={brandName(info)} hasLocation={!!info?.address} hasFaq={hasFaq} hasPolicies={policies} loginEnabled={loginEnabled} />
       <main id="konten" className="shop-body">{children}</main>
-      <ShopFooter info={info} hasFaq={hasFaq} hasPolicies={policies} />
+      <ShopFooter info={info} brand={data?.brand ?? null} hasFaq={hasFaq} hasPolicies={policies} />
       <ShopTabBar hasFaq={hasFaq} loginEnabled={loginEnabled} />
     </div>
   );

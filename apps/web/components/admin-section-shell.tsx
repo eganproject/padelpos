@@ -6,6 +6,8 @@ import { ChevronRight, ExternalLink, LogOut, Menu, Moon, PanelLeftClose, PanelLe
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "./brand";
+import { useBrand } from "./brand-provider";
+import { brandName } from "@/lib/brand";
 import { StaffAvatar } from "./staff-avatar";
 import { api, ApiError, forgetSession, clearSession, type User } from "@/lib/api";
 import { AdminNavigation, currentMenu, menuIcon, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
@@ -18,6 +20,7 @@ type Theme = "dark" | "light";
  * menjadi laci yang dibuka dari tombol menu.
  */
 export function AdminSectionShell({ children }: { children: React.ReactNode }) {
+  const brand = useBrand();
   const pathname = usePathname();
   const router = useRouter();
   const [theme, setTheme] = useState<Theme>("light");
@@ -88,7 +91,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
           <button type="button" className="desk-icon-btn desk-sidebar-toggle" onClick={toggleSidebar}
             aria-label={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : drawerOpen ? "Tutup menu" : "Buka menu"}
             aria-expanded={wide ? !compact : drawerOpen} title={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : undefined}><Menu /></button>
-          <Link href="/admin" className="desk-logo" aria-label="Padelix, ke ringkasan"><Brand /></Link>
+          <Link href="/admin" className="desk-logo" aria-label={`${brandName(brand)}, ke ringkasan`}><Brand /></Link>
           <nav className="desk-breadcrumbs" aria-label="Lokasi halaman">
             {current && <>
               <ChevronRight aria-hidden="true" /><span>{current.group}</span>

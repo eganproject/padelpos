@@ -39,6 +39,12 @@ export const infoSchema = z.object({
   instagram: z.string().trim().max(120)
     .transform(value => value.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, ""))
     .refine(value => /^[A-Za-z0-9._]{0,30}$/.test(value), "Nama pengguna Instagram tidak valid.").default(""),
+  tiktok: z.string().trim().max(120)
+    .transform(value => value.replace(/^https?:\/\/(www\.)?tiktok\.com\//i, "").replace(/^@/, "").replace(/[/?#].*$/, ""))
+    .refine(value => /^[A-Za-z0-9._]{0,30}$/.test(value), "Nama pengguna TikTok tidak valid.").default(""),
+  facebook: z.string().trim().max(300).refine(httpsUrl, "Tautan Facebook harus diawali https://.").default(""),
+  youtube: z.string().trim().max(300).refine(httpsUrl, "Tautan YouTube harus diawali https://.").default(""),
+  website: z.string().trim().max(300).refine(httpsUrl, "Alamat situs harus diawali https://.").default(""),
   hours_note: text(120, "Keterangan jam buka"),
   // Batas lama satu booking online, dalam jam. 0 berarti boleh sampai jam tutup lapangan.
   max_booking_hours: z.number().int().min(0).max(24, "Batas durasi maksimal 24 jam.").default(0),

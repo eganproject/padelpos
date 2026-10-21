@@ -5,9 +5,9 @@ import type { BookingAddon } from "./addons";
 export type Paper = "58mm" | "80mm" | "a5" | "a4" | "custom";
 export type ReceiptSettings = {
   paper: Paper; custom_width: number; header_note: string; footer_note: string;
-  show_payments: boolean; show_cashier: boolean; updated_at?: string | null;
+  show_payments: boolean; show_cashier: boolean; show_logo: boolean; updated_at?: string | null;
 };
-export type ReceiptVenue = { name: string; address: string; phone: string; whatsapp: string; email: string; instagram: string };
+export type ReceiptVenue = { name: string; address: string; phone: string; whatsapp: string; email: string; instagram: string; logo?: string | null; show_name?: boolean };
 export type ReceiptData = {
   booking: Booking & { code: string; order_code: string | null; source?: "staff" | "online"; created_at?: string };
   addons: BookingAddon[]; payments: Payment[]; venue: ReceiptVenue; settings: ReceiptSettings; cashier: string; printed_at: string;
@@ -37,5 +37,5 @@ export function pageCss(paper: Paper, custom: number, heightMm: number) {
 }
 
 export const defaultReceiptSettings: ReceiptSettings = {
-  paper: "80mm", custom_width: 76, header_note: "", footer_note: "Terima kasih sudah bermain di tempat kami.", show_payments: true, show_cashier: true,
+  paper: "80mm", custom_width: 76, header_note: "", footer_note: "Terima kasih sudah bermain di tempat kami.", show_payments: true, show_cashier: true, show_logo: true,
 };

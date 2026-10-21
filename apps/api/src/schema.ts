@@ -677,6 +677,21 @@ export const schemaV7: string[] = [
   // Transaksi lama selalu lunas saat dicatat.
   "UPDATE counter_sales SET paid_at=created_at WHERE paid_at IS NULL",
 ];
+/**
+ * Versi 9: berkas merek (logo terang, logo gelap, favicon) untuk Pengaturan > Brand. Satu baris per
+ * jenis; id acak berganti setiap kali berkas diganti sehingga browser boleh menyimpannya selamanya.
+ * (Versi 8 dipakai fitur biaya admin Midtrans.)
+ */
+export const schemaV9: string[] = [
+  `CREATE TABLE brand_assets (
+    kind VARCHAR(16) PRIMARY KEY CHECK(kind IN ('logo','logo_dark','favicon')),
+    id ${id} NOT NULL UNIQUE,
+    mime VARCHAR(20) NOT NULL CHECK(mime IN ('image/jpeg','image/png','image/webp')),
+    data MEDIUMBLOB NOT NULL,
+    bytes INT NOT NULL CHECK(bytes > 0),
+    created_at ${stamp} NOT NULL
+  )`,
+];
 /** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
 export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
   [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],
@@ -687,7 +702,7 @@ export const membershipAccounts: [codes: string[], name: string, type: string, s
 /** Urutan tabel yang aman untuk diisi ulang (induk sebelum anak) saat impor atau pemulihan. */
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
-  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "avatars",
+  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "avatars", "brand_assets",
   "membership_plans", "memberships", "membership_invoices", "orders",
   "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
@@ -718,6 +733,7 @@ export const menuSeed: MenuSeed[] = [
   ["audit", "Log Aktivitas", "/admin/audit", "History", "Pengaturan", 208],
   ["backups", "Cadangan Data", "/admin/backups", "DatabaseBackup", "Pengaturan", 209],
   ["receipts", "Nota & Cetak", "/admin/nota", "Printer", "Pengaturan", 210],
+  ["brand", "Brand", "/admin/brand", "Palette", "Pengaturan", 200],
   ["profile", "Profil Saya", "/admin/profile", "UserRound", "Akun", 301],
 ];
 export const defaultMenus = (createdAt: string): AccessMenu[] =>

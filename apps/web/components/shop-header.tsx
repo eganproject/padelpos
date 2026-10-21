@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { Bell, CalendarDays, CircleUserRound, House, LifeBuoy, Orbit, ShoppingBag } from "lucide-react";
 import { useCart } from "@/lib/cart";
 import { useAccount, useUnread, type Account } from "@/lib/account";
+import { assetUrl } from "@/lib/brand";
+import { useBrand } from "./brand-provider";
 
 export type ShopNavProps = {
   /** Nama venue: tampil di kepala halaman dan dipakai sebagai label aksesibilitas. */
@@ -27,11 +29,15 @@ export function Avatar({ account, size = 32 }: { account: Pick<Account, "name" |
   );
 }
 
+/** Logo dan nama di kepala halaman. Tanpa logo unggahan, ikon bawaan dipakai. */
 export function ShopBrand({ name }: { name: string }) {
+  const brand = useBrand();
+  const logo = brand.logo ?? brand.logo_dark;
   return (
-    <Link href="/" className="shop-brand" aria-label={`${name}, ke beranda`}>
-      <span className="shop-brand-mark"><Orbit size={18} strokeWidth={2.4} aria-hidden="true" /></span>
-      <span className="shop-brand-name">{name}</span>
+    <Link href="/" className={`shop-brand${logo ? " has-logo" : ""}`} aria-label={`${name}, ke beranda`}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- logo kecil dari API sendiri */}
+      {logo ? <img className="shop-brand-logo" src={assetUrl(logo)} alt="" /> : <span className="shop-brand-mark"><Orbit size={18} strokeWidth={2.4} aria-hidden="true" /></span>}
+      {(!logo || brand.show_name) && <span className="shop-brand-name">{name}</span>}
     </Link>
   );
 }
