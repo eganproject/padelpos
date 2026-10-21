@@ -172,7 +172,7 @@ export async function peakUse(addonId:string,window:AddonWindow,excludeBooking:s
   const rows=[
     ...await db.prepare(`SELECT b.start_time,b.end_time,SUM(l.quantity) quantity FROM booking_addons l JOIN bookings b ON b.id=l.booking_id WHERE l.addon_id=? AND b.date=? AND ${holding} AND b.start_time<? AND b.end_time>? AND b.id<>? GROUP BY b.id`)
       .all(addonId,window.date,window.end,window.start,excludeBooking),
-    ...await db.prepare("SELECT s.start_time,s.end_time,SUM(l.quantity) quantity FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id WHERE l.addon_id=? AND s.date=? AND s.status='paid' AND l.returned_at IS NULL AND s.start_time<? AND s.end_time>? GROUP BY s.id")
+    ...await db.prepare("SELECT s.start_time,s.end_time,SUM(l.quantity) quantity FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id WHERE l.addon_id=? AND s.date=? AND s.status IN ('paid','pending') AND l.returned_at IS NULL AND s.start_time<? AND s.end_time>? GROUP BY s.id")
       .all(addonId,window.date,window.end,window.start),
   ] as {start_time:string;end_time:string;quantity:number}[];
   let peak=0;
@@ -376,8 +376,8 @@ export async function unreturnedRentals(){
         FROM booking_addons l JOIN bookings b ON b.id=l.booking_id JOIN courts c ON c.id=b.court_id
         WHERE l.type='sewa' AND l.returned_at IS NULL AND b.status IN ('confirmed','completed') AND (b.date<? OR (b.date=? AND b.start_time<=?))
       UNION ALL
-      SELECT l.id,'kasir' source,s.id ref_id,l.name,l.quantity,s.customer,s.phone,s.date,s.start_time,s.end_time,NULL court_name,s.number sale_number
-        FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id
+      SELECT l.id,'kasir' source,s.id ref_id,l.name,l.quantity,s.customer,s.phone,s.date,s.start_time,s.end_time,c.name court_name,s.number sale_number
+        FROM counter_sale_lines l JOIN counter_sales s ON s.id=l.sale_id LEFT JOIN bookings b ON b.id=s.booking_id LEFT JOIN courts c ON c.id=b.court_id
         WHERE l.type='sewa' AND l.returned_at IS NULL AND s.status='paid'
     ) x ORDER BY date,start_time LIMIT 200`).all(now.date,now.date,now.time) as {id:string;source:"booking"|"kasir";ref_id:string;name:string;quantity:number;customer:string;phone:string;date:string;start_time:string;end_time:string;court_name:string|null;sale_number:string}[];
   return {unreturned:rows,...now};

@@ -4,7 +4,7 @@ import { getBooking, payments } from "./operations.js";
 import { bookingAddons } from "./addons.js";
 import { bookingCode } from "./payments.js";
 import { getInfo } from "./content.js";
-import { getSale, saleLines } from "./counter.js";
+import { detail } from "./counter.js";
 
 /**
  * Nota yang dicetak kasir dari panel admin, untuk booking di kasir maupun booking online.
@@ -67,6 +67,5 @@ export async function bookingReceipt(id: string, actor: string) {
 
 /** Nota transaksi langsung di kasir (sewa atau beli barang tanpa booking lapangan). */
 export async function saleReceipt(id: string, actor: string) {
-  const sale = await getSale(id);
-  return { sale, lines: await saleLines(id), ...await receiptFrame(actor) };
+  return { ...await detail(id), ...await receiptFrame(actor) };
 }

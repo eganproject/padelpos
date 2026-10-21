@@ -112,5 +112,41 @@
 .cms-tabs .tab-count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:var(--r-full);background:var(--orange-bg);color:var(--orange-text);font-size:var(--fs-xs);font-style:normal;font-weight:600}
 .addon-moved{margin:0}
 .counter-metrics{margin-bottom:var(--s4)}
+/* Pilih pelanggan dari riwayat */
+.customer-option{display:flex;flex-direction:column;gap:2px;min-width:0}
+.customer-option b{font-weight:560}
+.customer-option small{color:var(--muted);font-size:var(--fs-xs)}
+.customer-option em{align-self:flex-start;margin-top:2px;padding:1px 6px;border-radius:var(--r-full);background:var(--green-bg);color:var(--green-text);font-size:var(--fs-xs);font-style:normal}
+.customer-option-new{font-weight:560;color:var(--text)}
+.customer-value small{color:var(--muted)}
+.customer-select .rs__option--is-selected::after{display:none}
+/* Tautan ke booking lapangan */
+.counter-booking-tag{display:inline-flex!important;align-items:center;gap:4px;color:var(--green-text)!important}
+.counter-booking-link{display:flex;align-items:center;gap:6px;margin:0;padding:var(--s2);border-radius:var(--r-sm);background:var(--green-bg);color:var(--green-text);font-size:var(--fs-sm)}
+.counter-booking-link svg{flex:none}
+/* Menunggu bayar Midtrans */
+.chip-group button svg{margin-right:4px;vertical-align:-2px}
+.counter-pay{display:flex;flex-direction:column;align-items:center;gap:var(--s2);padding:var(--s4);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--subtle);text-align:center}
+.counter-pay-amount{display:flex;flex-direction:column;align-items:center;gap:2px}
+.counter-pay-amount span{color:var(--muted);font-size:var(--fs-sm)}
+.counter-pay-amount strong{font-size:var(--fs-3xl);letter-spacing:-.01em}
+.counter-pay-amount small{color:var(--muted);font-size:var(--fs-sm)}
+.counter-pay-amount small.late{color:var(--orange-text);font-weight:600}
+.counter-pay-qr{display:grid;place-items:center;width:236px;height:236px;padding:8px;border-radius:var(--r-md);background:#fff;box-shadow:0 1px 3px rgb(0 0 0/.12)}
+.counter-pay-qr img{display:block;width:220px;height:220px;image-rendering:pixelated}
+.counter-pay-hint{max-width:340px;margin:0;color:var(--text-soft);font-size:var(--fs-sm)}
+.counter-pay-live{margin:0;color:var(--muted);font-size:var(--fs-xs)}
+.counter-pay-dot{display:inline-block;margin-right:6px;vertical-align:0;width:8px;height:8px;border-radius:50%;background:var(--orange-solid);animation:counter-pulse 1.4s ease-in-out infinite}
+@keyframes counter-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@media(prefers-reduced-motion:reduce){.counter-pay-dot{animation:none}}
+.counter-pay-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--s2);margin-top:var(--s1)}
+.counter-pay-actions a.ops-secondary{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.counter-pay .ops-error{align-self:stretch;text-align:left}
+/* Detail booking: transaksi kasir terkait */
+.booking-sales{display:flex;flex-direction:column;gap:var(--s2)}
+.booking-sales ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:var(--s1)}
+.booking-sales li{display:flex;justify-content:space-between;gap:var(--s3);align-items:flex-start;padding:var(--s2) 0;border-top:1px solid var(--line)}
+.booking-sales li:first-child{border-top:0}
+.booking-sales li small{display:block;color:var(--muted);font-size:var(--fs-xs)}
 .ops-row-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--s2)}
 @media(max-width:991px){.ops-row-buttons{justify-content:flex-start}}

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7 } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -223,6 +223,18 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
   {
     version: 6, async up() {
       for (const statement of schemaV6) await db.exec(statement);
+    },
+  },
+  {
+    version: 7, async up() {
+      for (const statement of schemaV7) await db.exec(statement);
+      // Status `pending`/`expired` dan metode `midtrans` untuk transaksi kasir yang dibayar lewat Midtrans.
+      const checks = await db.prepare(`SELECT c.CONSTRAINT_NAME name, c.CHECK_CLAUSE clause FROM information_schema.CHECK_CONSTRAINTS c
+        JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME=c.CONSTRAINT_NAME
+        WHERE c.CONSTRAINT_SCHEMA=DATABASE() AND t.TABLE_NAME='counter_sales' AND (c.CHECK_CLAUSE LIKE '%void%' OR c.CHECK_CLAUSE LIKE '%qris%')`).all() as { name: string }[];
+      for (const row of checks) await db.exec(`ALTER TABLE counter_sales DROP CHECK \`${row.name.replace(/`/g, "``")}\``);
+      await db.exec("ALTER TABLE counter_sales ADD CONSTRAINT counter_sales_status CHECK (status IN ('pending','paid','void','expired'))");
+      await db.exec("ALTER TABLE counter_sales ADD CONSTRAINT counter_sales_method CHECK (method IN ('cash','transfer','qris','va','ewallet','card','midtrans'))");
     },
   },
 ];

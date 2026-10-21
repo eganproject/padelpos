@@ -14,10 +14,11 @@ router.get("/summary",requireMenu("dashboard"),async (req:AuthRequest,res)=>{
   const recent=await db.prepare("SELECT amount,kind,created_at FROM payments WHERE created_at>=?").all(shiftDate(first,-1)+"T00:00:00.000Z") as {amount:number;kind:string;created_at:string}[];
   const byDate=new Map<string,number>();
   for(const p of recent){const date=localClock(new Date(p.created_at)).date;byDate.set(date,(byDate.get(date)??0)+(p.kind==="refund"?-p.amount:p.amount))}
-  // Transaksi kasir tanpa booking dibayar lunas saat dicatat; pembatalannya mengembalikan uang pada hari dibatalkan.
-  const sales=await db.prepare("SELECT total,created_at,voided_at FROM counter_sales WHERE created_at>=? OR voided_at>=?").all(shiftDate(first,-1)+"T00:00:00.000Z",shiftDate(first,-1)+"T00:00:00.000Z") as {total:number;created_at:string;voided_at:string|null}[];
+  // Transaksi kasir masuk pada saat lunas (Midtrans bisa menyusul); pembatalannya mengembalikan uang pada hari dibatalkan.
+  // Transaksi Midtrans yang tidak jadi dibayar tidak pernah punya paid_at.
+  const sales=await db.prepare("SELECT total,paid_at,voided_at FROM counter_sales WHERE paid_at IS NOT NULL AND (paid_at>=? OR voided_at>=?)").all(shiftDate(first,-1)+"T00:00:00.000Z",shiftDate(first,-1)+"T00:00:00.000Z") as {total:number;paid_at:string;voided_at:string|null}[];
   const add=(stamp:string,amount:number)=>{const date=localClock(new Date(stamp)).date;byDate.set(date,(byDate.get(date)??0)+amount)};
-  for(const sale of sales){add(sale.created_at,Number(sale.total));if(sale.voided_at)add(sale.voided_at,-Number(sale.total))}
+  for(const sale of sales){add(sale.paid_at,Number(sale.total));if(sale.voided_at)add(sale.voided_at,-Number(sale.total))}
   const daily=Array.from({length:7},(_,index)=>{const date=shiftDate(first,index);return {date,amount:byDate.get(date)??0}});
   const active=allCourts.filter(c=>c.active);
   const maintenance=await maintenances(now.date);
