@@ -17,14 +17,22 @@
   --ink-2:#454c43;
   --ink-3:#656d63;     /* 4.9:1 di atas --paper */
 
-  --green:#0f3326;     /* warna utama: tombol, pilihan aktif */
-  --green-2:#1b4a37;
-  --green-wash:#e7f0ea;
-  --lime:#c8ff3d;      /* aksen merek */
-  --lime-ink:#1b2600;
-  --lime-deep:#3e6309; /* lime sebagai teks di atas terang */
-  --lime-wash:#eff8d9;
-  --lime-edge:#bfe075;
+  /* Warna merek. Nilai --brand-* dipasang dari Pengaturan > Brand (lihat lib/brand.ts);
+     tanpa pengaturan, palet hijau-lime bawaan yang dipakai. */
+  --green:var(--brand-primary,#0f3326);     /* warna utama: tombol, pilihan aktif */
+  --green-2:var(--brand-primary-2,#1b4a37);
+  --green-wash:var(--brand-primary-wash,#e7f0ea);
+  --green-glow:var(--brand-primary-glow,var(--green-glow));  /* sisi terang gradasi kartu gelap */
+  --green-deep:var(--brand-primary-deep,var(--green-deep));  /* sisi gelap gradasi hero */
+  --on-green:var(--brand-on-primary,var(--on-green));       /* teks di atas warna utama */
+  --on-green-soft:var(--brand-on-primary-soft,var(--on-green-soft));
+  --on-green-faint:var(--brand-on-primary-faint,var(--on-green-faint));
+  --lime:var(--brand-accent,#c8ff3d);      /* aksen merek */
+  --lime-ink:var(--brand-accent-ink,#1b2600);
+  --lime-deep:var(--brand-accent-deep,#3e6309); /* aksen sebagai teks di atas terang */
+  --lime-wash:var(--brand-accent-wash,#eff8d9);
+  --lime-edge:var(--brand-accent-edge,#bfe075);
+  --shop-focus:var(--brand-focus,var(--shop-focus));
 
   --amber:#8a5700; --amber-wash:#fdf3dd; --amber-edge:#efd9a6;
   --red:#a8361f;   --red-wash:#fcebe6;   --red-edge:#f0c9bd;
@@ -45,7 +53,7 @@
 html:has(.shop),html:has(.shop) body{background:var(--paper)}
 .shop h1,.shop h2,.shop h3{font-family:var(--font-display);letter-spacing:-.02em;color:var(--ink)}
 .shop a{text-decoration:none;color:inherit}
-.shop :focus-visible{outline:3px solid #2f7d4f;outline-offset:2px;border-radius:8px}
+.shop :focus-visible{outline:3px solid var(--shop-focus);outline-offset:2px;border-radius:8px}
 .shop button{-webkit-tap-highlight-color:transparent}
 .shop a{-webkit-tap-highlight-color:transparent}
 .shop .shop-body{flex:1;display:flex;flex-direction:column}
@@ -70,6 +78,7 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
 .shop .shop-head-inner{height:100%;display:flex;align-items:center;gap:16px}
 .shop .shop-brand{display:flex;align-items:center;gap:10px;min-width:0;margin-right:auto}
 .shop .shop-brand-mark{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--green);color:var(--lime)}
+.shop .shop-brand-logo{display:block;height:36px;width:auto;max-width:180px;object-fit:contain}
 .shop .shop-brand-name{font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .shop .shop-nav{display:none}
 .shop .shop-head-actions{display:flex;align-items:center;gap:6px}
@@ -106,7 +115,7 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
 .shop .shop-tabbar a[aria-current=page] .icon{background:var(--lime-wash);color:var(--green)}
 
 /* --- Kaki halaman -------------------------------------------------------- */
-.shop .shop-foot{margin-top:48px;background:var(--green);color:#cfdcd3;padding:40px 0 calc(var(--tab-h) + var(--safe-b) + 20px)}
+.shop .shop-foot{margin-top:48px;background:var(--green);color:var(--on-green-soft);padding:40px 0 calc(var(--tab-h) + var(--safe-b) + 20px)}
 .shop .shop-foot-inner{display:grid;gap:28px}
 .shop .shop-foot-brand b{display:block;font-family:var(--font-display);font-size:20px;color:#fff;margin-bottom:6px}
 .shop .shop-foot-brand p{font-size:14px;line-height:1.6;max-width:420px}
@@ -114,10 +123,12 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
 .shop .shop-foot-brand .addr svg{flex:none;margin-top:3px;color:var(--lime)}
 .shop .shop-foot-links{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px}
 .shop .shop-foot-contact{display:flex;flex-direction:column;gap:2px}
-.shop .shop-foot-links a,.shop .shop-foot-contact a{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;color:#e5ede7;max-width:100%}
+.shop .shop-foot-links a,.shop .shop-foot-contact a{display:inline-flex;align-items:center;gap:8px;min-height:40px;font-size:14px;color:var(--on-green);max-width:100%}
 .shop .shop-foot-links a:hover,.shop .shop-foot-contact a:hover{color:var(--lime)}
 .shop .shop-foot-contact svg{color:var(--lime)}
-.shop .shop-foot-copy{margin-top:28px;padding-top:18px;border-top:1px solid #ffffff1f;font-size:13px;color:#a9bcae}
+.shop .shop-foot-copy{margin-top:28px;padding-top:18px;border-top:1px solid #ffffff1f;font-size:13px;color:var(--on-green-faint);display:flex;flex-direction:column;gap:4px}
+.shop .shop-foot-logo{display:block;height:44px;width:auto;max-width:200px;object-fit:contain;margin-bottom:10px}
+.shop .shop-foot-logo.on-light{box-sizing:content-box;padding:6px 10px;border-radius:10px;background:#fff}
 
 /* --- Tombol -------------------------------------------------------------- */
 .shop .shop-btn{
@@ -131,7 +142,7 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
 .shop .shop-btn.sm{min-height:40px;padding:0 14px;font-size:14px;border-radius:10px}
 .shop .shop-btn.lg{min-height:54px;font-size:16px;border-radius:14px}
 .shop .shop-btn.wide{width:100%}
-.shop .shop-btn.primary{background:var(--green);color:#fff;box-shadow:0 6px 16px #0f33262e}
+.shop .shop-btn.primary{background:var(--green);color:#fff;box-shadow:0 6px 16px color-mix(in srgb,var(--green) 18%,transparent)}
 .shop .shop-btn.primary:hover:not(:disabled){background:var(--green-2)}
 .shop .shop-btn.lime{background:var(--lime);color:var(--lime-ink)}
 .shop .shop-btn.lime:hover{background:#d6ff6e}
@@ -204,7 +215,7 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
   transition:border-color .15s,box-shadow .15s;
 }
 .shop input::placeholder{color:#8a9188}
-.shop input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px #0f33261a}
+.shop input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 4px color-mix(in srgb,var(--green) 10%,transparent)}
 .shop input[aria-invalid=true]{border-color:var(--red);box-shadow:0 0 0 4px #a8361f14}
 
 /* --- Pilihan tanggal (dipakai di beranda dan halaman jadwal) ------------- */
@@ -242,10 +253,10 @@ html:has(.shop),html:has(.shop) body{background:var(--paper)}
 .shop button.court-cover{cursor:zoom-in}
 .shop button.court-cover:hover img{transform:scale(1.04)}
 .shop .court-cover-count{position:absolute;right:8px;bottom:8px;display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;background:#111811b3;color:#fff;font-size:12px;font-weight:700}
-.shop .court-cover.empty{background:linear-gradient(150deg,#1d5a40,#0f3326)}
-.shop .court-cover-lines{position:absolute;inset:20% 16%;border:2px solid #c8ff3d8c;border-radius:3px}
+.shop .court-cover.empty{background:linear-gradient(150deg,var(--green-glow),var(--green))}
+.shop .court-cover-lines{position:absolute;inset:20% 16%;border:2px solid color-mix(in srgb,var(--lime) 55%,transparent);border-radius:3px}
 .shop .court-cover-lines:before{content:"";position:absolute;left:50%;top:-14%;bottom:-14%;width:2px;margin-left:-1px;background:#ffffffb3}
-.shop .court-cover-lines:after{content:"";position:absolute;inset:0 24%;border-inline:2px solid #c8ff3d59;background:linear-gradient(#c8ff3d59,#c8ff3d59) center/100% 2px no-repeat}
+.shop .court-cover-lines:after{content:"";position:absolute;inset:0 24%;border-inline:2px solid color-mix(in srgb,var(--lime) 35%,transparent);background:linear-gradient(color-mix(in srgb,var(--lime) 35%,transparent),color-mix(in srgb,var(--lime) 35%,transparent)) center/100% 2px no-repeat}
 
 .shop .lightbox{position:fixed;inset:0;z-index:100;display:grid;grid-template-rows:auto minmax(0,1fr) auto;background:#070a07f5;color:#fff;outline:0}
 .shop .lightbox-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;font-size:14px;color:#d6dccf}

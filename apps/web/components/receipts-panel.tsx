@@ -8,7 +8,7 @@ import { Receipt } from "./receipt";
 import { ErrorBox } from "./operation-ui";
 
 type Form = Omit<ReceiptSettings, "updated_at">;
-const formFrom = (s: ReceiptSettings): Form => ({ paper: s.paper, custom_width: s.custom_width, header_note: s.header_note, footer_note: s.footer_note, show_payments: s.show_payments, show_cashier: s.show_cashier });
+const formFrom = (s: ReceiptSettings): Form => ({ paper: s.paper, custom_width: s.custom_width, header_note: s.header_note, footer_note: s.footer_note, show_payments: s.show_payments, show_cashier: s.show_cashier, show_logo: s.show_logo !== false });
 
 /** Contoh booking kasir untuk pratinjau; tidak tersimpan di mana pun. */
 function sample(form: Form, venue: ReceiptData["venue"]): ReceiptData {
@@ -50,7 +50,7 @@ export function ReceiptsPanel() {
   if (error && !saved) return <ErrorBox message={error} retry={() => void load()} />;
   if (!saved || !form) return <p className="empty-state">Memuat pengaturan nota…</p>;
   const info = venue?.info;
-  const preview = sample(form, { name: info?.name ?? "", address: info?.address ?? "", phone: info?.phone ?? "", whatsapp: info?.whatsapp ?? "", email: info?.email ?? "", instagram: info?.instagram ?? "" });
+  const preview = sample(form, { name: info?.name ?? "", address: info?.address ?? "", phone: info?.phone ?? "", whatsapp: info?.whatsapp ?? "", email: info?.email ?? "", instagram: info?.instagram ?? "", logo: venue?.brand?.logo ?? null, show_name: venue?.brand?.show_name ?? true });
   return <form className="cms-form" onSubmit={save}>
     <div className="cms-grid">
       <section className="cms-card">
@@ -65,11 +65,12 @@ export function ReceiptsPanel() {
         <p className="cms-hint">Kertas thermal dan lebar lain dicetak sebagai kertas gulung: panjangnya mengikuti isi nota. Di dialog cetak, atur Margin ke None dan Skala 100%.</p>
       </section>
       <section className="cms-card">
-        <header><h2>Isi nota</h2><p>Nama, alamat, dan kontak venue diambil dari Info Venue.</p></header>
+        <header><h2>Isi nota</h2><p>Logo, nama, dan kontak diambil dari Pengaturan &gt; Brand; alamat dari Info Venue.</p></header>
         <label className="cms-field"><span className="cms-label">Teks kepala (opsional)</span><input maxLength={160} value={form.header_note} placeholder="Mis. NPWP 01.234.567.8-901.000" onChange={e => setForm({ ...form, header_note: e.target.value })} /></label>
         <label className="cms-field"><span className="cms-label">Teks kaki</span><textarea maxLength={300} rows={3} value={form.footer_note} onChange={e => setForm({ ...form, footer_note: e.target.value })} /></label>
         <label className="cms-check"><input type="checkbox" checked={form.show_payments} onChange={e => setForm({ ...form, show_payments: e.target.checked })} /> Tampilkan rincian setiap pembayaran (DP, pelunasan, metode)</label>
         <label className="cms-check"><input type="checkbox" checked={form.show_cashier} onChange={e => setForm({ ...form, show_cashier: e.target.checked })} /> Tampilkan nama kasir yang mencetak</label>
+        <label className="cms-check"><input type="checkbox" checked={form.show_logo} onChange={e => setForm({ ...form, show_logo: e.target.checked })} /> Tampilkan logo brand di kepala nota</label>
         <button type="button" className="ops-secondary" onClick={() => setForm(formFrom({ ...defaultReceiptSettings, updated_at: null }))}>Kembalikan ke bawaan</button>
       </section>
     </div>

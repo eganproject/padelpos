@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
 import { RouteProgress } from "@/components/route-progress";
+import { BrandProvider } from "@/components/brand-provider";
+import { brandInfo } from "@/lib/server-data";
+import { assetUrl, brandCss, brandName, emptyBrand } from "@/lib/brand";
 /* Panel staf lebih dulu, lalu situs pelanggan. Urutan ini disengaja: aturan
    .shop ditulis terakhir sehingga tema terang/gelap staf tidak pernah merembes
    ke halaman pelanggan lewat elemen yang dipakai bersama. */
@@ -27,10 +30,18 @@ import "./shop-account.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space", display: "swap" });
 
-export const metadata: Metadata = {
-  title: { default: "Padelix — Booking Lapangan Padel", template: "%s · Padelix" },
-  description: "Cek ketersediaan lapangan padel dan pesan jam main Anda secara online.",
-};
+/** Judul tab, deskripsi, dan ikon mengikuti Pengaturan > Brand. */
+export async function generateMetadata(): Promise<Metadata> {
+  const brand = await brandInfo();
+  const name = brandName(brand);
+  const icon = brand?.favicon ? assetUrl(brand.favicon) : "/icon.svg";
+  return {
+    title: { default: `${name} — Booking Lapangan Padel`, template: `%s · ${name}` },
+    description: brand?.tagline?.trim() || "Cek ketersediaan lapangan padel dan pesan jam main Anda secara online.",
+    applicationName: name,
+    icons: { icon, apple: brand?.favicon ? icon : undefined },
+  };
+}
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -43,13 +54,19 @@ export const viewport: Viewport = {
  */
 const themeBoot = `try{var t=localStorage.getItem("padelix_theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}`;
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const brand = await brandInfo() ?? emptyBrand;
+  // Hanya kode warna #rrggbb yang lolos validasi API yang masuk ke sini, jadi aman ditulis sebagai CSS.
+  const colors = brandCss(brand);
   return (
     <html lang="id" className={`${inter.variable} ${spaceGrotesk.variable}`} suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeBoot }} /></head>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBoot }} />
+        {colors && <style dangerouslySetInnerHTML={{ __html: colors }} />}
+      </head>
       <body>
         <RouteProgress />
-        {children}
+        <BrandProvider brand={brand}>{children}</BrandProvider>
         <Toaster theme="dark" richColors position="top-right" closeButton />
       </body>
     </html>

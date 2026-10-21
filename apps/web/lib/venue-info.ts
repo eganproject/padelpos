@@ -2,6 +2,7 @@ import type { ShopCourt } from "./shop";
 import type { AddonOption } from "./addons";
 import type { PaymentPublic } from "./payments";
 import type { PublicLogin } from "./account";
+import type { PublicBrand } from "./brand";
 
 /** Sama dengan daftar di API (apps/api/src/content.ts). */
 export const facilityKinds = ["parkir", "toilet", "kamar-bilas", "musala", "kantin", "ruang-tunggu", "wifi", "loker", "sewa-raket", "sewa-bola", "pelatih", "p3k"] as const;
@@ -15,6 +16,7 @@ export const facilityLabels: Record<FacilityKind, string> = {
 export type VenueInfo = {
   name: string; tagline: string; about: string; address: string; maps_url: string; show_map: boolean;
   whatsapp: string; phone: string; email: string; instagram: string; hours_note: string;
+  tiktok: string; facebook: string; youtube: string; website: string;
   /** Batas lama satu booking online dalam jam; 0 berarti sampai jam tutup lapangan. */
   max_booking_hours: number;
   facilities: FacilityKind[]; extra_facilities: string[]; updated_at: string | null;
@@ -26,7 +28,7 @@ export type Policies = {
   cancellation_note: string; terms: string; updated_at: string | null;
 };
 export type Faq = { id: string; question: string; answer: string };
-export type PublicInfo = { info: VenueInfo; policies: Policies; faqs: Faq[]; courts: ShopCourt[]; addons: AddonOption[]; payment: PaymentPublic; login: PublicLogin };
+export type PublicInfo = { info: VenueInfo; brand: PublicBrand; policies: Policies; faqs: Faq[]; courts: ShopCourt[]; addons: AddonOption[]; payment: PaymentPublic; login: PublicLogin };
 
 export const environmentLabel: Record<"indoor" | "outdoor", string> = { indoor: "Indoor", outdoor: "Outdoor" };
 export const photoUrl = (id: string) => `/api/public/photos/${encodeURIComponent(id)}`;

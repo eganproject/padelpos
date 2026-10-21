@@ -25,6 +25,9 @@
 
 .receipt-head{display:grid;gap:1px}
 .receipt-venue{font-weight:700}
+.receipt-logo{display:block;width:auto;max-width:100%;object-fit:contain;margin-bottom:1.5mm}
+.receipt.roll .receipt-logo{max-height:14mm;filter:grayscale(1)}
+.receipt.sheet .receipt-logo{max-height:18mm}
 .receipt-note{font-style:italic}
 .receipt-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .receipt-title h1{text-transform:uppercase;letter-spacing:.06em;font-weight:700}

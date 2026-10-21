@@ -7,6 +7,8 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { money } from "@/lib/api";
 import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
+import { useBrand } from "@/components/brand-provider";
+import { assetUrl, brandName } from "@/lib/brand";
 import { fetchOrder, methodLabel, payTypeLabel, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
 import { formatWhatsapp } from "@/lib/venue-info";
@@ -24,6 +26,7 @@ export default function ReceiptPage() {
   const [data, setData] = useState<OrderView | null>(null);
   const [error, setError] = useState("");
   const { data: venue } = useVenueInfo();
+  const brand = useBrand();
   useEffect(() => { fetchOrder(id).then(setData).catch(problem => setError((problem as Error).message)); }, [id]);
 
   if (error) return <div className="shop-wrap shop-band"><p className="shop-note error" role="alert">{error}</p></div>;
@@ -53,7 +56,9 @@ export default function ReceiptPage() {
       <article className="invoice" aria-label={`${title} ${order.code}`}>
         <header className="invoice-head">
           <div>
-            <b className="invoice-venue">{info?.name || "Venue padel"}</b>
+            {/* eslint-disable-next-line @next/next/no-img-element -- logo kecil dari API sendiri, ikut tercetak */}
+            {brand.logo && <img className="invoice-logo" src={assetUrl(brand.logo)} alt={brand.show_name ? "" : brandName(info)} />}
+            {(!brand.logo || brand.show_name) && <b className="invoice-venue">{info?.name || "Venue padel"}</b>}
             {info?.address && <span>{info.address}</span>}
             <span>{[info?.whatsapp && `WA ${formatWhatsapp(info.whatsapp)}`, info?.phone, info?.email].filter(Boolean).join(" · ")}</span>
           </div>

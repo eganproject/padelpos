@@ -28,8 +28,8 @@ app.use(helmet());
 const originOf=(value:string)=>{try{return new URL(value).origin}catch{return value.replace(/\/+$/,"")}};
 const origins=[...new Set([clientUrl,publicUrl].map(originOf))];
 app.use(cors({origin:origins,credentials:true}));
-/** Endpoint yang menerima berkas biner: foto lapangan, foto item tambahan, bukti transaksi, dan foto profil. */
-const photoUpload=/^\/api\/(?:operations\/(?:courts\/[^/]+\/photos|addons\/[^/]+\/photo|finance\/records\/[^/]+\/receipt)|profile\/avatar|customer\/me\/avatar)$/;
+/** Endpoint yang menerima berkas biner: foto lapangan, foto item tambahan, bukti transaksi, foto profil, dan logo merek. */
+const photoUpload=/^\/api\/(?:operations\/(?:courts\/[^/]+\/photos|brand\/assets\/[^/]+|addons\/[^/]+\/photo|finance\/records\/[^/]+\/receipt)|profile\/avatar|customer\/me\/avatar)$/;
 app.use((req,res,next)=>{
   if(!["GET","HEAD","OPTIONS"].includes(req.method)){
     if(req.headers.origin&&!origins.includes(req.headers.origin))return res.status(403).json({message:"Asal permintaan tidak diizinkan."});

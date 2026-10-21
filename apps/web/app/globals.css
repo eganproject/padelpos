@@ -16,6 +16,12 @@
 }
 .brand-mark svg{width:18px;height:18px}
 .brand-name{font-family:var(--font-ui);font-size:var(--fs-lg);font-weight:600;letter-spacing:.01em;white-space:nowrap}
+/* Logo unggahan (Pengaturan > Brand): tinggi tetap, lebar mengikuti bentuk logo. */
+.brand-logo{display:block;height:28px;width:auto;max-width:160px;object-fit:contain}
+.brand-logo.dark{display:none}
+html[data-theme="dark"] .brand-logo.light{display:none}
+html[data-theme="dark"] .brand-logo.dark{display:block}
+.brand-name{overflow:hidden;text-overflow:ellipsis}
 
 /* --- Halaman masuk staf --------------------------------------------------- */
 .auth-page{
@@ -38,7 +44,9 @@ html[data-theme="dark"] .auth-page{background:var(--bg)}
 .auth-logo{display:flex;justify-content:center;margin-bottom:var(--s5)}
 .auth-logo .brand-mark{width:40px;height:40px;border-radius:var(--r-md)}
 .auth-logo .brand-mark svg{width:24px;height:24px}
-.auth-logo .brand-name{display:none}
+.auth-logo .brand{flex-direction:column;gap:var(--s2)}
+.auth-logo .brand-logo{height:48px;max-width:220px}
+.auth-logo .brand-name{font-size:var(--fs-md);color:var(--muted)}
 .auth-card h2{font-size:var(--fs-2xl);font-weight:600;letter-spacing:.01em;color:var(--text);text-align:center;margin:0 0 var(--s1)}
 .auth-subtitle{font-size:var(--fs-sm);line-height:var(--lh-normal);color:var(--muted);text-align:center;margin:0 0 var(--s5)}
 .auth-card>p[role=alert]{margin:var(--s3) 0;padding:var(--s2) var(--s3);border-radius:var(--r-sm);background:var(--red-bg);color:var(--red-text);font-size:var(--fs-sm)}
@@ -92,5 +100,5 @@ html[data-theme="dark"] .primary-button:hover{filter:brightness(.92)}
   transition:width .4s var(--ease,ease),opacity .3s ease .1s;border-radius:0 2px 2px 0}
 .route-progress[data-state="done"] .route-progress-bar{opacity:0;transition:width .2s ease,opacity .25s ease .15s}
 /* Situs pelanggan: hijau merek dengan kilau lime. */
-html:has(.shop) .route-progress-bar{background:#0f3326;box-shadow:0 0 10px #c8ff3d}
+html:has(.shop) .route-progress-bar{background:var(--brand-primary,#0f3326);box-shadow:0 0 10px var(--brand-accent,#c8ff3d)}
 @media(prefers-reduced-motion:reduce){.route-progress-bar{transition:none}}

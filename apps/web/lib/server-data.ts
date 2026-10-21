@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { Availability } from "./shop";
 import type { PublicInfo } from "./venue-info";
+import type { PublicBrand } from "./brand";
 
 /**
  * Pengambilan data untuk halaman yang digambar di server: beranda, FAQ, kebijakan,
@@ -30,3 +31,6 @@ export const venueInfo = cache(() => get<PublicInfo>("/info"));
 
 /** Jadwal satu tanggal, lengkap dengan denah dan tarif tiap slot. */
 export const availability = cache((date: string) => get<Availability>(`/availability?date=${encodeURIComponent(date)}`));
+
+/** Nama, logo, favicon, dan warna merek untuk rangka semua halaman. Ringan: dua baris pengaturan. */
+export const brandInfo = cache(() => get<PublicBrand>("/brand"));

@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, Check, Circle, CircleCheck, ExternalLink, HelpCircl
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import {
-  facilityKinds, facilityLabels, formatUpdated, formatWhatsapp, hasCancellationPolicy, mapsEmbed, refundDaysLine, refundLines, rescheduleLine,
+  facilityKinds, facilityLabels, formatUpdated, hasCancellationPolicy, mapsEmbed, refundDaysLine, refundLines, rescheduleLine,
   type Faq, type FacilityKind, type Policies, type RefundTier, type VenueInfo,
 } from "@/lib/venue-info";
 import { FacilityIcon } from "./facility-icon";
@@ -22,20 +22,11 @@ type ContentResponse = {
 };
 type Tab = "profil" | "fasilitas" | "kebijakan" | "faq";
 const tabs: { id: Tab; label: string; icon: typeof Store }[] = [
-  { id: "profil", label: "Profil & kontak", icon: Store },
+  { id: "profil", label: "Profil & lokasi", icon: Store },
   { id: "fasilitas", label: "Fasilitas", icon: Sparkles },
   { id: "kebijakan", label: "Kebijakan", icon: ScrollText },
   { id: "faq", label: "FAQ", icon: HelpCircle },
 ];
-
-/** Sama dengan normalisasi di API, agar status "belum disimpan" tidak salah menyala. */
-const normalizeWhatsapp = (value: string) => {
-  const digits = value.trim().replace(/[\s().-]/g, "");
-  if (digits.startsWith("+62")) return digits.slice(1);
-  if (digits.startsWith("0")) return "62" + digits.slice(1);
-  if (digits.startsWith("8")) return "62" + digits;
-  return digits;
-};
 
 export function VenueInfoPanel() {
   const [data, setData] = useState<ContentResponse | null>(null);
@@ -113,7 +104,7 @@ function Checklist({ data, open }: { data: ContentResponse; open: (tab: Tab) => 
   const withPhoto = courts.filter(court => court.photos > 0).length, described = courts.filter(court => court.description).length;
   const items: { label: string; done: boolean; tab?: Tab; href?: string }[] = [
     { label: "Alamat venue", done: data.info.address !== "", tab: "profil" },
-    { label: "Nomor WhatsApp", done: data.info.whatsapp !== "", tab: "profil" },
+    { label: "Nomor WhatsApp", done: data.info.whatsapp !== "", href: "/admin/brand" },
     { label: `Foto lapangan (${withPhoto}/${courts.length})`, done: courts.length > 0 && withPhoto === courts.length, href: "/admin/courts" },
     { label: `Deskripsi lapangan (${described}/${courts.length})`, done: courts.length > 0 && described === courts.length, href: "/admin/courts" },
     { label: "Fasilitas", done: data.info.facilities.length + data.info.extra_facilities.length > 0, tab: "fasilitas" },
@@ -148,7 +139,7 @@ function Checklist({ data, open }: { data: ContentResponse; open: (tab: Tab) => 
   );
 }
 
-function Field({ label, hint, counter, children, className = "" }: { label: string; hint?: React.ReactNode; counter?: string; children: React.ReactNode; className?: string }) {
+export function Field({ label, hint, counter, children, className = "" }: { label: string; hint?: React.ReactNode; counter?: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={`cms-field ${className}`.trim()}>
       <span className="cms-label">{label}{counter && <small>{counter}</small>}</span>
@@ -158,7 +149,7 @@ function Field({ label, hint, counter, children, className = "" }: { label: stri
   );
 }
 
-function SaveBar({ dirty, busy, label, updated }: { dirty: boolean; busy: boolean; label: string; updated: string | null }) {
+export function SaveBar({ dirty, busy, label, updated }: { dirty: boolean; busy: boolean; label: string; updated: string | null }) {
   return (
     <div className={`cms-savebar${dirty ? " dirty" : ""}`}>
       <span role="status">{dirty ? "Ada perubahan yang belum disimpan." : updated ? `Tersimpan · ${formatUpdated(updated)}` : "Belum pernah disimpan."}</span>
@@ -180,19 +171,20 @@ function useSave<T>(path: string, done: (result: T) => void, message: string) {
   return { busy, error, save };
 }
 
-const profileKeys = ["name", "tagline", "about", "address", "maps_url", "show_map", "whatsapp", "phone", "email", "instagram", "hours_note", "max_booking_hours"] as const;
+// Nama, tagline, dan kontak diatur di Pengaturan > Brand; form ini hanya menyimpan kolom berikut.
+const profileKeys = ["about", "address", "maps_url", "show_map", "hours_note", "max_booking_hours"] as const;
 type ProfileFields = Pick<VenueInfo, typeof profileKeys[number]>;
 const pickProfile = (info: VenueInfo) => Object.fromEntries(profileKeys.map(key => [key, info[key]])) as ProfileFields;
-const editableProfile = (info: VenueInfo): ProfileFields => ({ ...pickProfile(info), whatsapp: info.whatsapp ? formatWhatsapp(info.whatsapp) : "" });
+const editableProfile = (info: VenueInfo): ProfileFields => pickProfile(info);
 
 function ProfileForm({ info, saved, onDirty }: { info: VenueInfo; saved: (info: VenueInfo) => void; onDirty: (dirty: boolean) => void }) {
   const [form, setForm] = useState(() => editableProfile(info));
   const [mapAddress, setMapAddress] = useState(info.address);
-  const dirty = JSON.stringify({ ...form, whatsapp: normalizeWhatsapp(form.whatsapp) }) !== JSON.stringify(pickProfile(info));
+  const dirty = JSON.stringify(form) !== JSON.stringify(pickProfile(info));
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   // Pratinjau peta menunggu admin berhenti mengetik agar tidak memuat ulang di setiap huruf.
   useEffect(() => { const timer = window.setTimeout(() => setMapAddress(form.address.trim()), 900); return () => window.clearTimeout(timer); }, [form.address]);
-  const { busy, error, save } = useSave<{ info: VenueInfo }>("/operations/content/info", result => { setForm(editableProfile(result.info)); saved(result.info); }, "Profil venue disimpan");
+  const { busy, error, save } = useSave<{ info: VenueInfo }>("/operations/content/info", result => { setForm(editableProfile(result.info)); saved(result.info); }, "Profil & lokasi disimpan");
   const set = <K extends keyof ProfileFields>(key: K) => (value: ProfileFields[K]) => setForm(previous => ({ ...previous, [key]: value }));
 
   return (
@@ -200,28 +192,15 @@ function ProfileForm({ info, saved, onDirty }: { info: VenueInfo; saved: (info: 
       {error && <ErrorBox message={error} />}
       <div className="cms-grid">
         <section className="cms-card">
-          <header><h2>Identitas venue</h2><p>Nama dan cerita singkat yang tampil di beranda dan footer.</p></header>
-          <Field label="Nama venue"><input maxLength={60} value={form.name} onChange={event => set("name")(event.target.value)} placeholder="Mis. Padelix Arena" /></Field>
-          <Field label="Tagline" counter={`${form.tagline.length}/120`} hint="Satu kalimat pendek tentang keunggulan venue.">
-            <input maxLength={120} value={form.tagline} onChange={event => set("tagline")(event.target.value)} placeholder="Mis. Tiga lapangan padel di tengah kota, buka setiap hari." />
-          </Field>
+          <header><h2>Tentang venue</h2><p>Cerita singkat yang tampil di beranda.</p></header>
           <Field label="Tentang venue" counter={`${form.about.length}/1500`} hint="Pisahkan paragraf dengan baris kosong.">
             <textarea rows={6} maxLength={1500} value={form.about} onChange={event => set("about")(event.target.value)} />
           </Field>
+          <p className="cms-hint">Nama, tagline, logo, WhatsApp, email, dan media sosial sekarang diatur di <Link href="/admin/brand">Pengaturan › Brand</Link>.</p>
         </section>
         <section className="cms-card">
-          <header><h2>Kontak</h2><p>Pelanggan dapat langsung menghubungi venue dari situs.</p></header>
-          <Field label="WhatsApp" hint="Dipakai untuk tombol chat dan untuk mengirim pilihan jadwal pelanggan ke venue.">
-            <input inputMode="tel" maxLength={24} value={form.whatsapp} onChange={event => set("whatsapp")(event.target.value)} placeholder="0812 3456 7890" />
-          </Field>
-          <div className="cms-row">
-            <Field label="Telepon"><input inputMode="tel" maxLength={24} value={form.phone} onChange={event => set("phone")(event.target.value)} placeholder="021 1234 5678" /></Field>
-            <Field label="Email"><input type="email" maxLength={120} value={form.email} onChange={event => set("email")(event.target.value)} placeholder="halo@venue.id" /></Field>
-          </div>
-          <div className="cms-row">
-            <Field label="Instagram"><input maxLength={120} value={form.instagram} onChange={event => set("instagram")(event.target.value)} placeholder="@namavenue" /></Field>
-            <Field label="Keterangan jam buka"><input maxLength={120} value={form.hours_note} onChange={event => set("hours_note")(event.target.value)} placeholder="Setiap hari, 06.00–23.00" /></Field>
-          </div>
+          <header><h2>Jam buka & booking</h2><p>Keterangan jam buka dan batas lama booking online.</p></header>
+          <Field label="Keterangan jam buka"><input maxLength={120} value={form.hours_note} onChange={event => set("hours_note")(event.target.value)} placeholder="Setiap hari, 06.00–23.00" /></Field>
           <Field label="Lama booking online" hint="Batas lama main untuk satu booking dari situs pelanggan. Booking lewat kasir tidak dibatasi.">
             <Select value={form.max_booking_hours ?? 0} onChange={event => set("max_booking_hours")(Number(event.target.value))}>
               <option value={0}>Bebas, sampai jam tutup lapangan</option>
@@ -249,7 +228,7 @@ function ProfileForm({ info, saved, onDirty }: { info: VenueInfo; saved: (info: 
           </div>
         </section>
       </div>
-      <SaveBar dirty={dirty} busy={busy} label="Simpan profil & kontak" updated={info.updated_at} />
+      <SaveBar dirty={dirty} busy={busy} label="Simpan profil & lokasi" updated={info.updated_at} />
     </form>
   );
 }

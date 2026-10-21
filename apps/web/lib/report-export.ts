@@ -1,4 +1,5 @@
 "use client";
+import { brandName } from "./brand";
 import { loadVenueInfo } from "./use-venue-info";
 
 /**
@@ -52,8 +53,8 @@ function cellText(cell:ReportCell, column?:ReportColumn) {
 async function venue() {
   try {
     const { info } = await loadVenueInfo();
-    return { name: info.name || "Padelix", address: info.address || "" };
-  } catch { return { name:"Padelix", address:"" } }
+    return { name: brandName(info), address: info.address || "" };
+  } catch { return { name: brandName(null), address:"" } }
 }
 
 function printedAt() {

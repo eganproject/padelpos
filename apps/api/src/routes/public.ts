@@ -10,6 +10,7 @@ import { createCheckout, expireHolds, handleNotification, orderView, quoteCart, 
 import { check } from "../errors.js";
 import { customerAccountId } from "../auth.js";
 import { publicLogin } from "../customers.js";
+import { publicBrand } from "../brand.js";
 
 const router = Router();
 
@@ -66,8 +67,11 @@ router.get("/availability", async (req, res) => {
 /** Profil, kontak, fasilitas, kebijakan, FAQ, dan katalog sewa & tambahan. */
 router.get("/info", async (_req, res) => {
   const { info, policies, faqs } = await content();
-  res.json({ info, policies, faqs: faqs.items, courts: await ops.publicCourts(), addons: await publicAddons(), payment: await publicPayment(), login: await publicLogin() });
+  res.json({ info, brand: await publicBrand(), policies, faqs: faqs.items, courts: await ops.publicCourts(), addons: await publicAddons(), payment: await publicPayment(), login: await publicLogin() });
 });
+
+/** Nama, logo, favicon, dan warna merek: dibaca setiap halaman (judul, ikon tab, panel staf), jadi dibuat ringan. */
+router.get("/brand", async (_req, res) => res.json(await publicBrand()));
 
 /** Sewa & tambahan. Dengan tanggal dan jam, `available` menghitung barang yang dipakai booking lain. */
 router.get("/addons", async (req, res) => {
