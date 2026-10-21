@@ -217,11 +217,12 @@ export default function OrderPage() {
                       {order.sessions.length > 1 && <span className={`pill ${sessionTone[session.status] ?? "wait"}`}>{sessionLabel[session.status] ?? session.status}</span>}
                     </div>
                   </div>
-                  {(session.addons.length > 0 || session.discount > 0 || (session.member_discount ?? 0) > 0 || session.tax > 0) && (
+                  {(session.addons.length > 0 || session.discount > 0 || (session.member_discount ?? 0) > 0 || (session.voucher_discount ?? 0) > 0 || session.tax > 0) && (
                     <ul className="receipt-lines">
                       <li><span>Sewa lapangan</span><span>{money(session.court_total)}</span></li>
                       {session.addons.map((line, index) => <li key={index}><span>{line.quantity}× {line.name}</span><span>{money(line.subtotal)}</span></li>)}
                       {(session.member_discount ?? 0) > 0 && <li><span>Potongan member {session.member_plan}</span><span>−{money(session.member_discount!)}</span></li>}
+                      {(session.voucher_discount ?? 0) > 0 && <li><span>Voucher {session.voucher_code}</span><span>−{money(session.voucher_discount!)}</span></li>}
                       {session.discount > 0 && <li><span>Potongan{session.discount_note ? ` ${session.discount_note}` : ""}</span><span>−{money(session.discount)}</span></li>}
                       {session.tax > 0 && <li><span>{taxName(session)}</span><span>{money(session.tax)}</span></li>}
                     </ul>

@@ -257,6 +257,7 @@ async function billItems(bookings: Booking[]): Promise<Item[]> {
     items.push({ label: booking.court_name, detail: `${longDate(booking.date)} · ${booking.start_time}–${booking.end_time}`, amount: rupiah(booking.court_total) });
     for (const line of await bookingAddons(booking.id)) items.push({ label: `${line.quantity}× ${line.name}`, amount: rupiah(line.subtotal), sub: true });
     if (booking.member_discount > 0) items.push({ label: `Potongan member ${booking.member_plan}`.trim(), amount: "−" + rupiah(booking.member_discount), sub: true });
+    if (booking.voucher_discount > 0) items.push({ label: `Voucher ${booking.voucher_code}`, amount: "−" + rupiah(booking.voucher_discount), sub: true });
     if (booking.discount > 0) items.push({ label: `Potongan${booking.discount_note ? ` ${booking.discount_note}` : ""}`, amount: "−" + rupiah(booking.discount), sub: true });
     if (booking.tax > 0) items.push({ label: `${booking.tax_label || "Pajak"} ${(booking.tax_rate / 100).toLocaleString("id-ID")}%${booking.tax_inclusive ? " (sudah termasuk)" : ""}`, amount: rupiah(booking.tax), sub: true });
   }

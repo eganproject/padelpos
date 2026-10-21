@@ -20,6 +20,7 @@ import * as receipts from "../receipts.js";
 import * as members from "../membership.js";
 import * as counter from "../counter.js";
 import * as brand from "../brand.js";
+import * as vouchers from "../vouchers.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 const router=Router();
@@ -146,6 +147,17 @@ router.post("/members/:id/invoices/:invoiceId/pay",requireMenu("members"),async 
 router.post("/members/:id/approve",requireMenu("members"),async (req:AuthRequest,res)=>res.json(await members.approveMember(String(req.params.id),req.auth!.sub)));
 router.post("/members/:id/freeze",requireMenu("members"),async (req:AuthRequest,res)=>res.json(await members.freezeMember(String(req.params.id),req.body,req.auth!.sub)));
 router.post("/members/:id/cancel",requireMenu("members"),async (req:AuthRequest,res)=>res.json(await members.cancelMember(String(req.params.id),req.body,req.auth!.sub)));
+// Voucher & promo: kelola kode di menu Voucher; kasir cukup akses Booking untuk memakai dan memeriksa kode.
+router.get("/vouchers",requireMenu("vouchers"),async (_req,res)=>res.json(await vouchers.listVouchers()));
+router.post("/vouchers",requireMenu("vouchers"),async (req:AuthRequest,res)=>res.status(201).json({voucher:await vouchers.saveVoucher(req.body,req.auth!.sub)}));
+router.post("/vouchers/check",requireAnyMenu(["bookings","vouchers"]),async (req,res)=>{
+  const data=z.object({code:z.string().trim().min(1,"Isi kode voucher.").max(40),court:z.number().int().min(0).default(0),extras:z.number().int().min(0).default(0),subtotal:z.number().int().min(0),cap:z.number().int().min(0),phone:z.string().max(20).default("")}).parse(req.body);
+  res.json({voucher:await vouchers.previewVoucher(data.code,[{court:data.court,extras:data.extras,subtotal:data.subtotal,cap:data.cap}],{channel:"kasir",phone:data.phone||null})});
+});
+router.get("/vouchers/:id",requireMenu("vouchers"),async (req,res)=>res.json(await vouchers.voucherDetail(String(req.params.id))));
+router.put("/vouchers/:id",requireMenu("vouchers"),async (req:AuthRequest,res)=>res.json({voucher:await vouchers.saveVoucher(req.body,req.auth!.sub,String(req.params.id))}));
+router.delete("/vouchers/:id",requireMenu("vouchers"),async (req:AuthRequest,res)=>{await vouchers.removeVoucher(String(req.params.id),req.auth!.sub);res.status(204).send()});
+router.put("/bookings/:id/voucher",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({booking:await ops.setBookingVoucher(String(req.params.id),req.body,req.auth!.sub)}));
 router.put("/bookings/:id/discount",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({booking:await ops.setBookingDiscount(String(req.params.id),req.body,req.auth!.sub)}));
 router.put("/bookings/:id/forfeit",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({booking:await ops.forfeitBooking(String(req.params.id),req.body,req.auth!.sub)}));
 router.put("/bookings/:id/addons",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await ops.updateBookingAddons(String(req.params.id),req.body,req.auth!.sub)));

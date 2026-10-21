@@ -155,20 +155,20 @@ const addonAccountKey: Record<string, string> = { sewa: "pendapatan_sewa", jual:
  * atau selesai, dan dihapus lagi bila booking batal atau kedaluwarsa. Dipanggil dari operations.ts
  * dan payments.ts di dalam transaksi yang sudah berjalan, jadi fungsi ini tidak membuka transaksi.
  *
- * Jurnal pendapatan: Dr Piutang (total tagihan) + Dr Potongan Harga (diskon) + Dr Potongan Member
+ * Jurnal pendapatan: Dr Piutang (total tagihan) + Dr Potongan Harga (diskon) + Dr Potongan Member + Dr Potongan Voucher
  *                    = Cr pendapatan per jenis (tanpa pajak) + Cr Utang Pajak.
  * Booking batal yang pembayarannya ditahan sebagai denda: Dr Piutang, Cr Pendapatan Pembatalan.
  */
 export async function syncBooking(bookingId: string) {
-  const booking = await db.prepare("SELECT id,customer,date,status,total,court_total,discount,member_discount,member_plan,tax,forfeited,forfeited_at FROM bookings WHERE id=?").get(bookingId) as
-    { id: string; customer: string; date: string; status: string; total: number; court_total: number | null; discount: number; member_discount: number; member_plan: string; tax: number; forfeited: number; forfeited_at: string | null } | undefined;
+  const booking = await db.prepare("SELECT id,customer,date,status,total,court_total,discount,member_discount,member_plan,voucher_discount,voucher_code,tax,forfeited,forfeited_at FROM bookings WHERE id=?").get(bookingId) as
+    { id: string; customer: string; date: string; status: string; total: number; court_total: number | null; discount: number; member_discount: number; member_plan: string; voucher_discount: number; voucher_code: string; tax: number; forfeited: number; forfeited_at: string | null } | undefined;
   if (!booking) return;
   const receivable = { account_id: (await systemAccount("piutang")).id, booking_id: booking.id, memo: booking.customer };
   if (booking.status === "confirmed" || booking.status === "completed") {
     const extras = await db.prepare("SELECT type,SUM(subtotal) amount FROM booking_addons WHERE booking_id=? GROUP BY type").all(bookingId) as { type: string; amount: number }[];
     const extrasTotal = extras.reduce((sum, row) => sum + row.amount, 0);
     // Pendapatan bersih pajak; berlaku untuk pajak di luar maupun sudah termasuk harga.
-    const revenue = booking.total + booking.discount + booking.member_discount - booking.tax;
+    const revenue = booking.total + booking.discount + booking.member_discount + Number(booking.voucher_discount) - booking.tax;
     const parts = [{ key: "pendapatan_lapangan", amount: booking.court_total ?? booking.total - extrasTotal }];
     for (const row of extras) parts.push({ key: addonAccountKey[row.type] ?? "pendapatan_lain", amount: row.amount });
     const shares = allocate(revenue, parts.map(part => Math.max(0, part.amount)));
@@ -183,6 +183,7 @@ export async function syncBooking(bookingId: string) {
         { ...receivable, debit: booking.total },
         { account_id: (await systemAccount("potongan_harga")).id, debit: booking.discount, memo: "Potongan harga" },
         ...(booking.member_discount ? [{ account_id: (await systemAccount("potongan_member")).id, debit: booking.member_discount, memo: `Potongan member ${booking.member_plan}`.trim() }] : []),
+        ...(Number(booking.voucher_discount) ? [{ account_id: (await systemAccount("potongan_voucher")).id, debit: Number(booking.voucher_discount), memo: `Voucher ${booking.voucher_code}`.trim() }] : []),
         ...revenueLines,
         { account_id: (await systemAccount("utang_pajak")).id, credit: booking.tax, memo: booking.customer },
       ],
@@ -217,17 +218,17 @@ export async function syncBooking(bookingId: string) {
 
 /**
  * Transaksi kasir tanpa booking langsung lunas, jadi tidak melewati piutang:
- *   Dr Kas/Bank (total) + Dr Potongan Harga = Cr pendapatan per jenis (tanpa pajak) + Cr Utang Pajak.
+ *   Dr Kas/Bank (total) + Dr Potongan Harga + Dr Potongan Voucher = Cr pendapatan per jenis (tanpa pajak) + Cr Utang Pajak.
  * Bila dibatalkan, jurnal balik dibuat pada tanggal pembatalan; jurnal asal tetap ada agar
  * periode yang sudah dilaporkan tidak berubah. Keduanya hanya dibuat sekali.
  */
 export async function syncCounterSale(saleId: string) {
-  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,fee,surcharge,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
-    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; tax: number; method: string; fee: number; surcharge: number; paid_at: string | null; voided_at: string | null } | undefined;
+  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,voucher_discount,voucher_code,tax,method,fee,surcharge,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
+    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; voucher_discount: number; voucher_code: string; tax: number; method: string; fee: number; surcharge: number; paid_at: string | null; voided_at: string | null } | undefined;
   // Transaksi Midtrans yang belum atau tidak jadi dibayar tidak menyentuh pembukuan.
   if (!sale || !sale.paid_at) return;
   const parts = await db.prepare("SELECT type,SUM(subtotal) amount FROM counter_sale_lines WHERE sale_id=? GROUP BY type ORDER BY type").all(saleId) as { type: string; amount: number }[];
-  const revenue = sale.total + sale.discount - sale.tax;
+  const revenue = sale.total + sale.discount + Number(sale.voucher_discount) - sale.tax;
   const shares = allocate(revenue, parts.map(part => Math.max(0, Number(part.amount))));
   const merged = new Map<string, number>();
   parts.forEach((part, index) => { const key = addonAccountKey[part.type] ?? "pendapatan_lain"; merged.set(key, (merged.get(key) ?? 0) + shares[index]); });
@@ -238,10 +239,8 @@ export async function syncCounterSale(saleId: string) {
     const result: LineInput[] = sign === 1 ? await gatewayLines(sale.method, Number(sale.total), Number(sale.surcharge), Number(sale.fee), sale.number) : [
       { account_id: await cashAccountFor(sale.method), ...side(sale.total, true), memo: sale.number },
     ];
-    result.push(
-
-      { account_id: (await systemAccount("potongan_harga")).id, ...side(sale.discount, true), memo: "Potongan harga" },
-    );
+    result.push({ account_id: (await systemAccount("potongan_harga")).id, ...side(sale.discount, true), memo: "Potongan harga" });
+    if (Number(sale.voucher_discount)) result.push({ account_id: (await systemAccount("potongan_voucher")).id, ...side(Number(sale.voucher_discount), true), memo: `Voucher ${sale.voucher_code}` });
     for (const [key, amount] of merged) result.push({ account_id: (await systemAccount(key)).id, ...side(amount, false), memo: sale.customer });
     result.push({ account_id: (await systemAccount("utang_pajak")).id, ...side(sale.tax, false), memo: sale.customer });
     return result;

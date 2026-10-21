@@ -12,6 +12,7 @@ import {
 } from "./midtrans.js";
 import { normalizePhone } from "./payments.js";
 import { publicUrl } from "./config.js";
+import { recordRedemption, resolveVoucher, type Voucher } from "./vouchers.js";
 
 /**
  * Transaksi langsung di kasir tanpa booking lapangan: pelanggan datang menyewa raket untuk
@@ -35,11 +36,13 @@ export interface CounterSale {
   /** Biaya layanan Midtrans yang dibayar pelanggan di atas `total`, dan metode yang dipilih untuknya. */
   surcharge: number; channel: ChannelKey | null;
   pay_order_id: string | null; snap_token: string | null; pay_url: string | null; pay_expires_at: number | null; payment_type: string | null;
+  /** Voucher yang dipakai dan potongannya (sudah termasuk dalam `total`). */
+  voucher_id: string | null; voucher_code: string; voucher_discount: number;
 }
 export type SaleStatus = "pending" | "paid" | "void" | "expired";
 export interface CounterLine { id: string; sale_id: string; addon_id: string | null; name: string; type: Addon["type"] | "lainnya"; pricing: Addon["pricing"]; unit_price: number; quantity: number; subtotal: number; returned_at: string | null }
 
-const columns = "s.id,s.number,s.customer,s.phone,s.date,s.start_time,s.end_time,s.subtotal,s.discount,s.discount_note,s.tax,s.tax_rate,s.tax_inclusive,s.tax_label,s.total,s.method,s.tendered,s.status,s.notes,s.void_reason,s.voided_at,s.created_by,s.created_at,s.customer_id,s.booking_id,s.fee,s.surcharge,s.channel,s.paid_at,s.pay_order_id,s.snap_token,s.pay_url,s.pay_expires_at,s.payment_type";
+const columns = "s.id,s.number,s.customer,s.phone,s.date,s.start_time,s.end_time,s.subtotal,s.discount,s.discount_note,s.tax,s.tax_rate,s.tax_inclusive,s.tax_label,s.total,s.method,s.tendered,s.status,s.notes,s.void_reason,s.voided_at,s.created_by,s.created_at,s.customer_id,s.booking_id,s.fee,s.surcharge,s.channel,s.paid_at,s.pay_order_id,s.snap_token,s.pay_url,s.pay_expires_at,s.payment_type,s.voucher_id,s.voucher_code,s.voucher_discount";
 /** Batas bayar Midtrans di kasir: pelanggan membayar di tempat, jadi cukup singkat. */
 export const payMinutes = 15;
 const rupiah = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
@@ -63,6 +66,7 @@ export const saleSchema = z.object({
   tendered: z.number().int().min(0).max(999_999_999).nullable().default(null),
   discount: z.number().int().min(0, "Potongan tidak boleh negatif.").max(999_999_999).default(0),
   discount_note: z.string().trim().max(120, "Alasan potongan maksimal 120 karakter.").default(""),
+  voucher_code: z.string().trim().max(40).default(""),
   notes: z.string().trim().max(300, "Catatan maksimal 300 karakter.").default(""),
 });
 
@@ -251,25 +255,34 @@ export async function createSale(input: unknown, actor: string) {
     const subtotal = plan.reduce((sum, entry) => sum + entry.subtotal, 0);
     check(data.discount <= subtotal, 400, `Potongan lebih besar dari subtotal ${rupiah(subtotal)}.`);
     check(!data.discount || data.discount_note.length >= 3, 400, "Isi alasan potongan harga.");
-    const snapshot = await taxSnapshot(), bill = billOf(subtotal, data.discount, snapshot);
+    // Voucher memotong barang dan layanan dari katalog; biaya lain yang diketik kasir tidak ikut.
+    let voucher: { voucher: Voucher; amount: number } | null = null;
+    if (data.voucher_code) {
+      const discountable = plan.filter(entry => entry.type !== "lainnya").reduce((sum, entry) => sum + entry.subtotal, 0);
+      const found = await resolveVoucher(data.voucher_code, [{ court: 0, extras: discountable, subtotal, cap: subtotal - data.discount }], { channel: "kasir", phone: phone || null });
+      voucher = { voucher: found.voucher, amount: found.amount };
+    }
+    const snapshot = await taxSnapshot(), bill = billOf(subtotal, data.discount + (voucher?.amount ?? 0), snapshot);
     check(bill.total > 0, 400, "Total transaksi harus lebih dari Rp0.");
     if (data.method === "cash" && data.tendered !== null) check(data.tendered >= bill.total, 400, `Uang diterima kurang dari total ${rupiah(bill.total)}.`);
 
     const id = data.id ?? randomUUID(), now = new Date().toISOString(), online = data.method === "midtrans";
     check(!online || bill.total >= 1000, 400, "Pembayaran Midtrans minimal Rp1.000.");
     const surcharge = online ? surchargeFor(channel, bill.total, await paymentConfig()) : 0;
-    await db.prepare(`INSERT INTO counter_sales (id,number,customer,phone,date,start_time,end_time,subtotal,discount,discount_note,tax,tax_rate,tax_inclusive,tax_label,total,method,tendered,status,notes,created_by,created_at,customer_id,booking_id,paid_at,pay_expires_at,surcharge,channel)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    await db.prepare(`INSERT INTO counter_sales (id,number,customer,phone,date,start_time,end_time,subtotal,discount,discount_note,tax,tax_rate,tax_inclusive,tax_label,total,method,tendered,status,notes,created_by,created_at,customer_id,booking_id,paid_at,pay_expires_at,surcharge,channel,voucher_id,voucher_code,voucher_discount)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, await nextNumber(window.date.slice(0, 4)), name || walkInName, phone, window.date, window.start, window.end, subtotal, data.discount, data.discount ? data.discount_note : "",
         bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, bill.total, data.method, data.method === "cash" ? data.tendered : null, online ? "pending" : "paid", data.notes, actor, now,
-        customerId, booking?.id ?? null, online ? null : now, online ? Math.floor(Date.now() / 1000) + payMinutes * 60 : null, surcharge, online ? channel : null);
+        customerId, booking?.id ?? null, online ? null : now, online ? Math.floor(Date.now() / 1000) + payMinutes * 60 : null, surcharge, online ? channel : null,
+        voucher?.voucher.id ?? null, voucher?.voucher.code ?? "", voucher?.amount ?? 0);
+    if (voucher) await recordRedemption({ ...voucher, channel: "kasir", sale_id: id, customer_id: customerId, customer: name || walkInName, phone, actor });
     for (const entry of plan) {
       await db.prepare("INSERT INTO counter_sale_lines (id,sale_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
         .run(randomUUID(), id, entry.addon?.id ?? null, entry.name, entry.type, entry.pricing, entry.unit_price, entry.quantity, entry.subtotal, now);
       if (entry.type === "jual" && entry.addon) await consume(entry.addon.id, entry.quantity, id, actor);
     }
     await syncCounterSale(id);
-    await audit(actor, "counter.create", id, { total: bill.total, method: data.method, booking: booking?.id ?? null });
+    await audit(actor, "counter.create", id, { total: bill.total, method: data.method, booking: booking?.id ?? null, ...(voucher ? { voucher: voucher.voucher.code, voucher_discount: voucher.amount } : {}) });
     return { id, fresh: true };
   });
   if (data.method === "midtrans" && created.fresh) await openPayment(created.id, actor);
@@ -289,6 +302,7 @@ async function openPayment(id: string, actor: string) {
   const items = [
     ...lines.map(line => ({ id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50) })),
     ...(sale.discount ? [{ id: "diskon", price: -sale.discount, quantity: 1, name: `Potongan ${sale.discount_note}`.slice(0, 50) }] : []),
+    ...(sale.voucher_discount ? [{ id: "voucher", price: -sale.voucher_discount, quantity: 1, name: `Voucher ${sale.voucher_code}`.slice(0, 50) }] : []),
     ...(sale.tax && !sale.tax_inclusive ? [{ id: "pajak", price: sale.tax, quantity: 1, name: `${sale.tax_label || "Pajak"} ${sale.tax_rate / 100}%`.slice(0, 50) }] : []),
   ];
   const sum = items.reduce((total, item) => total + item.price * item.quantity, 0);
