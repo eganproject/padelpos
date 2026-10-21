@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts, schemaV9, schemaV10, voucherAccounts } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts, schemaV9, schemaV10, schemaV12, voucherAccounts } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -258,6 +258,12 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
       const row = await db.prepare("SELECT document FROM roles WHERE id='admin'").get() as { document: string } | undefined;
       const role = row ? JSON.parse(row.document) as AccessRole : null;
       if (role && !role.menuIds.includes(menuId)) await db.prepare("UPDATE roles SET document=? WHERE id='admin'").run(JSON.stringify({ ...role, menuIds: [...role.menuIds, menuId] }));
+    },
+  },
+  {
+    // Notifikasi staf di panel admin. Versi 11 dipakai Member fase 2; urutan keduanya bebas.
+    version: 12, async up() {
+      for (const statement of schemaV12) await db.exec(statement);
     },
   },
 ];

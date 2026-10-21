@@ -21,6 +21,7 @@ import * as members from "../membership.js";
 import * as counter from "../counter.js";
 import * as brand from "../brand.js";
 import * as vouchers from "../vouchers.js";
+import * as staffAlerts from "../staff-alerts.js";
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 const router=Router();
@@ -115,6 +116,8 @@ router.get("/backups/:name/download",requireMenu("backups"),async (req:AuthReque
 router.delete("/backups/:name",requireMenu("backups"),async (req:AuthRequest,res)=>{await backups.removeBackup(String(req.params.name),req.auth!.sub);res.json(await backups.backupOverview())});
 router.get("/notifications",requireMenu("notifications"),async (_req,res)=>res.json({settings:await notifications.adminEmail(),outbox:await notifications.outbox(),whatsapp:{settings:await whatsapp.adminWhatsApp(),outbox:await whatsapp.whatsappOutbox()}}));
 // WhatsApp: penyedia, pesan uji, dan antrean kiriman. Didaftarkan sebelum rute ber-:id di bawah.
+router.get("/notifications/staff",requireMenu("notifications"),async(_req,res)=>res.json(await staffAlerts.staffAlertSettings()));
+router.put("/notifications/staff",requireMenu("notifications"),async(req:AuthRequest,res)=>res.json(await staffAlerts.saveStaffAlertSettings(req.body,req.auth!.sub)));
 router.put("/notifications/whatsapp",requireMenu("notifications"),async (req:AuthRequest,res)=>res.json({settings:await whatsapp.saveWhatsAppSettings(req.body,req.auth!.sub)}));
 router.post("/notifications/whatsapp/test",requireMenu("notifications"),async(req:AuthRequest,res)=>res.json(await whatsapp.sendTestWhatsApp(req.body,req.auth!.sub)));
 router.post("/notifications/whatsapp/:id/retry",requireMenu("notifications"),async(req:AuthRequest,res)=>{await whatsapp.retryWhatsApp(String(req.params.id),req.auth!.sub);res.json({outbox:await whatsapp.whatsappOutbox()})});

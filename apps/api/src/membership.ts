@@ -241,7 +241,7 @@ async function settle(invoice: Invoice, payment: { method: string; fee: number; 
   } else period = await startPeriod(member, paid);
   await audit(payment.actor, "membership.paid", member.id, { invoice: paid.number, amount: paid.amount, method: payment.method });
   await notifyMemberPaid({
-    member: contact(member), invoice_id: paid.id, number: paid.number, plan: paid.plan_name, amount: paid.amount,
+    actor: payment.actor, member: contact(member), invoice_id: paid.id, number: paid.number, plan: paid.plan_name, amount: paid.amount,
     renewal: paid.kind === "perpanjang", waiting, starts_on: period?.start ?? null, ends_on: period?.end ?? null, online: payment.online,
   });
   return paid;

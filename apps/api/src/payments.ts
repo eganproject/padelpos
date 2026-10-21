@@ -459,7 +459,7 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
       for (const booking of bookings) settled.push(await getBooking(booking.id));
       const order = intent.order_ref ? await db.prepare("SELECT id,code,customer,email FROM orders WHERE id=?").get(intent.order_ref) as { id: string; code: string; customer: string; email: string } | undefined : undefined;
       await notifyOrderPaid({
-        key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
+        kind: intent.kind, key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
         customer: order?.customer ?? settled[0].customer, email: order?.email || await customerEmail(intent.booking_id), amount: intent.amount, surcharge: intent.surcharge,
         total: settled.reduce((sum, booking) => sum + booking.total, 0), paid: settled.reduce((sum, booking) => sum + booking.paid, 0),
         sessions: settled, payment_type: status.payment_type ?? intent.payment_type,

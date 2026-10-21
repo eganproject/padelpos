@@ -769,6 +769,34 @@ export const schemaV10: string[] = [
     ADD COLUMN voucher_code VARCHAR(32) NOT NULL DEFAULT '',
     ADD COLUMN voucher_discount BIGINT NOT NULL DEFAULT 0 CHECK(voucher_discount >= 0)`,
 ];
+/**
+ * Notifikasi staf di panel admin (ikon lonceng). Satu baris per peristiwa untuk semua staf; siapa yang
+ * melihatnya ditentukan saat dibaca menurut role (pengaturan `staff_alerts`), dan status dibacanya per pengguna.
+ */
+export const schemaV12: string[] = [
+  `CREATE TABLE staff_notifications (
+    id ${id} PRIMARY KEY,
+    \`key\` VARCHAR(191) NOT NULL,
+    event VARCHAR(32) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    link VARCHAR(512) NOT NULL DEFAULT '',
+    tone VARCHAR(16) NOT NULL DEFAULT 'info',
+    ref_id ${id},
+    actor_id ${id},
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY staff_notifications_key (\`key\`),
+    KEY staff_notifications_created (created_at)
+  )`,
+  `CREATE TABLE staff_notification_reads (
+    user_id ${id} NOT NULL,
+    notification_id ${id} NOT NULL,
+    read_at ${stamp} NOT NULL,
+    PRIMARY KEY (user_id, notification_id),
+    KEY staff_notification_reads_notification (notification_id),
+    CONSTRAINT staff_notification_reads_fk FOREIGN KEY (notification_id) REFERENCES staff_notifications(id) ON DELETE CASCADE
+  )`,
+];
 /** Akun sistem untuk potongan voucher, dengan format yang sama seperti `membershipAccounts`. */
 export const voucherAccounts: typeof membershipAccounts = [
   [["4-970", "4-971", "4-972"], "Potongan Voucher", "pendapatan", "pendapatan", "potongan_voucher",
@@ -787,7 +815,7 @@ export const tableOrder = [
   "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "avatars", "brand_assets",
   "membership_plans", "memberships", "membership_invoices", "orders", "vouchers",
   "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
-  "voucher_redemptions", "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
+  "voucher_redemptions", "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "staff_notifications", "staff_notification_reads", "migrations",
 ];
 
 type MenuSeed = [id: string, name: string, path: string, icon: string, group: string, order: number];

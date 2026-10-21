@@ -10,7 +10,8 @@ import { publicBrand } from "./brand.js";
 import { defaultEvents, eventsSchema, type NotifyEvent } from "./notify-events.js";
 import { deliverDueWhatsApp, enqueueWhatsApp, staffNumbers, waNumber, whatsappConfig, whatsappReady } from "./whatsapp.js";
 import { notifyInbox } from "./inbox.js";
-import { bookingAddons } from "./addons.js";
+import { notifyStaffInbox, pruneStaffNotifications, type StaffEvent } from "./staff-alerts.js";
+import { bookingAddons, unreturnedRentals } from "./addons.js";
 import type { Booking } from "./operations.js";
 
 export type { NotifyEvent } from "./notify-events.js";
@@ -214,8 +215,19 @@ async function dispatch(key: string, event: NotifyEvent, target: Target, message
   return queued;
 }
 
-/** Pemberitahuan untuk staf lewat email dan WhatsApp staf yang terdaftar di panel. */
-async function notifyStaff(key: string, message: Message, refId: string | null) {
+/** Catatan untuk lonceng notifikasi di panel admin. `actor` adalah staf pelaku, yang tidak ikut menerimanya. */
+interface StaffNote { event: StaffEvent; link: string; actor?: string | null; tone?: Tone; title?: string }
+/** Tautan panel admin untuk satu booking: membuka detailnya di halaman Booking. */
+export const adminBookingLink = (bookingId: string) => `/admin/bookings?booking=${encodeURIComponent(bookingId)}`;
+
+/**
+ * Pemberitahuan untuk staf: selalu ke lonceng di panel admin, dan untuk peristiwa dari pelanggan
+ * (`external`) juga lewat email dan WhatsApp staf yang terdaftar di panel.
+ */
+async function notifyStaff(key: string, message: Message, refId: string | null, note: StaffNote, external = true) {
+  const body = [message.intro, ...(message.sessions ?? []).map(sessionLine)].join("\n");
+  await notifyStaffInbox(key, note.event, { title: note.title ?? message.title ?? message.heading, body, link: note.link, tone: note.tone ?? message.tone ?? "info" }, refId, note.actor ?? null);
+  if (!external) return;
   const email = await emailConfig();
   if (emailReady(email) && email.events.staff_new)
     for (const recipient of email.staff_recipients.filter(validEmail)) await enqueueEmail(`${key}:${recipient}`, "staff_new", recipient, message, refId);
@@ -337,7 +349,7 @@ export async function notifyExpired(orderId: string) {
  * Pembayaran online diterima: pelanggan menerima bukti booking bergaya kwitansi berisi rincian
  * lapangan, tambahan, potongan, pajak, metode bayar, dan sisa tagihan, plus tautan ke kwitansi PDF.
  */
-export async function notifyOrderPaid(input: { key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; surcharge?: number; total: number; paid: number; sessions: Booking[]; cancelled: boolean; payment_type?: string | null }) {
+export async function notifyOrderPaid(input: { kind?: "booking" | "tagihan"; key: string; booking_id?: string; order_id: string | null; code: string; customer: string; email: string; amount: number; surcharge?: number; total: number; paid: number; sessions: Booking[]; cancelled: boolean; payment_type?: string | null }) {
   const remaining = Math.max(0, input.total - input.paid);
   const target = input.booking_id ? await contactOf(input.booking_id) : {};
   const method = payTypeLabel(input.payment_type);
@@ -359,17 +371,21 @@ export async function notifyOrderPaid(input: { key: string; booking_id?: string;
     tone: input.cancelled ? "danger" : "success",
   }, input.order_id);
   await notifyStaff(`staff-paid:${input.key}`, {
-    subject: `Booking online baru: ${input.customer} (${input.code})`,
-    heading: input.cancelled ? "Pembayaran masuk setelah slot dilepas" : "Booking online baru sudah dibayar",
-    intro: input.cancelled ? `${input.customer} membayar setelah batas waktu. Booking ditutup sebagai batal dan dananya perlu dikembalikan.` : `${input.customer} memesan dan membayar lewat situs.`,
+    subject: input.kind === "tagihan" ? `Link tagihan dibayar: ${input.customer} (${input.code})` : `Booking online baru: ${input.customer} (${input.code})`,
+    heading: input.cancelled ? "Pembayaran masuk setelah slot dilepas" : input.kind === "tagihan" ? "Link tagihan sudah dibayar" : "Booking online baru sudah dibayar",
+    intro: input.cancelled ? `${input.customer} membayar ${rupiah(input.amount)} setelah batas waktu. Booking ditutup sebagai batal dan dananya perlu dikembalikan.` : input.kind === "tagihan" ? `${input.customer} membayar ${rupiah(input.amount)} lewat link tagihan.` : `${input.customer} memesan dan membayar ${rupiah(input.amount)} lewat situs.`,
     sessions: input.sessions,
     rows: [["Kode pesanan", input.code], ["Dibayar", rupiah(input.amount)], ["Total", rupiah(input.total)]],
-  }, input.order_id);
+  }, input.order_id, input.cancelled
+    ? { event: "cancelled", tone: "danger", title: `Dana ${input.customer} perlu dikembalikan`, link: adminBookingLink(input.booking_id ?? input.sessions[0]?.id ?? "") }
+    : input.kind === "tagihan"
+      ? { event: "payment_in", tone: "success", title: `Pembayaran online ${rupiah(input.amount)} dari ${input.customer}`, link: adminBookingLink(input.booking_id ?? input.sessions[0]?.id ?? "") }
+      : { event: "booking_new", tone: "success", title: `Booking online baru: ${input.customer}`, link: adminBookingLink(input.booking_id ?? input.sessions[0]?.id ?? "") });
 }
 
 /** Kasir mencatat pembayaran atau pengembalian dana: pelanggan menerima kwitansinya. */
 export async function notifyReceipt(input: {
-  payment_id: string; booking_id: string; kind: "payment" | "refund"; amount: number; method: string;
+  actor?: string | null; payment_id: string; booking_id: string; kind: "payment" | "refund"; amount: number; method: string;
   code: string; customer: string; order_id: string | null; session: Session; total: number; paid: number;
 }) {
   const refund = input.kind === "refund";
@@ -379,6 +395,13 @@ export async function notifyReceipt(input: {
     ["Kode booking", input.code], [refund ? "Dikembalikan" : "Dibayar", rupiah(input.amount)], ["Metode", methodName[input.method] ?? input.method],
   ];
   if (!refund) rows.push(remaining > 0 ? ["Sisa tagihan", rupiah(remaining)] : ["Status", "Lunas"]);
+  await notifyStaff(`staff-receipt:${input.payment_id}`, {
+    subject: "", heading: "", intro: `${refund ? "Pengembalian" : "Pembayaran"} ${methodName[input.method] ?? input.method} untuk booking ${input.code} dicatat di kasir.${!refund && remaining > 0 ? ` Sisa tagihan ${rupiah(remaining)}.` : !refund ? " Booking lunas." : ""}`,
+    sessions: [input.session],
+  }, input.booking_id, {
+    event: "payment_in", actor: input.actor, tone: refund ? "warning" : "success", link: adminBookingLink(input.booking_id),
+    title: refund ? `Dana ${rupiah(input.amount)} dikembalikan ke ${input.customer}` : `Pembayaran ${rupiah(input.amount)} dari ${input.customer}`,
+  }, false);
   return await dispatch(`receipt:${input.payment_id}`, "receipt", await contactOf(input.booking_id), {
     subject: refund ? `Pengembalian dana ${rupiah(input.amount)} untuk booking ${input.code}` : `Kwitansi pembayaran ${rupiah(input.amount)} untuk booking ${input.code}`,
     title: refund ? "Dana dikembalikan" : remaining > 0 ? "Pembayaran diterima" : "Booking lunas",
@@ -404,12 +427,16 @@ export async function notifyReschedule(input: { booking_id: string; count: numbe
   }, input.booking_id);
   if (input.by_customer) await notifyStaff(`staff-reschedule:${input.booking_id}:${input.count}`, {
     subject: `${input.customer} memindah jadwal booking ${input.code}`, heading: "Pelanggan memindah jadwal",
-    intro: `${input.customer} memindah jadwal booking ${input.code} dari halaman akunnya.`, rows,
-  }, input.booking_id);
+    intro: `${input.customer} memindah jadwal booking ${input.code} dari halaman akunnya ke ${sessionLine(input.after)}.`, rows,
+  }, input.booking_id, { event: "reschedule", tone: "warning", title: `${input.customer} memindah jadwal`, link: adminBookingLink(input.booking_id) });
 }
 
 /** Booking dibatalkan staf. */
-export async function notifyCancelled(input: { booking_id: string; code: string; customer: string; order_id: string | null; session: Session; reason: string; paid: number }) {
+export async function notifyCancelled(input: { actor?: string | null; booking_id: string; code: string; customer: string; order_id: string | null; session: Session; reason: string; paid: number }) {
+  await notifyStaff(`staff-cancel:${input.booking_id}`, {
+    subject: "", heading: "", intro: `Booking ${input.code} dibatalkan. Alasan: ${input.reason}.${input.paid > 0 ? ` Sudah dibayar ${rupiah(input.paid)}, periksa pengembaliannya.` : ""}`,
+    sessions: [input.session],
+  }, input.booking_id, { event: "cancelled", actor: input.actor, tone: "danger", title: `Booking ${input.customer} dibatalkan`, link: adminBookingLink(input.booking_id) }, false);
   await dispatch(`cancel:${input.booking_id}`, "cancelled", await contactOf(input.booking_id), {
     subject: `Booking ${input.code} dibatalkan`, title: "Booking dibatalkan", heading: "Booking Anda dibatalkan",
     intro: `Halo ${input.customer}, booking berikut sudah dibatalkan oleh venue.`,
@@ -469,6 +496,7 @@ export async function queueReminders(now = new Date()) {
 export interface MemberContact { id: string; code: string; name: string; email: string; phone: string; account_id: string | null }
 const memberTarget = (member: MemberContact): Target => ({ email: member.email, phone: waNumber(member.phone), account_id: member.account_id });
 const memberLink = (label: string) => ({ label, url: `${publicUrl}/akun/member` });
+const adminMemberLink = "/admin/member";
 
 /** Tagihan iuran online menunggu dibayar. */
 export async function notifyMemberBill(input: { member: MemberContact; invoice_id: string; number: string; plan: string; months: number; amount: number; expires_at: number; pay_url: string }) {
@@ -483,7 +511,7 @@ export async function notifyMemberBill(input: { member: MemberContact; invoice_i
 }
 
 /** Iuran lunas: keanggotaan aktif, atau menunggu persetujuan venue. Staf diberi tahu untuk pembayaran online. */
-export async function notifyMemberPaid(input: { member: MemberContact; invoice_id: string; number: string; plan: string; amount: number; renewal: boolean; waiting: boolean; starts_on: string | null; ends_on: string | null; online: boolean }) {
+export async function notifyMemberPaid(input: { actor?: string | null; member: MemberContact; invoice_id: string; number: string; plan: string; amount: number; renewal: boolean; waiting: boolean; starts_on: string | null; ends_on: string | null; online: boolean }) {
   const rows: [string, string][] = [["Kode member", input.member.code], ["Paket", input.plan], ["Dibayar", rupiah(input.amount)]];
   if (input.starts_on && input.ends_on) rows.push(["Berlaku", `${longDate(input.starts_on)} s.d. ${longDate(input.ends_on)}`]);
   await dispatch(`member-paid:${input.invoice_id}`, "member_active", memberTarget(input.member), {
@@ -495,12 +523,15 @@ export async function notifyMemberPaid(input: { member: MemberContact; invoice_i
       : `Halo ${input.member.name}, terima kasih. Harga member langsung berlaku saat Anda memesan lewat akun ini atau menyebut kode member di kasir.`,
     rows, link: memberLink("Lihat kartu member"), tone: "success",
   }, input.member.id);
-  if (input.online) await notifyStaff(`staff-member:${input.invoice_id}`, {
+  await notifyStaff(`staff-member:${input.invoice_id}`, {
     subject: `${input.renewal ? "Perpanjangan" : "Pendaftaran"} member online: ${input.member.name}`,
     heading: input.waiting ? "Pendaftar member baru menunggu persetujuan" : input.renewal ? "Member memperpanjang lewat situs" : "Member baru mendaftar lewat situs",
-    intro: `${input.member.name} membayar iuran ${input.plan} lewat situs.`,
+    intro: `${input.member.name} membayar iuran ${input.plan}${input.online ? " lewat situs" : " di kasir"}.`,
     rows: [["Kode member", input.member.code], ["Nomor tagihan", input.number], ["Dibayar", rupiah(input.amount)]],
-  }, input.member.id);
+  }, input.member.id, {
+    event: input.waiting ? "member" : "payment_in", tone: input.waiting ? "warning" : "success", link: adminMemberLink, actor: input.online ? null : input.actor,
+    title: input.waiting ? `${input.member.name} menunggu persetujuan member` : `Iuran member ${rupiah(input.amount)} dari ${input.member.name}`,
+  }, input.online);
 }
 
 /** Admin menyetujui pendaftar yang sudah membayar. */
@@ -537,6 +568,41 @@ export async function queueMemberReminders(now = new Date()) {
       intro: `Halo ${row.name}, keanggotaan ${row.plan} berlaku sampai ${longDate(row.ends_on)}. Perpanjang sebelum tanggal itu agar harga member tetap berlaku tanpa jeda; masa barunya disambung dari tanggal berakhir.`,
       rows: [["Kode member", row.code], ["Berakhir", longDate(row.ends_on)]], link: memberLink("Perpanjang member"), tone: "warning",
     }, row.id);
+    await notifyStaffInbox(`staff-member-${ended ? "expired" : "expiring"}:${row.id}:${row.ends_on}`, "member", ended
+      ? { title: `Member ${row.name} sudah berakhir`, body: `Keanggotaan ${row.plan} (${row.code}) berakhir ${longDate(row.ends_on)} dan belum diperpanjang.`, link: adminMemberLink, tone: "danger" }
+      : { title: `Member ${row.name} segera berakhir`, body: `Keanggotaan ${row.plan} (${row.code}) berlaku sampai ${longDate(row.ends_on)}.`, link: adminMemberLink, tone: "warning" }, row.id);
+  }
+  return queued;
+}
+
+// --- Barang sewa ----------------------------------------------------------------
+
+/**
+ * Barang sewa yang sudah lewat jam kembalinya (jam main selesai) tetapi belum ditandai kembali: satu
+ * notifikasi per booking atau transaksi kasir. Hanya untuk jadwal dua hari terakhir, agar data lama
+ * tidak membanjiri lonceng saat fitur ini pertama menyala.
+ */
+export async function queueUnreturnedAlerts() {
+  const { unreturned, date, time } = await unreturnedRentals();
+  const earliest = new Date(Date.parse(date + "T12:00:00Z") - 2 * 86400000).toISOString().slice(0, 10);
+  const groups = new Map<string, typeof unreturned>();
+  for (const line of unreturned) {
+    const over = line.date < date || (line.date === date && line.end_time <= time);
+    if (!over || line.date < earliest || !line.end_time) continue;
+    const key = `${line.source}:${line.ref_id}`;
+    groups.set(key, [...(groups.get(key) ?? []), line]);
+  }
+  let queued = 0;
+  for (const [key, lines] of groups) {
+    const [first] = lines;
+    const items = lines.map(line => `${line.quantity}× ${line.name}`).join(", ");
+    const where = first.source === "kasir" ? `transaksi kasir ${first.sale_number}` : `${first.court_name ?? "lapangan"} ${first.start_time}–${first.end_time}`;
+    if (await notifyStaffInbox(`staff-unreturned:${key}:${first.date}`, "rental_unreturned", {
+      title: `Barang sewa ${first.customer} belum kembali`,
+      body: `${items} dari ${where} (${longDate(first.date)}) sudah lewat jam kembali pukul ${first.end_time}.`,
+      link: first.source === "kasir" ? `/admin/bookings?tab=belum-kembali&sale=${encodeURIComponent(first.ref_id)}` : `/admin/bookings?tab=belum-kembali&booking=${encodeURIComponent(first.ref_id)}`,
+      tone: "warning",
+    }, first.ref_id)) queued++;
   }
   return queued;
 }
@@ -598,10 +664,13 @@ export async function deliverDue(batch = 20) {
  * pembayaran lewat parameter agar modul ini tidak bergantung pada midtrans.ts.
  */
 export function startMailer(holdMinutes: () => Promise<number>, intervalMs = 30000) {
+  let pruned = 0;
   const tick = async () => {
     try { await queueReminders(); } catch (error) { console.error("Gagal menyiapkan pengingat:", (error as Error).message); }
     try { await queuePaymentDue(await holdMinutes()); } catch (error) { console.error("Gagal menyiapkan pengingat bayar:", (error as Error).message); }
     try { await queueMemberReminders(); } catch (error) { console.error("Gagal menyiapkan pengingat member:", (error as Error).message); }
+    try { await queueUnreturnedAlerts(); } catch (error) { console.error("Gagal memeriksa barang sewa:", (error as Error).message); }
+    if (Date.now() - pruned > 3600000) { pruned = Date.now(); await pruneStaffNotifications().catch(error => console.error("Gagal membersihkan notifikasi staf:", (error as Error).message)); }
     await deliverDue().catch(error => console.error("Gagal mengirim email:", (error as Error).message));
     await deliverDueWhatsApp().catch(error => console.error("Gagal mengirim WhatsApp:", (error as Error).message));
   };
