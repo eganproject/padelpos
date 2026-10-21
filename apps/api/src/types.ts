@@ -8,6 +8,8 @@ export interface User {
   passwordHash: string;
   role: Role;
   createdAt: string;
+  /** Foto profil di tabel `avatars`; kosong berarti memakai inisial nama. */
+  avatarId?: string;
 }
 
 export interface AccessRole {

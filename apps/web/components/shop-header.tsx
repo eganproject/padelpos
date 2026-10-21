@@ -16,12 +16,12 @@ export type ShopNavProps = {
   loginEnabled: boolean;
 };
 
-/** Foto Google bila ada; tanpa foto, inisial nama. */
+/** Foto unggahan pelanggan atau foto Google; tanpa foto, inisial nama. */
 export function Avatar({ account, size = 32 }: { account: Pick<Account, "name" | "photo_url">; size?: number }) {
   const initials = account.name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "?";
   return (
     <span className="shop-avatar" style={{ width: size, height: size, fontSize: Math.round(size * 0.4) }} aria-hidden="true">
-      {/* eslint-disable-next-line @next/next/no-img-element -- foto profil Google, ukurannya kecil */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- foto profil kecil (Google atau unggahan sendiri) */}
       {account.photo_url ? <img src={account.photo_url} alt="" referrerPolicy="no-referrer" /> : initials}
     </span>
   );

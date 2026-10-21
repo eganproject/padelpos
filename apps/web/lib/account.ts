@@ -6,6 +6,8 @@ import { api, ApiError } from "./api";
 /** Sama dengan API (apps/api/src/customers.ts). */
 export type Account = {
   id: string; email: string; name: string; phone: string; photo_url: string; created_at: string; needs_profile: boolean;
+  /** true bila `photo_url` adalah foto unggahan pelanggan, bukan foto akun Google. */
+  custom_photo?: boolean;
   /** Kanal yang boleh dipakai venue untuk mengirim kabar; kotak masuk akun selalu aktif. */
   notify?: { email: boolean; whatsapp: boolean };
 };
@@ -256,6 +258,19 @@ export const markRead = async (ids?: string[]) => {
 };
 export const saveNotifyPreferences = async (body: { email: boolean; whatsapp: boolean }) => {
   const result = await member(api<{ account: Account }>("/customer/me/notifications", { method: "PUT", body: JSON.stringify(body) }));
+  setAccount(result.account);
+  return result.account;
+};
+
+/** Ganti foto profil dengan JPEG yang sudah diperkecil di browser (lib/image.ts#squareAvatar). */
+export const uploadAvatar = async (photo: Blob) => {
+  const result = await member(api<{ account: Account }>("/customer/me/avatar", { method: "POST", headers: { "Content-Type": photo.type }, body: photo }));
+  setAccount(result.account);
+  return result.account;
+};
+/** Hapus foto unggahan; tampilan kembali memakai foto Google atau inisial. */
+export const removeAvatar = async () => {
+  const result = await member(api<{ account: Account }>("/customer/me/avatar", { method: "DELETE" }));
   setAccount(result.account);
   return result.account;
 };

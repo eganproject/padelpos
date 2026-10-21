@@ -635,11 +635,29 @@ export const schemaV5: string[] = [
     ADD CONSTRAINT addon_stock_moves_sale_fk FOREIGN KEY (sale_id) REFERENCES counter_sales(id)`,
 ];
 /**
- * Versi 6: transaksi kasir bisa dibayar lewat Midtrans (menunggu bayar sampai webhook masuk),
+ * Versi 6: foto profil staf (pengguna panel admin) dan pelanggan. Satu foto per pemilik; id foto
+ * selalu baru setiap kali diganti agar cache browser untuk foto lama tidak terpakai. Penunjuknya
+ * disimpan di dokumen pengguna (`avatarId`) dan di kolom `customer_accounts.avatar_id`.
+ */
+export const schemaV6: string[] = [
+  `CREATE TABLE avatars (
+    id ${id} PRIMARY KEY,
+    owner_type VARCHAR(16) NOT NULL CHECK(owner_type IN ('user','customer')),
+    owner_id ${id} NOT NULL,
+    mime VARCHAR(20) NOT NULL CHECK(mime IN ('image/jpeg','image/png','image/webp')),
+    data MEDIUMBLOB NOT NULL,
+    bytes INT NOT NULL CHECK(bytes > 0),
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY avatars_owner (owner_type, owner_id)
+  )`,
+  `ALTER TABLE customer_accounts ADD COLUMN avatar_id ${id} NULL`,
+];
+/**
+ * Versi 7: transaksi kasir bisa dibayar lewat Midtrans (menunggu bayar sampai webhook masuk),
  * dikenali pelanggannya (`customer_id`), dan dihubungkan ke booking lapangan (`booking_id`).
  * Batasan status dan metode diganti di migrasi karena nama CHECK bawaan MySQL tidak tetap.
  */
-export const schemaV6: string[] = [
+export const schemaV7: string[] = [
   `ALTER TABLE counter_sales
     ADD COLUMN customer_id ${id} NULL,
     ADD COLUMN booking_id ${id} NULL,
@@ -669,7 +687,7 @@ export const membershipAccounts: [codes: string[], name: string, type: string, s
 /** Urutan tabel yang aman untuk diisi ulang (induk sebelum anak) saat impor atau pemulihan. */
 export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
-  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts",
+  "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "customer_accounts", "avatars",
   "membership_plans", "memberships", "membership_invoices", "orders",
   "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "migrations",
