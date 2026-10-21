@@ -9,6 +9,7 @@ import { Brand } from "./brand";
 import { useBrand } from "./brand-provider";
 import { brandName } from "@/lib/brand";
 import { StaffAvatar } from "./staff-avatar";
+import { StaffBell } from "./staff-bell";
 import { api, ApiError, forgetSession, clearSession, type User } from "@/lib/api";
 import { AdminNavigation, currentMenu, menuIcon, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
 
@@ -100,6 +101,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
           </nav>
           <div className="desk-navbar-end">
             <DeskSearch menus={menus} />
+            <StaffBell canConfigure={menus.some(menu => menu.id === "notifications")} />
             <UserMenu user={user} roleName={role.name} theme={theme} toggleTheme={toggleTheme} logout={logout} />
           </div>
         </div>

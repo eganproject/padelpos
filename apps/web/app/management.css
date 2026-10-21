@@ -423,6 +423,49 @@ html[data-theme="dark"] .save-settings:hover{filter:brightness(.9)}
   .desk-backdrop.open{opacity:.35;pointer-events:auto}
 }
 
+/* Lonceng notifikasi staf */
+.desk-bell{position:relative}
+.desk-bell-btn{position:relative}
+.desk-bell-count{
+  position:absolute;top:0;right:-2px;min-width:16px;height:16px;padding:0 4px;border-radius:var(--r-full);
+  background:var(--red-solid);color:#fff;font-size:10px;font-weight:600;line-height:16px;text-align:center;box-shadow:0 0 0 2px var(--bg);
+}
+.desk-bell-panel{top:calc(100% + 8px);right:-44px;width:380px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;padding:0}
+.desk-bell-head{display:flex;align-items:center;gap:var(--s2);padding:10px var(--s3) 6px}
+.desk-bell-head b{font-size:var(--fs-md);color:var(--text)}
+.desk-bell-link{margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:0;border-radius:6px;background:none;color:var(--link);font-size:var(--fs-xs)}
+.desk-bell-link:hover{background:var(--hover)}
+.desk-bell-link svg{width:14px;height:14px}
+.desk-bell-seg{display:flex;gap:2px;margin:0 var(--s3) 6px;padding:2px;border-radius:var(--r-sm);background:var(--btn)}
+.desk-bell-seg button{flex:1;height:24px;border:0;border-radius:6px;background:none;color:var(--muted);font-size:var(--fs-xs)}
+.desk-bell-seg button[aria-selected=true]{background:var(--panel);color:var(--text);font-weight:500;box-shadow:var(--shadow-xs)}
+.desk-bell-list{margin:0;padding:0 6px;list-style:none;max-height:min(440px,62vh);overflow:auto;border-top:1px solid var(--line)}
+.desk-bell-list li+li{border-top:1px solid var(--line)}
+.desk-bell-item{position:relative;width:100%;display:flex;align-items:flex-start;gap:10px;padding:10px 22px 10px 6px;border:0;border-radius:6px;background:none;text-align:left;color:var(--text-soft)}
+.desk-bell-item:hover{background:var(--hover)}
+.desk-bell-icon{display:grid;place-items:center;flex:none;width:28px;height:28px;border-radius:50%;background:var(--blue-bg);color:var(--blue-text)}
+.desk-bell-icon svg{width:15px;height:15px}
+.desk-bell-icon.success{background:var(--green-bg);color:var(--green-text)}
+.desk-bell-icon.warning{background:var(--orange-bg);color:var(--orange-text)}
+.desk-bell-icon.danger{background:var(--red-bg);color:var(--red-text)}
+.desk-bell-text{min-width:0;display:flex;flex-direction:column;gap:2px}
+.desk-bell-text b{font-size:var(--fs-sm);font-weight:500;color:var(--text);line-height:var(--lh-tight)}
+.desk-bell-item.unread .desk-bell-text b{font-weight:650}
+.desk-bell-text span{font-size:var(--fs-xs);color:var(--text-soft);line-height:var(--lh-snug);white-space:pre-line;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.desk-bell-item:not(.unread) .desk-bell-text span{color:var(--muted)}
+.desk-bell-text small{font-size:11px;color:var(--muted)}
+.desk-bell-dot{position:absolute;top:16px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--blue-solid)}
+.desk-bell-more{margin:4px var(--s3);height:28px;border:0;border-radius:6px;background:var(--btn);color:var(--text-soft);font-size:var(--fs-xs)}
+.desk-bell-more:hover{background:var(--btn-hover)}
+.desk-bell-foot{display:flex;align-items:center;gap:6px;padding:10px var(--s3);border-top:1px solid var(--line);color:var(--text-soft);font-size:var(--fs-xs);text-decoration:none}
+.desk-bell-foot:hover{background:var(--hover);color:var(--text)}
+.desk-bell-foot svg{width:14px;height:14px;color:var(--muted)}
+.staff-alert-table{margin-top:var(--s3)}
+.staff-alert-table th.center,.staff-alert-table td.center{text-align:center;width:120px}
+.staff-alert-check{display:inline-flex;flex-direction:column;align-items:center;gap:2px}
+.staff-alert-check small{font-size:11px;color:var(--muted)}
+.staff-alert-check input:disabled{opacity:.4}
+
 /* --- Layar sempit -------------------------------------------------------- */
 @media(max-width:767px){
   .desk-breadcrumbs{display:none}
@@ -436,6 +479,8 @@ html[data-theme="dark"] .save-settings:hover{filter:brightness(.9)}
   .desk-search.expanded .desk-search-close{display:inline-grid!important}
   .desk-search-results{position:fixed;top:calc(var(--navbar-h) + 4px);left:var(--gutter);right:var(--gutter)}
   .desk-navbar-end{gap:var(--s1)}
+  .desk-bell{position:static}
+  .desk-bell-panel{position:fixed;top:calc(var(--navbar-h) + 4px);left:var(--gutter);right:var(--gutter);width:auto;max-width:none}
 
   .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2)}
   .metric-card{padding:var(--s3)}

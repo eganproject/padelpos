@@ -1,5 +1,6 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { BadgeCheck,CalendarClock,CalendarDays,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer,ShoppingBag,TicketPercent } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
@@ -58,7 +59,19 @@ type Unreturned={unreturned:UnreturnedRental[];date:string;time:string};
 export function BookingsPanel(){
   const [tab,setTab]=useState<Tab>("booking");
   const [out,setOut]=useState<Unreturned|null>(null);
-  useEffect(()=>{const asked=new URLSearchParams(window.location.search).get("tab");if(tabs.some(t=>t.id===asked))setTab(asked as Tab)},[]);
+  const params=useSearchParams();
+  /* `?tab=` memilih tab; `?booking=` dan `?sale=` (dari lonceng notifikasi) langsung membuka detailnya. */
+  const [opened,setOpened]=useState<{booking?:string;sale?:string}>({});
+  useEffect(()=>{
+    const asked=params.get("tab");setTab(tabs.some(t=>t.id===asked)?asked as Tab:"booking");
+    const booking=params.get("booking")??undefined,sale=params.get("sale")??undefined;
+    if(booking||sale)setOpened({booking,sale});
+  },[params]);
+  const closeOpened=useCallback(()=>{
+    setOpened({});
+    const url=new URL(window.location.href);url.searchParams.delete("booking");url.searchParams.delete("sale");
+    window.history.replaceState(null,"",url);
+  },[]);
   const loadOut=useCallback(async()=>{try{setOut(await api<Unreturned>("/operations/rentals/unreturned"))}catch{/* angka di tab cukup dilewati bila gagal */}},[]);
   useEffect(()=>{void loadOut()},[loadOut]);
   function choose(next:Tab){
@@ -73,6 +86,8 @@ export function BookingsPanel(){
     <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
       {tab==="booking"?<BookingsList changed={loadOut}/>:tab==="kasir"?<CounterPanel changed={loadOut}/>:<UnreturnedPanel data={out} reload={loadOut}/>}
     </div>
+    {opened.booking&&<BookingDetail id={opened.booking} close={closeOpened} changed={()=>void loadOut()}/>}
+    {opened.sale&&<SaleDetailModal id={opened.sale} close={closeOpened} changed={()=>void loadOut()}/>}
   </div>;
 }
 
