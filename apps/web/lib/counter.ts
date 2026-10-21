@@ -16,6 +16,7 @@ export type CounterSale = {
   /** Biaya layanan Midtrans yang dibayar pelanggan di atas `total` (bila biaya admin ditanggung pelanggan). */
   surcharge?: number; channel?: ChannelKey | null;
   pay_order_id: string | null; snap_token: string | null; pay_url: string | null; pay_expires_at: number | null; payment_type: string | null;
+  voucher_id?: string | null; voucher_code?: string; voucher_discount?: number;
 };
 /** Booking lapangan hari ini yang bisa dihubungkan ke transaksi kasir. */
 export type LinkedBooking = { id: string; code: string; court_name: string; customer: string; phone: string; customer_id: string | null; date: string; start_time: string; end_time: string; status: string };

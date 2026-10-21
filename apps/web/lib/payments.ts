@@ -62,6 +62,7 @@ export type OrderSession = {
   status: string; court_total: number; total: number; paid: number; cancel_reason: string;
   discount: number; discount_note: string; tax: number; tax_rate: number; tax_inclusive: number; tax_label: string;
   member_discount?: number; member_plan?: string;
+  voucher_discount?: number; voucher_code?: string;
   addons: { name: string; quantity: number; subtotal: number }[];
 };
 export type OrderView = {
@@ -105,7 +106,7 @@ export function countdown(expiresAt: number, now: number) {
 }
 
 export type CartLine = { court_id: string; date: string; start_time: string; end_time: string; addons: { addon_id: string; quantity: number }[] };
-export type CheckoutBody = { items: CartLine[]; customer: string; phone: string; email: string; notes: string; channel?: ChannelKey | null };
+export type CheckoutBody = { items: CartLine[]; customer: string; phone: string; email: string; notes: string; channel?: ChannelKey | null; voucher_code?: string };
 export type CheckoutResult = { order_id: string; code: string; transaction_id: string; sessions: number; amount: number; surcharge: number; total: number; expires_at: number; redirect_url: string; token: string };
 /** Hasil pemeriksaan keranjang oleh server: harga terbaru dan alasan bila satu sesi tidak bisa dipesan. */
 export type CartQuoteItem = {
@@ -113,10 +114,18 @@ export type CartQuoteItem = {
   ok: boolean; reason?: string; court_total: number; tax: number; total: number;
   /** Potongan member bila pelanggan masuk dengan akun member; sudah termasuk dalam `total`. */
   member_discount?: number; member_plan?: string;
+  /** Bagian potongan voucher untuk sesi ini; sudah termasuk dalam `total`. */
+  voucher_discount?: number;
   addons: { addon_id: string; name: string; quantity: number; unit_price: number; pricing: "per_booking" | "per_hour"; subtotal: number; ok: boolean }[];
 };
-export type CartQuote = { items: CartQuoteItem[]; total: number; tax: number; tax_label: string; tax_inclusive: boolean; amount: number; member_discount?: number };
-export const quoteCart = (items: CartLine[]) => api<CartQuote>("/public/cart/quote", { method: "POST", body: JSON.stringify({ items }) });
+/** Hasil pemeriksaan kode promo. `message` menjelaskan alasan bila kode tidak berlaku. */
+export type VoucherCheck = { ok: boolean; code: string; name: string; summary: string; amount: number; message: string };
+export type CartQuote = {
+  items: CartQuoteItem[]; total: number; tax: number; tax_label: string; tax_inclusive: boolean; amount: number; member_discount?: number;
+  voucher?: VoucherCheck | null; voucher_discount?: number;
+};
+export const quoteCart = (items: CartLine[], extra: { voucher_code?: string; phone?: string } = {}) =>
+  api<CartQuote>("/public/cart/quote", { method: "POST", body: JSON.stringify({ items, ...extra }) });
 export const startCheckout = (body: CheckoutBody) => api<CheckoutResult>("/public/checkout", { method: "POST", body: JSON.stringify(body) });
 export const fetchOrder = (id: string) => api<OrderView>(`/public/orders/${encodeURIComponent(id)}`);
 export const refreshOrder = (id: string) => api<OrderView>(`/public/orders/${encodeURIComponent(id)}/refresh`, { method: "POST", body: "{}" });

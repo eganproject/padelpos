@@ -251,7 +251,7 @@ async function consume(addonId:string|null,quantity:number,bookingId:string,acto
   if(row)await recordMove(addonId,-quantity,quantity>0?"terpakai":"kembali",row.stock,actor,note,bookingId);
 }
 
-export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number;discount:number;tax_rate:number;tax_inclusive:number;member_court_rate:number;member_addon_rate:number};
+export type BookingRef={id:string;date:string;start_time:string;end_time:string;paid:number;court_total:number;discount:number;tax_rate:number;tax_inclusive:number;member_court_rate:number;member_addon_rate:number;voucher_discount?:number};
 /**
  * Ganti seluruh tambahan booking dengan daftar baru, lalu perbarui total tagihan.
  * Harus dipanggil di dalam transaksi. Baris lama yang tidak ikut dikirim dihapus.
@@ -302,8 +302,10 @@ export async function applyLines(booking:BookingRef,input:unknown,actor:string){
   }
   const subtotal=booking.court_total+plan.reduce((sum,entry)=>sum+lineTotal(entry.unit_price,entry.quantity,entry.pricing,duration),0);
   const cut=memberCut(booking.court_total,plan.filter(entry=>entry.type!=="lainnya").reduce((sum,entry)=>sum+lineTotal(entry.unit_price,entry.quantity,entry.pricing,duration),0),booking);
-  check(booking.discount+cut<=subtotal,409,`Potongan harga ${rupiah(booking.discount)} lebih besar dari tagihan baru. Ubah potongannya terlebih dahulu.`);
-  const {total,tax}=billOf(subtotal,booking.discount+cut,booking);
+  // Potongan voucher tetap seperti saat kodenya dipakai.
+  const voucher=Number(booking.voucher_discount??0);
+  check(booking.discount+voucher+cut<=subtotal,409,`Potongan harga${voucher?" dan voucher":""} ${rupiah(booking.discount+voucher)} lebih besar dari tagihan baru. Ubah potongannya terlebih dahulu.`);
+  const {total,tax}=billOf(subtotal,booking.discount+voucher+cut,booking);
   check(total>=booking.paid,409,`Total baru ${rupiah(total)} lebih kecil dari pembayaran yang sudah diterima (${rupiah(booking.paid)}).`);
 
   const kept=new Set(plan.flatMap(entry=>entry.line?[entry.line.id]:[]));

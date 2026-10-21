@@ -9,7 +9,9 @@ export type Booking={id:string;court_id:string;court_name:string;customer:string
   /** Pembayaran booking batal yang ditahan sebagai denda. */
   forfeited:number;forfeited_at:string|null;
   /** Salinan tarif member saat dipesan; `member_discount` sudah termasuk dalam `total`. Tarif dalam basis poin. */
-  membership_id?:string|null;member_plan?:string;member_court_rate?:number;member_addon_rate?:number;member_discount?:number};
+  membership_id?:string|null;member_plan?:string;member_court_rate?:number;member_addon_rate?:number;member_discount?:number;
+  /** Voucher yang dipakai; `voucher_discount` sudah termasuk dalam `total` dan tetap sejak kode dipakai. */
+  voucher_id?:string|null;voucher_code?:string;voucher_discount?:number};
 export type Payment={id:string;amount:number;kind:"payment"|"refund";method:string;note:string;created_at:string;/** Biaya layanan Midtrans yang dibayar pelanggan di luar tagihan booking. */surcharge?:number};
 export type Maintenance={id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string};
 export type PriceRule={id:string;label:string;days:number[];start_time:string;end_time:string;hourly_rate:number;court_ids:string[]};
