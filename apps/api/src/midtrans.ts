@@ -87,6 +87,13 @@ export async function fetchTransactionStatus(orderId: string) {
   check(status < 300, 502, `Gagal membaca status dari Midtrans: ${complaint(body, status)}`);
   return body as MidtransStatus;
 }
+/** Hentikan transaksi yang belum dibayar. 404 berarti pelanggan belum memilih metode, jadi tidak ada yang perlu dihentikan. */
+export async function expireTransaction(orderId: string) {
+  const { status, body } = await callMidtrans("api", `/v2/${encodeURIComponent(orderId)}/expire`, { method: "POST" });
+  if (status === 404 || body.status_code === "404") return false;
+  check(status < 300, 502, `Gagal menghentikan transaksi di Midtrans: ${complaint(body, status)}`);
+  return true;
+}
 /** Uji kunci: 401 berarti server key ditolak; 404 berarti kunci sah dan order uji memang tidak ada. */
 export async function testCredentials() {
   const { status, body } = await callMidtrans("api", "/v2/padelix-uji-koneksi/status");

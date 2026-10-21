@@ -458,6 +458,14 @@ export async function handleNotification(input: unknown) {
       check(Math.round(Number(data.gross_amount)) === invoice.amount, 409, "Nominal notifikasi tidak cocok dengan tagihan.");
       return await membership.applyInvoiceStatus(invoice, data);
     }
+    // Transaksi kasir yang dibayar lewat Midtrans.
+    const counter = await import("./counter.js");
+    const sale = await counter.saleByOrder(data.order_id);
+    if (sale) {
+      check(signatureMatches(signatureFor(data.order_id, data.status_code, data.gross_amount, config.serverKey), data.signature_key), 403, "Tanda tangan notifikasi tidak sah.");
+      check(Math.round(Number(data.gross_amount)) === sale.total, 409, "Nominal notifikasi tidak cocok dengan tagihan.");
+      return await counter.applySaleStatus(sale, data);
+    }
   }
   // Order asing tetap dijawab 200 agar Midtrans berhenti mengirim ulang.
   if (!intent) return { handled: false, outcome: null, message: "Order tidak dikenal." };

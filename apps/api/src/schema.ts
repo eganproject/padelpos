@@ -634,6 +634,31 @@ export const schemaV5: string[] = [
     ADD COLUMN sale_id ${id} NULL,
     ADD CONSTRAINT addon_stock_moves_sale_fk FOREIGN KEY (sale_id) REFERENCES counter_sales(id)`,
 ];
+/**
+ * Versi 6: transaksi kasir bisa dibayar lewat Midtrans (menunggu bayar sampai webhook masuk),
+ * dikenali pelanggannya (`customer_id`), dan dihubungkan ke booking lapangan (`booking_id`).
+ * Batasan status dan metode diganti di migrasi karena nama CHECK bawaan MySQL tidak tetap.
+ */
+export const schemaV6: string[] = [
+  `ALTER TABLE counter_sales
+    ADD COLUMN customer_id ${id} NULL,
+    ADD COLUMN booking_id ${id} NULL,
+    ADD COLUMN fee BIGINT NOT NULL DEFAULT 0,
+    ADD COLUMN paid_at ${stamp} NULL,
+    ADD COLUMN pay_order_id VARCHAR(80) NULL,
+    ADD COLUMN snap_token VARCHAR(255) NULL,
+    ADD COLUMN pay_url TEXT NULL,
+    ADD COLUMN pay_expires_at BIGINT NULL,
+    ADD COLUMN payment_type VARCHAR(40) NULL,
+    ADD COLUMN transaction_id VARCHAR(80) NULL,
+    ADD UNIQUE KEY counter_sales_pay_order (pay_order_id),
+    ADD KEY counter_sales_customer (customer_id),
+    ADD KEY counter_sales_booking (booking_id),
+    ADD CONSTRAINT counter_sales_customer_fk FOREIGN KEY (customer_id) REFERENCES customers(id),
+    ADD CONSTRAINT counter_sales_booking_fk FOREIGN KEY (booking_id) REFERENCES bookings(id)`,
+  // Transaksi lama selalu lunas saat dicatat.
+  "UPDATE counter_sales SET paid_at=created_at WHERE paid_at IS NULL",
+];
 /** Akun sistem untuk keanggotaan: kode yang dicoba berurutan bila sudah dipakai, nama, jenis, subjenis, kunci, keterangan. */
 export const membershipAccounts: [codes: string[], name: string, type: string, subtype: string, key: string, description: string][] = [
   [["4-500", "4-510", "4-520"], "Pendapatan Keanggotaan", "pendapatan", "pendapatan", "pendapatan_keanggotaan", "Biaya daftar dan iuran member yang sudah menjadi hak venue."],

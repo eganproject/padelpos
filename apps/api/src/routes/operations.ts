@@ -80,7 +80,7 @@ router.get("/bookings",requireMenu("bookings"),async (req,res)=>{
   res.json({...await ops.searchBookings(req.query),...ops.localClock()});
 });
 router.post("/bookings",requireMenu("bookings"),async (req:AuthRequest,res)=>res.status(201).json({booking:await ops.createBooking(req.body,req.auth!.sub)}));
-router.get("/bookings/:id",requireMenu("bookings"),async (req,res)=>{const booking=await ops.getBooking(String(req.params.id));res.json({booking,payments:await ops.payments(booking.id),addons:await addons.bookingAddons(booking.id),intents:await bookingIntents(booking.id),account:await bookingAccount(booking)})});
+router.get("/bookings/:id",requireMenu("bookings"),async (req,res)=>{const booking=await ops.getBooking(String(req.params.id));res.json({booking,payments:await ops.payments(booking.id),addons:await addons.bookingAddons(booking.id),intents:await bookingIntents(booking.id),account:await bookingAccount(booking),sales:await counter.bookingSales(booking.id)})});
 // Nota cetak: kasir yang membuka booking boleh mencetak; pengaturan bawaannya punya menu sendiri.
 router.get("/bookings/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await receipts.bookingReceipt(String(req.params.id),req.auth!.sub)));
 router.get("/receipt-settings",requireAnyMenu(["receipts","bookings"]),async (_req,res)=>res.json({settings:await receipts.receiptSettings()}));
@@ -149,8 +149,10 @@ router.get("/rentals/unreturned",requireMenu("bookings"),async (_req,res)=>res.j
 // Transaksi langsung di kasir tanpa booking lapangan: sewa raket, beli bola, minuman, dan sejenisnya.
 router.get("/counter",requireMenu("bookings"),async (req,res)=>res.json(await counter.listSales(req.query)));
 router.get("/counter/options",requireMenu("bookings"),async (req,res)=>res.json(await counter.saleOptions(req.query)));
+router.get("/counter/customers",requireMenu("bookings"),async (req,res)=>res.json(await counter.customerOptions(req.query)));
 router.post("/counter",requireMenu("bookings"),async (req:AuthRequest,res)=>res.status(201).json(await counter.createSale(req.body,req.auth!.sub)));
-router.get("/counter/:id",requireMenu("bookings"),async (req,res)=>res.json({sale:await counter.getSale(String(req.params.id)),lines:await counter.saleLines(String(req.params.id))}));
+router.get("/counter/:id",requireMenu("bookings"),async (req,res)=>res.json(await counter.detail(String(req.params.id))));
+router.post("/counter/:id/refresh",requireMenu("bookings"),async (req,res)=>res.json(await counter.refreshSale(String(req.params.id))));
 router.get("/counter/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await receipts.saleReceipt(String(req.params.id),req.auth!.sub)));
 router.patch("/counter/:id/returned",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.returnSaleLines(String(req.params.id),req.body,req.auth!.sub)));
 router.post("/counter/:id/void",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.voidSale(String(req.params.id),req.body,req.auth!.sub)));

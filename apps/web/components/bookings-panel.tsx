@@ -14,6 +14,7 @@ import { MemberPicker } from "./member-picker";
 import { type LookupMember,memberCut } from "@/lib/members";
 import { Select, DateInput, MoneyInput } from "./form-controls";
 import { CounterPanel,SaleDetailModal } from "./counter-panel";
+import { type BookingSale,methodName,saleStatus } from "@/lib/counter";
 
 const optionsUrl=(date:string,start:string,end:string,booking?:string)=>`/operations/addons/options?date=${date}&start=${start}&end=${end}${booking?`&booking=${booking}`:""}`;
 /** Potongan member untuk tagihan kasir; biaya lain yang diketik manual tidak didiskon. */
@@ -93,7 +94,7 @@ function UnreturnedPanel({data,reload}:{data:Unreturned|null;reload:()=>Promise<
     {late.length>0&&<div className="ops-alert addon-alert"><span><b>{late.reduce((sum,l)=>sum+l.quantity,0)} barang</b> sudah lewat jam kembalinya.</span></div>}
     <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Pelanggan</th><th>Asal</th><th>Jadwal</th><th>Barang</th><th>Aksi</th></tr></thead><tbody>{lines.map(l=><tr key={l.id}>
       <td className="wide" data-label="Pelanggan"><b>{l.customer}</b>{l.phone&&<small className="table-description">{l.phone}</small>}</td>
-      <td data-label="Asal"><span className={`addon-type ${l.source==="kasir"?"jual":"sewa"}`}>{l.source==="kasir"?"Kasir":"Booking"}</span><small className="table-description">{l.source==="kasir"?l.sale_number:l.court_name}</small></td>
+      <td data-label="Asal"><span className={`addon-type ${l.source==="kasir"?"jual":"sewa"}`}>{l.source==="kasir"?"Kasir":"Booking"}</span><small className="table-description">{l.source==="kasir"?(l.court_name?`${l.sale_number} · ${l.court_name}`:l.sale_number):l.court_name}</small></td>
       <td data-label="Jadwal">{formatShortDay(l.date)}<small className="table-description">{l.start_time} – {l.end_time}{over(l)?<span className="addon-overdue"> · lewat jam kembali</span>:" · sedang dipakai"}</small></td>
       <td data-label="Barang"><b>{l.quantity}× {l.name}</b></td>
       <td className="actions"><div className="ops-row-buttons"><button className="ops-secondary" disabled={busy===l.id} onClick={()=>void returned(l)}><PackageCheck size={14}/> Sudah kembali</button><button className="ops-secondary" onClick={()=>l.source==="kasir"?setSale(l.ref_id):setBooking(l.ref_id)}>Detail</button></div></td>
@@ -279,7 +280,7 @@ function Reschedule({booking,extras,busy,onSaved}:{booking:Booking;extras:Bookin
 
 type BriefAccount={id:string;name:string;email:string;phone:string};
 type AccountLink={linked:BriefAccount|null;suggestions:BriefAccount[]};
-type Detail={booking:Booking;payments:Payment[];addons:BookingAddon[];intents:PaymentIntent[];account?:AccountLink};
+type Detail={booking:Booking;payments:Payment[];addons:BookingAddon[];intents:PaymentIntent[];account?:AccountLink;sales?:BookingSale[]};
 function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>void}){
   const [data,setData]=useState<Detail|null>(null);
   const [error,setError]=useState(""),[busy,setBusy]=useState(false),[reason,setReason]=useState("");
@@ -365,6 +366,14 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
         <span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span>
         {intent.status==="pending"&&intent.redirect_url&&<button type="button" className="ops-link-button" onClick={()=>void copyLink(intent.redirect_url!)}><Copy size={13}/> Salin link</button>}
       </li>)}</ul>:<p className="ops-muted">Belum ada tagihan online. Link berlaku 24 jam dan dapat dikirim ke pelanggan lewat WhatsApp.</p>}
+    </section>}
+    {(data!.sales?.length??0)>0&&<section className="ops-addons booking-sales" aria-label="Transaksi kasir terkait">
+      <div className="ops-card-head"><h3><ShoppingBag size={15} aria-hidden="true"/> Transaksi kasir</h3></div>
+      <p className="ops-muted">Sewa dan pembelian di kasir yang dihubungkan ke booking ini. Dibayar terpisah dari tagihan booking.</p>
+      <ul>{data!.sales!.map(sale=><li key={sale.id}>
+        <div><b>{sale.number} · {money(sale.total)}</b><small>{sale.items}</small><small>{methodName[sale.method]??sale.method} · {new Date(sale.created_at).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}{sale.status==="paid"&&Number(sale.open_rentals)>0?` · ${sale.open_rentals} barang sewa belum kembali`:""}</small></div>
+        <span className="ops-row-buttons"><span className={`status-pill ${saleStatus[sale.status].pill}`}>{saleStatus[sale.status].label}</span>{sale.status==="paid"&&<button type="button" className="ops-link-button" onClick={()=>window.open(`/cetak/nota/${sale.id}?jenis=kasir&cetak=1`,"_blank","noopener")}><Printer size={13}/> Nota</button>}</span>
+      </li>)}</ul>
     </section>}
     {data!.account&&(data!.account.linked||data!.account.suggestions.length>0)&&<section className="booking-account" aria-label="Akun pelanggan">
       <h3>Akun pelanggan</h3>

@@ -218,9 +218,11 @@ export async function syncBooking(bookingId: string) {
  * periode yang sudah dilaporkan tidak berubah. Keduanya hanya dibuat sekali.
  */
 export async function syncCounterSale(saleId: string) {
-  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,voided_at FROM counter_sales WHERE id=?").get(saleId) as
-    { id: string; number: string; customer: string; date: string; status: "paid" | "void"; total: number; discount: number; tax: number; method: string; voided_at: string | null } | undefined;
-  if (!sale) return;
+  const sale = await db.prepare("SELECT id,number,customer,date,status,total,discount,tax,method,fee,paid_at,voided_at FROM counter_sales WHERE id=?").get(saleId) as
+    { id: string; number: string; customer: string; date: string; status: string; total: number; discount: number; tax: number; method: string; fee: number; paid_at: string | null; voided_at: string | null } | undefined;
+  // Transaksi Midtrans yang belum atau tidak jadi dibayar tidak menyentuh pembukuan.
+  if (!sale || !sale.paid_at) return;
+  const fee = Math.min(Number(sale.fee), Number(sale.total));
   const parts = await db.prepare("SELECT type,SUM(subtotal) amount FROM counter_sale_lines WHERE sale_id=? GROUP BY type ORDER BY type").all(saleId) as { type: string; amount: number }[];
   const revenue = sale.total + sale.discount - sale.tax;
   const shares = allocate(revenue, parts.map(part => Math.max(0, Number(part.amount))));
@@ -228,16 +230,24 @@ export async function syncCounterSale(saleId: string) {
   parts.forEach((part, index) => { const key = addonAccountKey[part.type] ?? "pendapatan_lain"; merged.set(key, (merged.get(key) ?? 0) + shares[index]); });
   const lines = async (sign: 1 | -1): Promise<LineInput[]> => {
     const side = (amount: number, debit: boolean) => (debit === (sign === 1) ? { debit: amount } : { credit: amount });
-    const result: LineInput[] = [
+    // Potongan payment gateway tidak pernah masuk rekening: dicatat sebagai beban. Saat dibatalkan,
+    // dana yang dikembalikan ke pelanggan tetap penuh dan potongannya tetap menjadi beban.
+    const result: LineInput[] = sign === 1 && fee > 0 ? [
+      { account_id: await cashAccountFor(sale.method), debit: sale.total - fee, memo: sale.number },
+      { account_id: (await systemAccount("beban_gateway")).id, debit: fee, memo: "Potongan payment gateway" },
+    ] : [
       { account_id: await cashAccountFor(sale.method), ...side(sale.total, true), memo: sale.number },
-      { account_id: (await systemAccount("potongan_harga")).id, ...side(sale.discount, true), memo: "Potongan harga" },
     ];
+    result.push(
+
+      { account_id: (await systemAccount("potongan_harga")).id, ...side(sale.discount, true), memo: "Potongan harga" },
+    );
     for (const [key, amount] of merged) result.push({ account_id: (await systemAccount(key)).id, ...side(amount, false), memo: sale.customer });
     result.push({ account_id: (await systemAccount("utang_pajak")).id, ...side(sale.tax, false), memo: sale.customer });
     return result;
   };
   if (!await db.prepare("SELECT 1 FROM journal_entries WHERE source='kasir' AND ref_id=?").get(sale.id))
-    await putEntry({ date: sale.date, source: "kasir", ref_id: sale.id, actor: null, memo: `Transaksi kasir ${sale.number} · ${sale.customer}`, lines: await lines(1) });
+    await putEntry({ date: localClock(new Date(sale.paid_at)).date, source: "kasir", ref_id: sale.id, actor: null, memo: `Transaksi kasir ${sale.number} · ${sale.customer}`, lines: await lines(1) });
   const reversal = `${sale.id}:batal`;
   if (sale.status === "void" && !await db.prepare("SELECT 1 FROM journal_entries WHERE source='kasir' AND ref_id=?").get(reversal))
     await putEntry({ date: localClock(new Date(sale.voided_at ?? Date.now())).date, source: "kasir", ref_id: reversal, actor: null, memo: `Pembatalan transaksi kasir ${sale.number} · ${sale.customer}`, lines: await lines(-1) });
