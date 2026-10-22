@@ -489,3 +489,27 @@ body:has(.desk) [data-sonner-toast],body:has(.auth-page) [data-sonner-toast]{fon
 .profile-photo>div{display:flex;flex-direction:column;gap:6px;min-width:0}
 .profile-photo-actions{display:flex;flex-wrap:wrap;gap:var(--s2)}
 .profile-photo-actions svg{width:14px;height:14px}
+
+/* --- Halaman Pengaturan (kartu menu) ------------------------------------- */
+.manage-back{display:none;align-items:center;gap:2px;margin:0 0 var(--s1) -4px;font-size:var(--fs-sm);color:var(--muted);text-decoration:none}
+.manage-back svg{width:14px;height:14px}
+.manage-back:hover{color:var(--text)}
+@media(max-width:767px){.manage-back{display:inline-flex}}
+.settings-hub{display:flex;flex-direction:column;gap:var(--s6)}
+.settings-hub-heading{margin:0 0 var(--s2);font-size:var(--fs-xs);font-weight:600;letter-spacing:var(--track-label);text-transform:uppercase;color:var(--muted)}
+.settings-hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:var(--s3)}
+.settings-hub-card{
+  display:flex;align-items:flex-start;gap:var(--s3);min-width:0;padding:var(--s4);
+  border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);color:var(--text);text-decoration:none;
+  transition:border-color var(--fast) var(--ease),box-shadow var(--fast) var(--ease),background var(--fast) var(--ease);
+}
+.settings-hub-card:hover{border-color:var(--line-strong);box-shadow:var(--shadow-2)}
+.settings-hub-card:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+.settings-hub-card.skeleton{height:84px;background:var(--subtle)}
+.settings-hub-icon{display:grid;place-items:center;width:36px;height:36px;flex:none;border-radius:var(--r-md);background:var(--panel2);color:var(--text-soft)}
+.settings-hub-icon svg{width:18px;height:18px}
+.settings-hub-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.settings-hub-text b{font-size:var(--fs-md);font-weight:600}
+.settings-hub-text small{font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--muted)}
+.settings-hub-arrow{width:16px;height:16px;flex:none;margin-top:10px;color:var(--gray-500);transition:transform var(--fast) var(--ease)}
+.settings-hub-card:hover .settings-hub-arrow{transform:translateX(2px);color:var(--text)}
