@@ -14,6 +14,7 @@ import {
 import { normalizePhone } from "./payments.js";
 import { publicUrl } from "./config.js";
 import { recordRedemption, resolveVoucher, type Voucher } from "./vouchers.js";
+import { notifyStaffInbox } from "./staff-alerts.js";
 
 /**
  * Transaksi langsung di kasir tanpa booking lapangan: pelanggan datang menyewa raket untuk
@@ -378,6 +379,12 @@ export async function applySaleStatus(sale: CounterSale, status: MidtransStatus)
         WHERE id=?`).run(method, await gatewayFee(status.payment_type, fresh.total + fresh.surcharge), now, status.payment_type ?? null, status.transaction_id ?? null, late ? 1 : 0, sale.id);
       await syncCounterSale(sale.id);
       await audit("midtrans", "counter.paid", sale.id, { total: fresh.total, method, late });
+      // Kasir pembuatnya sedang menunggu di layar QR; staf lain (mis. pemilik) melihatnya di lonceng.
+      await notifyStaffInbox(`staff-counter-paid:${sale.id}`, "payment_in", {
+        title: `Pembayaran kasir ${fresh.number} lunas lewat Midtrans`,
+        body: `${fresh.customer || "Pelanggan"} membayar Rp${(fresh.total + fresh.surcharge).toLocaleString("id-ID")}.${late ? " Pembayarannya masuk setelah transaksi ditutup: serahkan barangnya atau kembalikan dananya." : ""}`,
+        link: `/admin/bookings?tab=kasir&sale=${encodeURIComponent(sale.id)}`, tone: late ? "warning" : "success",
+      }, sale.id, fresh.created_by);
     });
   } else if (outcome !== "paid" && outcome !== "pending" && sale.status === "pending") {
     await closePending(sale.id, "expired", "midtrans", outcome === "cancelled" ? "Pembayaran dibatalkan di Midtrans" : "Batas waktu bayar lewat");

@@ -171,7 +171,7 @@ export async function changeBookingStatus(id:string,input:unknown,actor:string){
     await db.prepare("UPDATE bookings SET status=?,cancel_reason=? WHERE id=?").run(data.status,data.reason,id);
     if(data.status==="cancelled"){
       await releaseAddons(id,actor);
-      await notifyCancelled({booking_id:id,code:id.slice(0,8).toUpperCase(),customer:booking.customer,order_id:booking.order_id,session:booking,reason:data.reason,paid:booking.paid});
+      await notifyCancelled({actor,booking_id:id,code:id.slice(0,8).toUpperCase(),customer:booking.customer,order_id:booking.order_id,session:booking,reason:data.reason,paid:booking.paid});
     }
     await syncBooking(id);
     await audit(actor,"booking."+data.status,id,data.status==="cancelled"?{reason:data.reason,total:booking.total,paid:booking.paid}:undefined);return await getBooking(id);
@@ -201,7 +201,7 @@ export async function recordPayment(id:string,input:unknown,actor:string){
     await syncBooking(id);
     await audit(actor,data.kind,data.id,{booking_id:id,customer:booking.customer,amount:data.amount,method:data.method,note:data.note,paid_before:booking.paid,total:booking.total});
     const after=await getBooking(id);
-    await notifyReceipt({payment_id:data.id,booking_id:id,kind:data.kind,amount:data.amount,method:data.method,code:id.slice(0,8).toUpperCase(),customer:booking.customer,order_id:booking.order_id,session:booking,total:after.total,paid:after.paid});
+    await notifyReceipt({actor,payment_id:data.id,booking_id:id,kind:data.kind,amount:data.amount,method:data.method,code:id.slice(0,8).toUpperCase(),customer:booking.customer,order_id:booking.order_id,session:booking,total:after.total,paid:after.paid});
     return {booking:after,payments:await payments(id)};
   });
 }

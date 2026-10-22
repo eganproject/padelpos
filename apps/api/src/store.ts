@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts, schemaV9, schemaV10, voucherAccounts, schemaV11 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts, schemaV9, schemaV10, voucherAccounts, schemaV11, schemaV12 } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -264,6 +264,12 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
     // Keanggotaan fase 2: tarif tetap member, kuota jam, jam khusus member, dan diskon member di kasir.
     version: 11, async up() {
       for (const statement of schemaV11) await db.exec(statement);
+    },
+  },
+  {
+    // Notifikasi staf di panel admin.
+    version: 12, async up() {
+      for (const statement of schemaV12) await db.exec(statement);
     },
   },
 ];

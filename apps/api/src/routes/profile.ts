@@ -9,6 +9,7 @@ import { contactPhoneSchema } from "../operations.js";
 import { maxAvatarSize,removeUserAvatar,setUserAvatar } from "../avatars.js";
 import { photoTypes } from "../photos.js";
 import { limiter } from "../ratelimit.js";
+import { markStaffRead,staffInbox,staffUnread } from "../staff-alerts.js";
 const router=Router();router.use(requireAuth);
 router.put("/",async (req:AuthRequest,res)=>{
   const data=z.object({name:staffName,phone:contactPhoneSchema}).parse(req.body);
@@ -32,5 +33,9 @@ router.put("/password",async(req:AuthRequest,res)=>{
   });
   await createSession(res,user.id);res.json({message:"Password diperbarui. Sesi perangkat lain telah dicabut."});
 });
+// Lonceng notifikasi staf di bilah atas panel admin.
+router.get("/notifications",async(req:AuthRequest,res)=>res.json(await staffInbox(req.auth!.sub,req.query)));
+router.get("/notifications/unread",async(req:AuthRequest,res)=>res.json({unread:await staffUnread(req.auth!.sub)}));
+router.post("/notifications/read",async(req:AuthRequest,res)=>res.json(await markStaffRead(req.auth!.sub,req.body)));
 export default router;
 
