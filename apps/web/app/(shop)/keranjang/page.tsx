@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, ChevronDown, CircleUserRound, CreditCard, Loader2, Lock, MessageCircle, PackagePlus, Plus, ShieldCheck, ShoppingBag, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { ApiError, money } from "@/lib/api";
 import { ShopAddonPicker } from "@/components/shop-addons";
 import { ShopSteps } from "@/components/shop-steps";
+import { startRouteProgress } from "@/components/route-progress";
 import { lineTotal } from "@/lib/addons";
 import { formatDay } from "@/lib/shop";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { policySummary, whatsappLink } from "@/lib/venue-info";
 import {
-  cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart,
+  cartPayload, clearCart, itemTotal, maxCartItems, removeFromCart, setCartAddon, useCart, useCartReady,
 } from "@/lib/cart";
 import { amountDue, quoteCart, startCheckout, surchargeFor, type CartQuote, type ChannelKey } from "@/lib/payments";
 import { ChannelPicker, cheapestChannel } from "@/components/channel-picker";
@@ -24,6 +26,11 @@ const monthShort = new Intl.DateTimeFormat("id-ID", { month: "short", timeZone: 
 
 export default function CartPage() {
   const items = useCart();
+  const cartReady = useCartReady();
+  const router = useRouter();
+  /** Pesanan sudah dibuat dan halaman pembayaran sedang dibuka. */
+  const [leaving, setLeaving] = useState(false);
+  const placed = useRef(false);
   const { data: venue } = useVenueInfo();
   const [quote, setQuote] = useState<CartQuote | null>(null);
   const [checking, setChecking] = useState(false);
@@ -40,6 +47,10 @@ export default function CartPage() {
   const formRef = useRef<HTMLFormElement>(null);
   const summaryRef = useRef<HTMLDivElement>(null);
   const account = useAccount();
+
+  // Keranjang baru dikosongkan setelah halaman ini ditinggalkan. Bila dikosongkan sebelum pindah,
+  // tampilan "Keranjang masih kosong" sempat muncul dan indikator memuat ikut hilang.
+  useEffect(() => () => { if (placed.current) clearCart(); }, []);
 
   // Pelanggan yang sudah masuk tidak perlu mengetik ulang datanya; isian yang sudah diubah dibiarkan.
   useEffect(() => {
@@ -143,10 +154,12 @@ export default function CartPage() {
         channel: customerPays ? channel : null,
         voucher_code: voucher?.ok ? voucher.code : "",
       });
-      // Sesi sudah menjadi pesanan di server; keranjang tidak perlu disimpan lagi.
-      clearCart();
+      // Sesi sudah menjadi pesanan di server; keranjang dikosongkan saat halaman ini ditinggalkan.
+      placed.current = true;
+      setLeaving(true);
       // Pembayaran dibuka di halaman pesanan sendiri (Snap tertanam), bukan di situs Midtrans.
-      window.location.assign(`/pesanan/${encodeURIComponent(result.order_id)}`);
+      startRouteProgress();
+      router.push(`/pesanan/${encodeURIComponent(result.order_id)}`);
     } catch (problem) {
       setError(problem instanceof ApiError ? problem.message : "Pemesanan gagal. Coba lagi sebentar lagi.");
       setBusy(false);
@@ -162,6 +175,18 @@ export default function CartPage() {
     const target = formRef.current?.querySelector<HTMLElement>("[aria-invalid=true], input:invalid") ?? formRef.current ?? summaryRef.current;
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
     if (target instanceof HTMLInputElement) window.setTimeout(() => target.focus({ preventScroll: true }), 350);
+  }
+
+  // Isi keranjang tersimpan di browser; sebelum terbaca, tampilkan kerangka, bukan "kosong".
+  if (!cartReady) {
+    return (
+      <div className="cart shop-wrap">
+        <ShopSteps current={1} />
+        <div aria-busy="true" aria-label="Memuat keranjang" className="skeleton-stack">
+          <div className="skeleton" /><div className="skeleton" />
+        </div>
+      </div>
+    );
   }
 
   if (!items.length) {
@@ -314,7 +339,7 @@ export default function CartPage() {
               {customerPays && <ChannelPicker fees={fees} base={payNow} value={channel} onChange={setChannel} />}
               {error && <p className="shop-note error" role="alert">{error}</p>}
               <button className="shop-btn primary lg wide" type="submit" disabled={busy || checking || blocked}>
-                {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> Menyiapkan pembayaran…</> : <><Lock size={17} aria-hidden="true" /> Bayar {money(charge)}</>}
+                {busy ? <><Loader2 size={18} className="spin" aria-hidden="true" /> {leaving ? "Membuka pembayaran…" : "Menyiapkan pembayaran…"}</> : <><Lock size={17} aria-hidden="true" /> Bayar {money(charge)}</>}
               </button>
               <p className="fine">
                 <ShieldCheck size={15} aria-hidden="true" />
