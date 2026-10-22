@@ -150,7 +150,8 @@ export const SaleReceipt = forwardRef<HTMLElement, { data: SaleReceiptData }>(fu
           ))}
         </tbody>
         <tfoot>
-          {(sale.discount > 0 || sale.tax > 0 || (sale.voucher_discount ?? 0) > 0) && <tr><td>Subtotal</td><td className="num">{money(sale.subtotal)}</td></tr>}
+          {(sale.discount > 0 || sale.tax > 0 || (sale.member_discount ?? 0) > 0 || (sale.voucher_discount ?? 0) > 0) && <tr><td>Subtotal</td><td className="num">{money(sale.subtotal)}</td></tr>}
+          {(sale.member_discount ?? 0) > 0 && <tr><td>Potongan member{sale.member_plan ? ` (${sale.member_plan})` : ""}</td><td className="num">−{money(sale.member_discount!)}</td></tr>}
           {(sale.voucher_discount ?? 0) > 0 && <tr><td>Voucher {sale.voucher_code}</td><td className="num">−{money(sale.voucher_discount!)}</td></tr>}
           {sale.discount > 0 && <tr><td>Potongan{sale.discount_note ? ` (${sale.discount_note})` : ""}</td><td className="num">−{money(sale.discount)}</td></tr>}
           {sale.tax > 0 && <tr><td>{taxName(sale)}</td><td className="num">{sale.tax_inclusive ? "" : "+"}{money(sale.tax)}</td></tr>}

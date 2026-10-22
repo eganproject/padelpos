@@ -1,4 +1,5 @@
 import type { TaxSnapshot } from "./bill";
+import type { MemberSlot, SlotRate } from "./members";
 export type Court={id:string;name:string;hourly_rate:number;opens_at:string;closes_at:string;active:number;description:string;environment:""|"indoor"|"outdoor";surface:string;floor_id?:string|null;photos?:string[];state?:string;until?:string|null};
 export type BookingStatus="pending"|"confirmed"|"completed"|"cancelled"|"expired";
 export type Booking={id:string;court_id:string;court_name:string;customer:string;phone:string;email?:string;reschedule_count?:number;date:string;start_time:string;end_time:string;total:number;paid:number;status:BookingStatus;notes:string;cancel_reason:string;
@@ -10,12 +11,16 @@ export type Booking={id:string;court_id:string;court_name:string;customer:string
   forfeited:number;forfeited_at:string|null;
   /** Salinan tarif member saat dipesan; `member_discount` sudah termasuk dalam `total`. Tarif dalam basis poin. */
   membership_id?:string|null;member_plan?:string;member_court_rate?:number;member_addon_rate?:number;member_discount?:number;
+  /** Bagian potongan member dari sewa lapangan, dan salinan tarif tetap member (JSON). */
+  member_court_cut?:number;member_fixed?:string|null;
+  /** Keterangan harga member dari server saat menyimpan, mis. kuota habis. */
+  member_note?:string;
   /** Voucher yang dipakai; `voucher_discount` sudah termasuk dalam `total` dan tetap sejak kode dipakai. */
   voucher_id?:string|null;voucher_code?:string;voucher_discount?:number};
 export type Payment={id:string;amount:number;kind:"payment"|"refund";method:string;note:string;created_at:string;/** Biaya layanan Midtrans yang dibayar pelanggan di luar tagihan booking. */surcharge?:number};
 export type Maintenance={id:string;court_id:string;court_name:string;date:string;start_time:string;end_time:string;reason:string};
 export type PriceRule={id:string;label:string;days:number[];start_time:string;end_time:string;hourly_rate:number;court_ids:string[]};
-export type Context={courts:Court[];maintenance:Maintenance[];price_rules:PriceRule[];schedule:{id:string;court_id:string;start_time:string;end_time:string}[];date:string;time:string;timezone:string;tax?:TaxSnapshot};
+export type Context={courts:Court[];maintenance:Maintenance[];price_rules:PriceRule[];member_slots?:MemberSlot[];schedule:{id:string;court_id:string;start_time:string;end_time:string}[];date:string;time:string;timezone:string;tax?:TaxSnapshot};
 export const statusLabel:Record<BookingStatus,string>={pending:"Menunggu bayar",confirmed:"Dikonfirmasi",completed:"Selesai",cancelled:"Dibatalkan",expired:"Kedaluwarsa"};
 /** Kelas warna untuk `.status-pill`. */
 export const statusTone:Record<BookingStatus,string>={pending:"wait",confirmed:"on",completed:"done",cancelled:"off",expired:"off"};
@@ -40,10 +45,15 @@ export function formatDays(days:number[]){
 }
 /** Perkiraan total sewa dengan aturan yang sama seperti server (apps/api/src/operations.ts#quote). */
 export function quote(court:Pick<Court,"id"|"hourly_rate">,rules:PriceRule[],date:string,start:string,end:string){
-  const day=new Date(date+"T12:00:00Z").getUTCDay();let sum=0;
+  return Math.round(slotRates(court,rules,date,start,end).reduce((sum,slot)=>sum+slot.rate,0)/2);
+}
+/** Tarif tiap slot 30 menit, untuk harga sewa dan harga member (apps/api/src/operations.ts#slotRates). */
+export function slotRates(court:Pick<Court,"id"|"hourly_rate">,rules:PriceRule[],date:string,start:string,end:string):SlotRate[]{
+  const day=new Date(date+"T12:00:00Z").getUTCDay(),slots:SlotRate[]=[];
   for(let value=minute(start);value<minute(end);value+=30){
     const at=timeSlots(value,value)[0];
-    sum+=rules.find(r=>r.court_ids.includes(court.id)&&r.days.includes(day)&&r.start_time<=at&&r.end_time>at)?.hourly_rate??court.hourly_rate;
+    const rule=rules.find(r=>r.court_ids.includes(court.id)&&r.days.includes(day)&&r.start_time<=at&&r.end_time>at);
+    slots.push({rate:rule?.hourly_rate??court.hourly_rate,rule_id:rule?.id??null});
   }
-  return Math.round(sum/2);
+  return slots;
 }

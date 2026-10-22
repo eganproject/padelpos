@@ -11,6 +11,7 @@ import {
   type ChannelKey, type MidtransStatus,
 } from "./midtrans.js";
 import { notifyMemberApproved, notifyMemberBill, notifyMemberPaid, type MemberContact } from "./notifications.js";
+import { memberSlots, planFixedRates, quotaLeft } from "./member-rates.js";
 
 /**
  * Keanggotaan berbayar.
@@ -53,7 +54,13 @@ export async function saveMembershipSettings(input: unknown, actor: string) {
 export interface Plan {
   id: string; name: string; description: string; price: number; registration_fee: number; duration_months: number;
   court_discount: number; addon_discount: number; online: number; active: number; position: number; created_at: string;
+  /** Batas jam main dengan harga member (menit), 0 = tanpa batas. */
+  daily_minutes: number; monthly_minutes: number;
+  /** Boleh memesan jam khusus member. */
+  member_slots: number;
 }
+/** Tarif tetap member per jam: `rule_key` = id tarif khusus lapangan, atau `normal` untuk tarif dasar. */
+export interface PlanRate { rule_key: string; hourly_rate: number }
 const percent = (label: string) => z.number(`Isi diskon ${label}.`).min(0, `Diskon ${label} tidak boleh negatif.`).max(100, `Diskon ${label} paling besar 100%.`)
   .transform(value => Math.round(value * 100));
 const rupiahField = (label: string, min: number) => z.number(`Isi ${label}.`).int(`${label} harus bilangan bulat.`).min(min, `${label} minimal Rp${min.toLocaleString("id-ID")}.`).max(100_000_000, `${label} terlalu besar.`);
@@ -67,10 +74,39 @@ export const planSchema = z.object({
   addon_discount: percent("tambahan").default(0),
   online: z.boolean().default(true),
   active: z.boolean().default(true),
+  /** Jam per hari/bulan, kelipatan setengah jam; 0 = tanpa batas. Disimpan dalam menit. */
+  daily_hours: hoursField("per hari", 24),
+  monthly_hours: hoursField("per bulan", 744),
+  member_slots: z.boolean().default(true),
+  rates: z.array(z.object({
+    rule_key: z.string().min(1).max(64),
+    hourly_rate: z.number("Isi tarif member per jam.").int("Tarif harus bilangan bulat.").min(0, "Tarif member tidak boleh negatif.").max(10_000_000, "Tarif member terlalu besar."),
+  })).max(60).default([]),
 });
+function hoursField(label: string, max: number) {
+  return z.number().min(0, `Batas jam ${label} tidak boleh negatif.`).max(max, `Batas jam ${label} paling banyak ${max} jam.`)
+    .refine(value => Number.isInteger(value * 2), `Batas jam ${label} harus kelipatan setengah jam.`).transform(value => Math.round(value * 60)).default(0);
+}
+async function planRates(planId: string) {
+  return await db.prepare("SELECT rule_key,hourly_rate FROM membership_plan_rates WHERE plan_id=? ORDER BY rule_key").all(planId) as PlanRate[];
+}
 export async function plans() {
-  return await db.prepare(`SELECT p.*,(SELECT count(*) FROM memberships m WHERE m.plan_id=p.id AND m.status IN ('active','frozen')) members
+  const rows = await db.prepare(`SELECT p.*,(SELECT count(*) FROM memberships m WHERE m.plan_id=p.id AND m.status IN ('active','frozen')) members
     FROM membership_plans p ORDER BY p.position,p.created_at`).all() as (Plan & { members: number })[];
+  const list = [];
+  for (const row of rows) list.push({ ...row, rates: await planRates(row.id) });
+  return list;
+}
+/** Tarif tetap yang masih menunjuk tarif lapangan yang ada; tarif khusus yang dihapus diabaikan. */
+async function validRates(rates: PlanRate[]) {
+  const rules = new Set((await db.prepare("SELECT id FROM price_rules").all() as { id: string }[]).map(row => row.id));
+  const seen = new Set<string>();
+  for (const rate of rates) {
+    check(rate.rule_key === "normal" || rules.has(rate.rule_key), 404, "Ada tarif lapangan yang sudah dihapus. Muat ulang halaman.");
+    check(!seen.has(rate.rule_key), 400, "Ada tarif member yang tercatat dua kali.");
+    seen.add(rate.rule_key);
+  }
+  return rates;
 }
 async function getPlan(id: string) {
   const plan = await db.prepare("SELECT * FROM membership_plans WHERE id=?").get(id) as Plan | undefined;
@@ -82,18 +118,21 @@ export async function savePlan(input: unknown, actor: string, id?: string) {
   return await transaction(async () => {
     const before = id ? await getPlan(id) : undefined;
     check(!await db.prepare("SELECT 1 FROM membership_plans WHERE name=? AND id<>?").get(data.name, id ?? ""), 409, "Nama paket sudah dipakai.");
+    const rates = await validRates(data.rates);
     if (before) {
-      await db.prepare("UPDATE membership_plans SET name=?,description=?,price=?,registration_fee=?,duration_months=?,court_discount=?,addon_discount=?,online=?,active=? WHERE id=?")
-        .run(data.name, data.description, data.price, data.registration_fee, data.duration_months, data.court_discount, data.addon_discount, Number(data.online), Number(data.active), id!);
+      await db.prepare("UPDATE membership_plans SET name=?,description=?,price=?,registration_fee=?,duration_months=?,court_discount=?,addon_discount=?,online=?,active=?,daily_minutes=?,monthly_minutes=?,member_slots=? WHERE id=?")
+        .run(data.name, data.description, data.price, data.registration_fee, data.duration_months, data.court_discount, data.addon_discount, Number(data.online), Number(data.active), data.daily_hours, data.monthly_hours, Number(data.member_slots), id!);
     } else {
       id = randomUUID();
       const position = Number((await db.prepare("SELECT COALESCE(MAX(position),0)+1 n FROM membership_plans").get() as { n: number }).n);
-      await db.prepare("INSERT INTO membership_plans (id,name,description,price,registration_fee,duration_months,court_discount,addon_discount,online,active,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-        .run(id, data.name, data.description, data.price, data.registration_fee, data.duration_months, data.court_discount, data.addon_discount, Number(data.online), Number(data.active), position, new Date().toISOString());
+      await db.prepare("INSERT INTO membership_plans (id,name,description,price,registration_fee,duration_months,court_discount,addon_discount,online,active,position,created_at,daily_minutes,monthly_minutes,member_slots) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(id, data.name, data.description, data.price, data.registration_fee, data.duration_months, data.court_discount, data.addon_discount, Number(data.online), Number(data.active), position, new Date().toISOString(), data.daily_hours, data.monthly_hours, Number(data.member_slots));
     }
+    await db.prepare("DELETE FROM membership_plan_rates WHERE plan_id=?").run(id!);
+    for (const rate of rates) await db.prepare("INSERT INTO membership_plan_rates (plan_id,rule_key,hourly_rate) VALUES (?,?,?)").run(id!, rate.rule_key, rate.hourly_rate);
     // Booking yang sudah dibuat menyimpan salinan tarifnya, jadi mengubah diskon tidak mengubah tagihan lama.
     await audit(actor, before ? "membership.plan.update" : "membership.plan.create", id!, before ? { before: { price: before.price, court_discount: before.court_discount, addon_discount: before.addon_discount }, after: { price: data.price, court_discount: data.court_discount, addon_discount: data.addon_discount } } : undefined);
-    return await getPlan(id!);
+    return { ...await getPlan(id!), rates: await planRates(id!) };
   });
 }
 export async function removePlan(id: string, actor: string) {
@@ -164,8 +203,9 @@ async function nextInvoiceNumber() {
 
 /** Satu baris untuk tabel admin dan halaman akun. */
 async function view(member: Membership) {
-  const plan = await db.prepare("SELECT id,name,court_discount,addon_discount,duration_months,price FROM membership_plans WHERE id=?").get(member.plan_id) as
-    Pick<Plan, "id" | "name" | "court_discount" | "addon_discount" | "duration_months" | "price">;
+  const row = await db.prepare("SELECT id,name,court_discount,addon_discount,duration_months,price,daily_minutes,monthly_minutes,member_slots FROM membership_plans WHERE id=?").get(member.plan_id) as
+    Pick<Plan, "id" | "name" | "court_discount" | "addon_discount" | "duration_months" | "price" | "daily_minutes" | "monthly_minutes" | "member_slots">;
+  const plan = { ...row, fixed: await planFixedRates(row.id) };
   const account = member.account_id
     ? await db.prepare("SELECT id,name,email FROM customer_accounts WHERE id=?").get(member.account_id) as { id: string; name: string; email: string } | undefined
     : undefined;
@@ -448,21 +488,29 @@ export async function memberStats() {
     /** Uang yang benar-benar masuk dari iuran bulan ini, termasuk iuran untuk bulan-bulan depan. */
     collected: await count("SELECT COALESCE(SUM(amount),0) n FROM membership_invoices WHERE status='paid' AND paid_at>=? AND paid_at<?", `${from}T00:00:00`, `${shiftDate(to, 1)}T00:00:00`),
     /** Nilai potongan member pada booking yang main bulan ini. */
-    discount: await count("SELECT COALESCE(SUM(member_discount),0) n FROM bookings WHERE status IN ('confirmed','completed') AND date BETWEEN ? AND ?", from, to),
+    discount: await count("SELECT COALESCE(SUM(member_discount),0) n FROM bookings WHERE status IN ('confirmed','completed') AND date BETWEEN ? AND ?", from, to)
+      + await count("SELECT COALESCE(SUM(member_discount),0) n FROM counter_sales WHERE status='paid' AND date BETWEEN ? AND ?", from, to),
   };
+}
+
+/** Jumlah booking dan total hemat member, termasuk potongan member di transaksi kasir. */
+async function savedBy(membershipId: string) {
+  const booked = await db.prepare("SELECT count(*) bookings,COALESCE(SUM(member_discount),0) saved FROM bookings WHERE membership_id=? AND status IN ('confirmed','completed')").get(membershipId) as { bookings: number; saved: number };
+  const sold = await db.prepare("SELECT count(*) sales,COALESCE(SUM(member_discount),0) saved FROM counter_sales WHERE membership_id=? AND status='paid'").get(membershipId) as { sales: number; saved: number };
+  return { bookings: Number(booked.bookings), sales: Number(sold.sales), saved: Number(booked.saved) + Number(sold.saved) };
 }
 
 export async function memberDetail(id: string) {
   const member = await getMember(id);
   const bookings = await db.prepare(`SELECT b.id,b.date,b.start_time,b.end_time,b.status,b.total,b.member_discount,b.member_plan,c.name court_name FROM bookings b JOIN courts c ON c.id=b.court_id
     WHERE b.membership_id=? ORDER BY b.date DESC,b.start_time DESC LIMIT 20`).all(id) as { id: string; member_discount: number; status: string }[];
-  const totals = await db.prepare(`SELECT count(*) bookings,COALESCE(SUM(member_discount),0) saved FROM bookings WHERE membership_id=? AND status IN ('confirmed','completed')`).get(id) as { bookings: number; saved: number };
+  const totals = await savedBy(id);
   const suggestions = member.account_id ? [] : await db.prepare("SELECT id,name,email FROM customer_accounts WHERE phone=? ORDER BY last_login_at DESC LIMIT 3").all(member.phone);
   return {
     member: await view(member),
     invoices: (await invoicesOf(id)).map(invoiceView),
     bookings: bookings.map(row => ({ ...row, code: row.id.slice(0, 8).toUpperCase() })),
-    totals: { bookings: Number(totals.bookings), saved: Number(totals.saved) },
+    totals,
     unearned: await unearnedDues(id, today()),
     account_suggestions: suggestions,
   };
@@ -478,20 +526,67 @@ export async function lookupMembers(input: unknown) {
   const items = [];
   for (const row of rows) {
     const item = await view(row);
-    items.push({ ...item, valid: row.status === "active" && !!row.starts_on && row.starts_on <= on && on <= row.ends_on! });
+    const valid = row.status === "active" && !!row.starts_on && row.starts_on <= on && on <= row.ends_on!;
+    // Sisa kuota jam harga member pada tanggal itu, agar kasir tahu sebelum menyimpan.
+    items.push({ ...item, valid, quota: valid ? await quotaLeft({ membership_id: row.id, daily_minutes: item.plan.daily_minutes, monthly_minutes: item.plan.monthly_minutes }, on) : null });
   }
   return items;
 }
 
 // --- Akun pelanggan --------------------------------------------------------------------
 
-const publicPlan = (plan: Plan) => ({
-  id: plan.id, name: plan.name, description: plan.description, price: plan.price, registration_fee: plan.registration_fee,
-  duration_months: plan.duration_months, court_discount: plan.court_discount, addon_discount: plan.addon_discount,
-});
-/** Paket yang dijual lewat situs, untuk halaman publik dan akun. */
+/** Paket yang dijual lewat situs, untuk halaman publik dan akun. Tarif tetap ditampilkan dengan nama tarif lapangannya. */
 export async function publicPlans() {
-  return (await db.prepare("SELECT * FROM membership_plans WHERE active=1 AND online=1 ORDER BY position,created_at").all() as Plan[]).map(publicPlan);
+  const rules = new Map((await db.prepare("SELECT id,label FROM price_rules").all() as { id: string; label: string }[]).map(row => [row.id, row.label]));
+  const exclusive = (await memberSlots()).length > 0;
+  const list = [];
+  for (const plan of await db.prepare("SELECT * FROM membership_plans WHERE active=1 AND online=1 ORDER BY position,created_at").all() as Plan[]) {
+    const rates = (await planRates(plan.id)).filter(rate => rate.rule_key === "normal" || rules.has(rate.rule_key))
+      .map(rate => ({ label: rate.rule_key === "normal" ? "Tarif reguler" : rules.get(rate.rule_key)!, hourly_rate: Number(rate.hourly_rate) }));
+    list.push({
+      id: plan.id, name: plan.name, description: plan.description, price: plan.price, registration_fee: plan.registration_fee,
+      duration_months: plan.duration_months, court_discount: plan.court_discount, addon_discount: plan.addon_discount,
+      daily_minutes: plan.daily_minutes, monthly_minutes: plan.monthly_minutes, member_slots: exclusive && !!plan.member_slots, rates,
+    });
+  }
+  return list;
+}
+
+// --- Jam khusus member ----------------------------------------------------------------
+
+const slotTime = z.string().regex(/^(?:[01]\d|2[0-3]):(?:00|30)$|^24:00$/, "Jam harus menggunakan interval 30 menit.");
+export const memberSlotSchema = z.object({
+  label: z.string().trim().min(2, "Nama jam khusus minimal 2 karakter.").max(60, "Nama jam khusus maksimal 60 karakter."),
+  days: z.array(z.number().int().min(0).max(6)).min(1, "Pilih minimal satu hari.").max(7),
+  start_time: slotTime, end_time: slotTime,
+  court_ids: z.array(z.string().min(1).max(64)).max(100).default([]),
+}).refine(value => value.start_time < value.end_time, "Jam selesai harus setelah jam mulai.");
+/**
+ * Jam khusus member: slot yang hanya bisa dipesan member dengan paket yang mengizinkannya. Booking
+ * yang sudah ada tidak diubah; aturan berlaku untuk booking dan pindah jadwal berikutnya.
+ */
+export async function saveMemberSlot(input: unknown, actor: string, id?: string) {
+  const data = memberSlotSchema.parse(input);
+  const days = [...new Set(data.days)].sort((a, b) => a - b), courtIds = [...new Set(data.court_ids)];
+  return await transaction(async () => {
+    if (id) check(await db.prepare("SELECT 1 FROM member_slots WHERE id=?").get(id), 404, "Jam khusus member tidak ditemukan.");
+    const known = new Set((await db.prepare("SELECT id FROM courts").all() as { id: string }[]).map(row => row.id));
+    check(courtIds.every(courtId => known.has(courtId)), 404, "Ada lapangan yang tidak ditemukan. Muat ulang halaman.");
+    if (id) await db.prepare("UPDATE member_slots SET label=?,days=?,start_time=?,end_time=?,court_ids=? WHERE id=?").run(data.label, JSON.stringify(days), data.start_time, data.end_time, JSON.stringify(courtIds), id);
+    else {
+      id = randomUUID();
+      await db.prepare("INSERT INTO member_slots (id,label,days,start_time,end_time,court_ids,created_at) VALUES (?,?,?,?,?,?,?)").run(id, data.label, JSON.stringify(days), data.start_time, data.end_time, JSON.stringify(courtIds), new Date().toISOString());
+    }
+    await audit(actor, "membership.slot.save", id, { label: data.label, days, start: data.start_time, end: data.end_time });
+    return await memberSlots();
+  });
+}
+export async function removeMemberSlot(id: string, actor: string) {
+  return await transaction(async () => {
+    check((await db.prepare("DELETE FROM member_slots WHERE id=?").run(id)).changes, 404, "Jam khusus member tidak ditemukan.");
+    await audit(actor, "membership.slot.delete", id);
+    return await memberSlots();
+  });
 }
 const mine = async (accountId: string) =>
   await db.prepare("SELECT * FROM memberships WHERE account_id=? AND status<>'cancelled'").get(accountId) as Membership | undefined;
@@ -509,7 +604,7 @@ export async function customerMembership(accountId: string) {
     plans: await publicPlans(),
     membership: member ? await view(member) : null,
     invoices,
-    totals: member ? await db.prepare("SELECT count(*) bookings,COALESCE(SUM(member_discount),0) saved FROM bookings WHERE membership_id=? AND status IN ('confirmed','completed')").get(member.id) : null,
+    totals: member ? await savedBy(member.id) : null,
   };
 }
 

@@ -18,6 +18,7 @@ import { auditFilters, auditLog } from "../auditlog.js";
 import * as backups from "../backups.js";
 import * as receipts from "../receipts.js";
 import * as members from "../membership.js";
+import { memberSlots } from "../member-rates.js";
 import * as counter from "../counter.js";
 import * as brand from "../brand.js";
 import * as vouchers from "../vouchers.js";
@@ -50,7 +51,7 @@ router.post("/addons/:id/stock",requireMenu("addons"),async (req:AuthRequest,res
 router.get("/context",requireAnyMenu(["bookings","courts"]),async (req,res)=>{
   const date=req.query.date===undefined?ops.localClock().date:ops.dateSchema.parse(req.query.date);
   await expireHolds();
-  res.json({courts:await ops.courts(),maintenance:await ops.maintenances(date),price_rules:await ops.priceRules(),tax:await taxSnapshot(),schedule:(await ops.bookings(date)).filter(ops.occupies).map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
+  res.json({courts:await ops.courts(),maintenance:await ops.maintenances(date),price_rules:await ops.priceRules(),member_slots:await memberSlots(),tax:await taxSnapshot(),schedule:(await ops.bookings(date)).filter(ops.occupies).map(b=>({id:b.id,court_id:b.court_id,start_time:b.start_time,end_time:b.end_time})),...ops.localClock()});
 });
 router.get("/courts",requireMenu("courts"),async (_req,res)=>{
   const photos=await photoIndex();
@@ -134,7 +135,12 @@ router.post("/bookings/:id/payments",requireMenu("bookings"),async (req:AuthRequ
 router.put("/bookings/:id/member",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({booking:await ops.setBookingMember(String(req.params.id),req.body,req.auth!.sub)}));
 // Member: kasir cukup akses Booking untuk mencari member saat membuat booking.
 router.get("/members/lookup",requireAnyMenu(["bookings","members"]),async (req,res)=>res.json({members:await members.lookupMembers(req.query)}));
-router.get("/members",requireMenu("members"),async (req,res)=>res.json({...await members.listMembers(req.query),plans:await members.plans(),settings:await members.membershipSettings(),...ops.localClock()}));
+router.get("/members",requireMenu("members"),async (req,res)=>res.json({...await members.listMembers(req.query),plans:await members.plans(),settings:await members.membershipSettings(),
+  // Untuk tarif tetap member per tarif lapangan dan jam khusus member.
+  price_rules:await ops.priceRules(),courts:(await ops.courts()).map(({id,name,hourly_rate,active})=>({id,name,hourly_rate,active})),member_slots:await memberSlots(),...ops.localClock()}));
+router.post("/members/slots",requireMenu("members"),async (req:AuthRequest,res)=>res.status(201).json({member_slots:await members.saveMemberSlot(req.body,req.auth!.sub)}));
+router.put("/members/slots/:id",requireMenu("members"),async (req:AuthRequest,res)=>res.json({member_slots:await members.saveMemberSlot(req.body,req.auth!.sub,String(req.params.id))}));
+router.delete("/members/slots/:id",requireMenu("members"),async (req:AuthRequest,res)=>res.json({member_slots:await members.removeMemberSlot(String(req.params.id),req.auth!.sub)}));
 router.post("/members",requireMenu("members"),async (req:AuthRequest,res)=>res.status(201).json(await members.registerMember(req.body,req.auth!.sub)));
 router.put("/members/settings",requireMenu("members"),async (req:AuthRequest,res)=>res.json({settings:await members.saveMembershipSettings(req.body,req.auth!.sub)}));
 router.post("/members/plans",requireMenu("members"),async (req:AuthRequest,res)=>res.status(201).json({plan:await members.savePlan(req.body,req.auth!.sub)}));

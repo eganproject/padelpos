@@ -114,6 +114,8 @@ export type CartQuoteItem = {
   ok: boolean; reason?: string; court_total: number; tax: number; total: number;
   /** Potongan member bila pelanggan masuk dengan akun member; sudah termasuk dalam `total`. */
   member_discount?: number; member_plan?: string;
+  /** Keterangan harga member, mis. kuota jam harga member habis. */
+  member_note?: string;
   /** Bagian potongan voucher untuk sesi ini; sudah termasuk dalam `total`. */
   voucher_discount?: number;
   addons: { addon_id: string; name: string; quantity: number; unit_price: number; pricing: "per_booking" | "per_hour"; subtotal: number; ok: boolean }[];

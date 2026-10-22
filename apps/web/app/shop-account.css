@@ -250,6 +250,7 @@
 .shop .member-plan-head strong{white-space:nowrap}
 .shop .member-plan-head small{font-weight:500;color:var(--ink-3)}
 .shop .member-plan-perk{font-size:14px;font-weight:700;color:var(--lime-deep)}
+.shop .member-plan-rate{font-weight:600;color:var(--ink-2)}
 .shop .member-plan>small{font-size:13px;color:var(--ink-3)}
 .shop .acct-form .member-agree{flex-direction:row;align-items:flex-start;gap:10px;font-weight:500}
 .shop .member-agree input{width:18px;height:18px;margin-top:2px;flex:none;accent-color:var(--green)}
