@@ -11,10 +11,11 @@ import { type ExportFormat, type ReportDoc, exportReport, row } from "@/lib/repo
 import { Modal } from "./operation-ui";
 import { AmountField, Empty, PeriodPicker, ShareBar } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
+import { CashFlowReport, OperationsReport, TrialBalanceReport } from "./finance-statements";
 
 type Range = { from:string; to:string };
-export type ReportView = "laba-rugi" | "neraca" | "buku-besar" | "pembantu";
-const views: [ReportView,string][] = [["laba-rugi","Laba rugi"],["neraca","Neraca"],["buku-besar","Buku besar"],["pembantu","Buku besar pembantu"]];
+export type ReportView = "laba-rugi" | "neraca" | "arus-kas" | "neraca-saldo" | "buku-besar" | "pembantu" | "operasional";
+const views: [ReportView,string][] = [["laba-rugi","Laba rugi"],["neraca","Neraca"],["arus-kas","Arus kas"],["neraca-saldo","Neraca saldo"],["buku-besar","Buku besar"],["pembantu","Buku besar pembantu"],["operasional","Operasional"]];
 
 export function ReportsTab({ setup, range, today, onRange }: { setup:Setup; range:Range; today:string; onRange:(range:Range)=>void }) {
   const [view,setView] = useState<ReportView>("laba-rugi");
@@ -30,6 +31,9 @@ export function ReportsTab({ setup, range, today, onRange }: { setup:Setup; rang
       {view==="neraca" && <BalanceReport today={today}/>}
       {view==="buku-besar" && <LedgerReport setup={setup} range={range}/>}
       {view==="pembantu" && <SubsidiaryReport range={range}/>}
+      {view==="arus-kas" && <CashFlowReport range={range}/>}
+      {view==="neraca-saldo" && <TrialBalanceReport range={range}/>}
+      {view==="operasional" && <OperationsReport range={range}/>}
     </div>
   );
 }
@@ -38,7 +42,7 @@ export function ReportsTab({ setup, range, today, onRange }: { setup:Setup; rang
  * Judul laporan beserta tombol unduh. `build` menyusun isi laporan sekali untuk semua format,
  * dan boleh async bila datanya perlu diambil ulang (mis. seluruh jurnal, bukan hanya yang tampil).
  */
-function ReportHead({ title, subtitle, build }: { title:string; subtitle:string; build:()=>ReportDoc|null|Promise<ReportDoc|null> }) {
+export function ReportHead({ title, subtitle, build }: { title:string; subtitle:string; build:()=>ReportDoc|null|Promise<ReportDoc|null> }) {
   const [busy,setBusy] = useState<ExportFormat|null>(null);
   async function download(format:ExportFormat) {
     setBusy(format);

@@ -11,6 +11,7 @@ import {
 import { Modal } from "./operation-ui";
 import { Empty } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
+import { ClosingView } from "./finance-closing";
 
 const typeOrder: AccountType[] = ["aset","liabilitas","ekuitas","pendapatan","beban"];
 const subtypesFor: Record<AccountType,AccountSubtype[]> = {
@@ -18,17 +19,19 @@ const subtypesFor: Record<AccountType,AccountSubtype[]> = {
 };
 
 export function SetupTab({ setup, reload }: { setup:Setup; reload:()=>void }) {
-  const [view,setView] = useState<"akun"|"pihak"|"kas">("akun");
+  const [view,setView] = useState<"akun"|"pihak"|"kas"|"tutup">("akun");
   return (
     <div className="fin-setup">
       <div className="fin-subtabs" role="tablist" aria-label="Pengaturan keuangan">
         <button type="button" role="tab" aria-selected={view==="akun"} onClick={()=>setView("akun")}>Daftar akun</button>
         <button type="button" role="tab" aria-selected={view==="pihak"} onClick={()=>setView("pihak")}>Pemasok & pihak lain</button>
         <button type="button" role="tab" aria-selected={view==="kas"} onClick={()=>setView("kas")}>Kas & penguncian</button>
+        <button type="button" role="tab" aria-selected={view==="tutup"} onClick={()=>setView("tutup")}>Tutup buku</button>
       </div>
       {view==="akun" && <AccountsView setup={setup} reload={reload}/>}
       {view==="pihak" && <PartnersView setup={setup} reload={reload}/>}
       {view==="kas" && <CashView setup={setup} reload={reload}/>}
+      {view==="tutup" && <ClosingView reload={reload}/>}
     </div>
   );
 }
@@ -282,7 +285,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
               : "Kosongkan bila belum perlu. Isi setelah laporan bulanan selesai agar angkanya tidak berubah diam-diam."}
           </small>
         </label>
-        <p className="fin-note">Jurnal otomatis dari booking dan pembayaran tetap menyesuaikan diri supaya pembukuan selalu cocok dengan data operasional.</p>
+        <p className="fin-note">Kunci juga berlaku untuk jurnal otomatis: membatalkan, memberi potongan, atau menambah barang pada booking bertanggal terkunci akan ditolak sampai kuncinya dibuka. Tutup buku tahunan otomatis mengunci sampai 31 Desember tahun itu.</p>
       </section>
       <div className={`cms-savebar${dirty?" dirty":""}`}>
         <span>{dirty ? "Ada perubahan yang belum disimpan." : setup.settings.updated_at ? `Terakhir disimpan ${new Date(setup.settings.updated_at).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}.` : "Masih memakai pengaturan bawaan."}</span>
