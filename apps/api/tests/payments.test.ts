@@ -275,6 +275,18 @@ test("pembayaran online Midtrans: keranjang, checkout, webhook, dan pelepasan sl
       assert.equal((await request("/public/checkout", "POST", checkout([item("16:00", "17:00")]))).status, 201, "slot yang sudah dilepas bisa dipesan lagi");
     });
 
+    await t.test("pekerja berkala melepas booking kedaluwarsa tanpa menunggu ada yang membuka jadwal", async () => {
+      const created = await request("/public/checkout", "POST", checkout([item("19:00", "20:00")]));
+      assert.equal(created.status, 201);
+      await db.prepare("UPDATE bookings SET hold_expires_at=UNIX_TIMESTAMP()-60 WHERE order_id=?").run(created.data.order_id);
+      const { runHousekeeping } = await import("../src/housekeeping.js");
+      await runHousekeeping();
+      const row = await db.prepare("SELECT status FROM bookings WHERE order_id=?").get(created.data.order_id) as { status: string };
+      assert.equal(row.status, "expired", "status langsung berubah di database");
+      const intent = await db.prepare("SELECT status FROM payment_intents WHERE order_ref=?").get(created.data.order_id) as { status: string } | undefined;
+      if (intent) assert.equal(intent.status, "expired");
+    });
+
     await t.test("hold kedaluwarsa tidak dianggap terisi di panel, dan bayar telat menjadi pengembalian", async () => {
       const created = await request("/public/checkout", "POST", checkout([item("17:00", "18:00")]));
       assert.equal(created.status, 201);
