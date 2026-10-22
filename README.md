@@ -79,6 +79,12 @@ menyimpan salinan nama dan harga, jadi perubahan katalog tidak mengubah tagihan 
 - **Pengembalian**: barang sewa ditandai sudah kembali dari detail booking. Barang yang belum kembali
   tampil di menu ini dan di ringkasan.
 - **Stok**: restok, barang rusak atau hilang, dan hitung ulang tercatat di riwayat stok.
+- **Harga beli (HPP)**: barang jual yang stoknya dilacak boleh diberi harga beli per pcs. Restok barang
+  jual dapat dicatat sekaligus sebagai pembelian (lunas dari kas/bank atau tempo ke pemasok); catatannya
+  masuk Kas & Transaksi ke akun Persediaan Barang Dagang, dan harga beli rata-ratanya diperbarui. Setiap
+  penjualan mencatat *Harga Pokok Penjualan* sebesar harga beli saat itu, barang rusak dan selisih hitung
+  fisik menjadi *Selisih & Kerusakan Persediaan*, dan stok lama yang baru diberi harga beli dicatat sebagai
+  saldo awal persediaan (lawan Modal Pemilik).
 - **Pelanggan**: melihat katalog di beranda, memilih tambahan di ringkasan pesanan, dan pilihannya
   ikut di pesan WhatsApp. Item yang tidak ditandai tampil online hanya tersedia untuk kasir.
 
@@ -288,6 +294,10 @@ jumlahnya sama, sehingga neraca tidak pernah perlu dicocokkan manual.
   masuk ke rekening sebesar uang yang benar-benar diterima, dan potongannya menjadi *Biaya Bank &
   Payment Gateway*. Tagihan pelanggan tetap lunas penuh.
 
+- **Barang jual** yang punya harga beli mencatat *Harga Pokok Penjualan* dan mengurangi *Persediaan Barang
+  Dagang* pada jurnal booking atau transaksi kasirnya (lihat [Sewa & tambahan](#sewa--tambahan)).
+- **Tutup kasir**: selisih uang laci saat shift ditutup dicatat ke akun *Selisih Kas*.
+
 Karena itu, membatalkan booking atau mengubah tambahannya langsung terlihat di laporan tanpa pencatatan
 ulang. Jurnal yang dibuat otomatis ditandai sumbernya dan tidak dapat diubah dari menu Keuangan; yang
 berubah adalah data operasionalnya.
@@ -317,7 +327,22 @@ Tiga rincian yang paling sering ditanyakan:
 Bagan akun bawaan sudah memakai istilah sehari-hari dan cukup untuk kebanyakan venue. Akun baru boleh
 ditambahkan; akun bawaan tidak dapat dihapus, dan jenis akun yang sudah dipakai jurnal tidak dapat
 diubah lagi agar riwayatnya tetap benar. Setelah laporan sebuah bulan selesai, isi **Kunci pembukuan**
-agar catatan manual pada periode itu tidak berubah diam-diam.
+agar periode itu tidak berubah diam-diam. Kunci berlaku untuk catatan manual maupun jurnal otomatis:
+membatalkan booking, mengubah potongan, voucher, member, atau tambahan booking yang tanggal mainnya ada di
+periode terkunci ditolak, begitu pula perubahan stok bernilai bila hari ini terkunci. Perubahan yang tidak
+menggeser angka (mis. menandai booking selesai) tetap boleh. Untuk koreksi, buka kuncinya dulu.
+
+## Tutup kasir
+
+Tab **Booking → Tutup kasir** dipakai tiap staf yang memegang laci. Saat mulai jaga, buka shift dengan
+modal awal uang tunai. Selama shift berjalan, layar itu menampilkan uang tunai yang seharusnya ada dan
+rekap per metode bayar dari transaksi yang dicatat staf itu sendiri: pembayaran dan pengembalian booking,
+transaksi kasir beserta pembatalannya, dan iuran member yang diterima di kasir. Pembayaran Midtrans tidak
+ikut karena masuk ke rekening, bukan laci.
+
+Saat selesai, hitung uang laci dan masukkan jumlahnya. Selisih wajib diberi catatan dan otomatis dijurnal
+ke akun *Selisih Kas* (kurang menambah beban, lebih menguranginya). Rekap shift bisa dicetak di printer
+nota. Satu staf hanya punya satu shift terbuka; Super Admin melihat dan boleh menutup shift semua staf.
 
 ## Tampilan
 

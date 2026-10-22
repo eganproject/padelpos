@@ -146,11 +146,13 @@ async function dropEntry(source: EntrySource, refId: string) {
   const entry = await db.prepare("SELECT id,date FROM journal_entries WHERE source=? AND ref_id=?").get(source, refId) as { id: string; date: string } | undefined;
   if (!entry) return;
   const locked = (await settings()).locked_until;
-  check(!locked || entry.date > locked, 409, lockedMessage(locked, entry.date));
+  if (locked && entry.date <= locked) check(false, 409, lockedMessage(locked, entry.date));
   await db.prepare("DELETE FROM journal_entries WHERE id=?").run(entry.id);
 }
+const longDate = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const dayText = (date: string) => longDate.format(new Date(`${date}T00:00:00Z`));
 const lockedMessage = (locked: string, date: string) =>
-  `Perubahan ini akan mengubah jurnal tanggal ${date}, padahal pembukuan sampai ${locked} sudah dikunci. Buka kuncinya di Pengaturan Keuangan bila memang perlu dikoreksi.`;
+  `Perubahan ini mengubah pembukuan tanggal ${dayText(date)}, padahal pembukuan sampai ${dayText(locked)} sudah dikunci. Buka kuncinya di Pengaturan Keuangan bila memang perlu dikoreksi.`;
 /**
  * Penjurnalan otomatis (booking, kasir, member, stok) memakai jalur yang sama dengan pencatatan manual,
  * jadi kunci periode juga berlaku di sini: jurnal baru tidak boleh masuk periode terkunci, dan jurnal lama
@@ -164,7 +166,7 @@ async function guardLocked(date: string, existing: { id: string; date: string } 
     rows.map(row => `${row.account_id}:${Number(row.debit ?? 0)}:${Number(row.credit ?? 0)}`).sort().join("|");
   const same = !!existing && existing.date === date && signature(lines) ===
     signature(await db.prepare("SELECT account_id,debit,credit FROM journal_lines WHERE entry_id=?").all(existing.id) as { account_id: string; debit: number; credit: number }[]);
-  check(same, 409, lockedMessage(locked, existing && existing.date <= locked ? existing.date : date));
+  if (!same) check(false, 409, lockedMessage(locked, existing && existing.date <= locked ? existing.date : date));
 }
 
 // --- Penjurnalan otomatis dari operasional ---------------------------------

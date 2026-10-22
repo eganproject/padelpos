@@ -7,6 +7,7 @@ import { minute } from "@/lib/operations";
 import { isRoll, rollWidth, type ReceiptData, type ReceiptSettings, type ReceiptVenue } from "@/lib/receipt";
 import { type SaleReceiptData, methodName } from "@/lib/counter";
 import { assetUrl } from "@/lib/brand";
+import { type Shift, differenceLabel, shiftSources } from "@/lib/shifts";
 
 /** Logo merek (bila diatur dan diizinkan di Pengaturan nota) lalu nama venue. */
 function ReceiptLogo({ venue, settings }: { venue: ReceiptVenue; settings: ReceiptSettings }) {
@@ -165,6 +166,52 @@ export const SaleReceipt = forwardRef<HTMLElement, { data: SaleReceiptData }>(fu
       <footer className="receipt-foot">
         {settings.footer_note && <p>{settings.footer_note}</p>}
         {renting && !voided && <p className="muted">Kembalikan barang sewa ke kasir paling lambat pukul {sale.end_time}.</p>}
+      </footer>
+    </article>
+  );
+});
+
+export type ShiftReceiptData = { shift: Shift; venue: ReceiptVenue; settings: ReceiptSettings; cashier: string; printed_at: string };
+/** Rekap tutup kasir untuk ditempel di buku kas atau diserahkan bersama setoran. */
+export const ShiftReceipt = forwardRef<HTMLElement, { data: ShiftReceiptData }>(function ShiftReceipt({ data }, ref) {
+  const { shift, venue, settings } = data;
+  const roll = isRoll(settings.paper);
+  const width = roll ? rollWidth(settings.paper, settings.custom_width) : 0;
+  const size = roll ? (width < 64 ? "narrow" : "wide") : settings.paper;
+  const sources = shiftSources(shift.summary).filter(row => row.amount);
+  return (
+    <article ref={ref} className={`receipt ${roll ? "roll" : "sheet"} size-${size}`} style={roll ? { width: `${width}mm` } : undefined} aria-label={`Rekap ${shift.number}`}>
+      <Head venue={venue} settings={settings} />
+      <div className="receipt-title"><h1>Tutup kasir</h1><span className={`receipt-state${shift.closed_at ? " on" : ""}`}>{shift.closed_at ? "DITUTUP" : "MASIH BUKA"}</span></div>
+      <dl className="receipt-meta">
+        <div><dt>No. shift</dt><dd>{shift.number}</dd></div>
+        <div><dt>Kasir</dt><dd>{shift.user_name}</dd></div>
+        <div><dt>Dibuka</dt><dd>{stamp.format(new Date(shift.opened_at))}</dd></div>
+        {shift.closed_at && <div><dt>Ditutup</dt><dd>{stamp.format(new Date(shift.closed_at))}</dd></div>}
+        {shift.closed_by_name && shift.closed_by_name !== shift.user_name && <div><dt>Ditutup oleh</dt><dd>{shift.closed_by_name}</dd></div>}
+      </dl>
+      <table className="receipt-lines">
+        {!roll && <thead><tr><th>Metode</th><th className="num">Bersih</th></tr></thead>}
+        <tbody>
+          {shift.summary.methods.map(row => (
+            <tr className="item" key={row.method}>
+              <td><b>{methodName[row.method] ?? row.method}</b><span>{row.count} transaksi · masuk {money(row.received)}{row.returned ? ` · keluar ${money(row.returned)}` : ""}</span></td>
+              <td className="num">{money(row.net)}</td>
+            </tr>
+          ))}
+          {!shift.summary.methods.length && <tr className="item"><td>Tidak ada transaksi</td><td className="num">{money(0)}</td></tr>}
+        </tbody>
+        <tfoot>
+          {sources.map(row => <tr key={row.label} className="pay"><td>{row.label}</td><td className="num">{row.sign < 0 ? "−" : ""}{money(row.amount)}</td></tr>)}
+          <tr><td>Modal awal</td><td className="num">{money(shift.opening_cash)}</td></tr>
+          <tr className="total"><td>Tunai seharusnya</td><td className="num">{money(shift.expected_cash)}</td></tr>
+          {shift.counted_cash !== null && <tr><td>Tunai dihitung</td><td className="num">{money(shift.counted_cash)}</td></tr>}
+          {shift.difference !== null && <tr className="due"><td>{differenceLabel(shift.difference)}</td><td className="num">{shift.difference < 0 ? "−" : shift.difference > 0 ? "+" : ""}{money(Math.abs(shift.difference))}</td></tr>}
+        </tfoot>
+      </table>
+      <footer className="receipt-foot">
+        {shift.close_note && <p>Catatan: {shift.close_note}</p>}
+        <p className="muted">Tanda tangan kasir: ____________</p>
       </footer>
     </article>
   );

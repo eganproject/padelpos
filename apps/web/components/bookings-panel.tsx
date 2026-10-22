@@ -1,7 +1,7 @@
 "use client";
 import { useCallback,useEffect,useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { BadgeCheck,CalendarClock,CalendarDays,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer,ShoppingBag,TicketPercent } from "lucide-react";
+import { BadgeCheck,CalendarClock,CalendarDays,Copy,CreditCard,PackageCheck,PackagePlus,Plus,Printer,ShoppingBag,TicketPercent,Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { api,money } from "@/lib/api";
 import { type Booking,type Context,type Payment,quote,slotRates,statusLabel,statusTone,timeSlots,minute } from "@/lib/operations";
@@ -17,6 +17,7 @@ import { MemberPicker } from "./member-picker";
 import { type LookupMember,hoursText,memberCourtCut,memberCut,memberOnlyAt,parseFixed } from "@/lib/members";
 import { Select, DateInput, MoneyInput } from "./form-controls";
 import { CounterPanel,SaleDetailModal } from "./counter-panel";
+import { ShiftPanel } from "./shift-panel";
 import { VoucherField } from "./voucher-field";
 import { type VoucherCheck } from "@/lib/vouchers";
 import { type BookingSale,methodName,saleStatus } from "@/lib/counter";
@@ -46,11 +47,12 @@ function firstStart(court:{opens_at:string;closes_at:string},date:string,context
   return (context&&date===context.date?starts.find(t=>t>=context.time):starts[0])??"";
 }
 
-type Tab="booking"|"kasir"|"belum-kembali";
+type Tab="booking"|"kasir"|"belum-kembali"|"tutup-kasir";
 const tabs:{id:Tab;label:string;Icon:typeof CalendarDays}[]=[
   {id:"booking",label:"Booking",Icon:CalendarDays},
   {id:"kasir",label:"Sewa & jual",Icon:ShoppingBag},
   {id:"belum-kembali",label:"Belum kembali",Icon:PackageCheck},
+  {id:"tutup-kasir",label:"Tutup kasir",Icon:Wallet},
 ];
 type Unreturned={unreturned:UnreturnedRental[];date:string;time:string};
 
@@ -86,7 +88,7 @@ export function BookingsPanel(){
   return <div className="cms">
     <div className="cms-tabs" role="tablist" aria-label="Bagian booking">{tabs.map(({id,label,Icon})=><button key={id} type="button" role="tab" id={`tab-${id}`} aria-selected={tab===id} aria-controls={`panel-${id}`} onClick={()=>choose(id)}><Icon size={16} aria-hidden="true"/><span>{label}</span>{id==="belum-kembali"&&count>0&&<em className="tab-count">{count}</em>}</button>)}</div>
     <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-      {tab==="booking"?<BookingsList changed={loadOut}/>:tab==="kasir"?<CounterPanel changed={loadOut}/>:<UnreturnedPanel data={out} reload={loadOut}/>}
+      {tab==="booking"?<BookingsList changed={loadOut}/>:tab==="kasir"?<CounterPanel changed={loadOut}/>:tab==="tutup-kasir"?<ShiftPanel/>:<UnreturnedPanel data={out} reload={loadOut}/>}
     </div>
     {opened.booking&&<BookingDetail id={opened.booking} close={closeOpened} changed={()=>void loadOut()}/>}
     {opened.sale&&<SaleDetailModal id={opened.sale} close={closeOpened} changed={()=>void loadOut()}/>}
@@ -353,7 +355,7 @@ function BookingDetail({id,close,changed}:{id:string;close:()=>void;changed:()=>
   async function pay(e:React.FormEvent){e.preventDefault();setBusy(true);setError("");try{const result=await api<{booking:Booking;payments:Payment[]}>(`/operations/bookings/${id}/payments`,{method:"POST",body:JSON.stringify(form)});merge(result);setForm(p=>({...p,note:""}));toast.success(form.kind==="refund"?"Pengembalian dicatat":"Pembayaran dicatat");changed()}catch(e){setError((e as Error).message)}finally{setBusy(false)}}
   async function status(value:"cancelled"|"completed"){
     if(value==="cancelled"&&!confirm("Batalkan booking ini? Pembayaran yang sudah diterima perlu dikembalikan dan dicatat terpisah."))return;
-    setBusy(true);setError("");try{await api(`/operations/bookings/${id}/status`,{method:"PATCH",body:JSON.stringify({status:value,reason})});toast.success("Status booking diperbarui");await load();changed()}catch(e){setError((e as Error).message)}finally{setBusy(false)}
+    setBusy(true);setError("");try{await api(`/operations/bookings/${id}/status`,{method:"PATCH",body:JSON.stringify({status:value,reason})});toast.success("Status booking diperbarui");await load();changed()}catch(e){setError((e as Error).message);toast.error((e as Error).message)}finally{setBusy(false)}
   }
   async function editAddons(){
     if(!booking)return;

@@ -48,6 +48,11 @@ router.put("/addons/:id",requireMenu("addons"),async (req:AuthRequest,res)=>res.
 router.delete("/addons/:id",requireMenu("addons"),async (req:AuthRequest,res)=>{await addons.removeAddon(String(req.params.id),req.auth!.sub);res.status(204).send()});
 router.post("/addons/:id/photo",requireMenu("addons"),express.raw({type:[...photoTypes],limit:maxPhotoSize}),async (req:AuthRequest,res)=>res.status(201).json({addon:await addons.setAddonPhoto(String(req.params.id),req.get("content-type"),req.body,req.auth!.sub)}));
 router.delete("/addons/:id/photo",requireMenu("addons"),async (req:AuthRequest,res)=>res.json({addon:await addons.removeAddonPhoto(String(req.params.id),req.auth!.sub)}));
+// Pilihan sumber dana dan pemasok untuk mencatat restok sebagai pembelian, tanpa perlu akses menu Keuangan.
+router.get("/addons/purchase-options",requireMenu("addons"),async (_req,res)=>res.json({
+  cash_accounts:(await finance.accounts()).filter(a=>a.is_cash&&a.active).map(a=>({id:a.id,code:a.code,name:a.name})),
+  partners:(await finance.partners()).filter(p=>p.active&&p.kind==="pemasok").map(p=>({id:p.id,name:p.name})),
+}));
 router.get("/addons/:id/stock",requireMenu("addons"),async (req,res)=>res.json({moves:await addons.stockMoves(String(req.params.id))}));
 router.post("/addons/:id/stock",requireMenu("addons"),async (req:AuthRequest,res)=>res.status(201).json(await addons.adjustStock(String(req.params.id),req.body,req.auth!.sub)));
 router.get("/context",requireAnyMenu(["bookings","courts"]),async (req,res)=>{
