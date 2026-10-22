@@ -21,5 +21,6 @@ export function Modal({title,close,children}:{title:string;close:()=>void;childr
   return <div className="modal-backdrop"><div className="crud-modal ops-modal" role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}><div className="modal-head"><h2>{title}</h2><button type="button" aria-label="Tutup dialog" onClick={close}><X/></button></div>{children}</div></div>;
 }
 export function ErrorBox({message,retry}:{message:string;retry?:()=>void}){return <div className="ops-error" role="alert">{message}{retry&&<button type="button" onClick={retry}>Coba lagi</button>}</div>}
-export function Submit({busy,children="Simpan"}:{busy:boolean;children?:React.ReactNode}){return <button className="ops-primary" type="submit" disabled={busy}>{busy?"Menyimpan…":children}</button>}
+/** Tombol simpan. `disabled` menonaktifkan tanpa mengganti teksnya menjadi "Menyimpan…". */
+export function Submit({busy,disabled=false,children="Simpan"}:{busy:boolean;disabled?:boolean;children?:React.ReactNode}){return <button className="ops-primary" type="submit" disabled={busy||disabled}>{busy?"Menyimpan…":children}</button>}
 

@@ -16,7 +16,7 @@ import { minute, timeSlots } from "@/lib/operations";
 import { useVenueInfo } from "@/lib/use-venue-info";
 import { environmentLabel, policySummary } from "@/lib/venue-info";
 import {
-  addDays, fetchAvailability, floorLabel, formatDay, formatShortDay, priceFor, rangeIsFree, rulesFor, venueNow,
+  addDays, fetchAvailability, floorLabel, formatDay, formatShortDay, memberOnlyFor, priceFor, rangeIsFree, rulesFor, venueNow,
   type Availability, type ShopCourt, type ShopSlot,
 } from "@/lib/shop";
 import { DateInput } from "@/components/form-controls";
@@ -174,6 +174,7 @@ function AvailabilityView() {
   const nextDay = date ? addDays(date, 1) : "";
   const totalFree = data ? data.courts.reduce((sum, entry) => sum + entry.slots.filter(slot => slot.state === "available").length, 0) : 0;
   const anySpecial = !!data?.courts.some(entry => entry.slots.some(slot => slot.rule && slot.state === "available"));
+  const anyMember = !!data?.courts.some(entry => entry.slots.some(slot => slot.member_only && slot.state === "available"));
 
   const pickedCourt = useMemo<ShopCourt | undefined>(
     () => data?.courts.find(entry => entry.court.id === picked?.courtId)?.court,
@@ -186,6 +187,7 @@ function AvailabilityView() {
   const end = picked && effective ? timeSlots(minute(picked.start) + effective, minute(picked.start) + effective)[0] : "";
   const total = picked && effective ? priceFor(pickedSlots, picked.start, effective) : 0;
   const appliedRules = picked && effective ? rulesFor(pickedSlots, picked.start, effective) : [];
+  const memberOnly = picked && effective ? memberOnlyFor(pickedSlots, picked.start, effective) : [];
   const covered = (courtId: string, start: string) =>
     !!picked && !!effective && picked.courtId === courtId && minute(start) >= minute(picked.start) && minute(start) < minute(picked.start) + effective;
 
@@ -332,6 +334,7 @@ function AvailabilityView() {
             <span><i className="pick" />Pilihan Anda</span>
             <span><i className="busy" />Terisi</span>
             {anySpecial && <span><i className="special" />Tarif khusus</span>}
+            {anyMember && <span><i className="member" />Khusus member</span>}
             {cartToday.length > 0 && <span><i className="incart" />Di keranjang</span>}
             <button type="button" className="map-toggle" aria-expanded={mapOpen} aria-controls="denah-venue" onClick={() => setMapOpen(open => !open)}>
               <MapIcon size={16} aria-hidden="true" /> {mapOpen ? "Tutup denah" : "Lihat denah"}
@@ -400,6 +403,7 @@ function AvailabilityView() {
                           const fits = open && rangeIsFree(slots, slot.start, duration);
                           const longest = open && !fits ? durations.filter(value => rangeIsFree(slots, slot.start, value)).at(-1) : undefined;
                           const special = open && !!slot.rule;
+                          const exclusive = open && !!slot.member_only;
                           const state = chosen ? "picked" : booked ? "incart" : !open ? slot.state : fits ? "free" : longest ? "short" : "nofit";
                           const label = chosen ? "dipilih" : booked ? "sudah di keranjang"
                             : slot.state === "booked" ? "sudah dipesan" : slot.state === "maintenance" ? "sedang perawatan"
@@ -409,11 +413,11 @@ function AvailabilityView() {
                             <button
                               key={slot.start}
                               type="button"
-                              className={`slot ${state}${special ? " special" : ""}`}
+                              className={`slot ${state}${special ? " special" : ""}${exclusive ? " member" : ""}`}
                               disabled={!open || booked}
                               aria-pressed={chosen}
-                              title={special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : undefined}
-                              aria-label={`${court.name} pukul ${slot.start}, ${label}${special ? `, tarif ${slot.rule}` : ""}`}
+                              title={[special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : "", exclusive ? `${slot.member_only}: khusus member` : ""].filter(Boolean).join(" · ") || undefined}
+                              aria-label={`${court.name} pukul ${slot.start}, ${label}${special ? `, tarif ${slot.rule}` : ""}${exclusive ? ", khusus member" : ""}`}
                               onClick={() => pick(court.id, slots, slot)}
                             >
                               <b>{slot.start}</b>
@@ -450,6 +454,7 @@ function AvailabilityView() {
             <DurationPicker full label="Durasi untuk jam ini" value={effective ?? duration} options={durations} allowed={value => available.includes(value)} onChange={chooseDuration} />
             {!!effective && effective !== duration && <p className="sheet-note">{durationLabel(duration)} tidak muat mulai {picked.start}, jadi dipakai {durationLabel(effective)}.</p>}
             {appliedRules.length > 0 && <p className="sheet-note">Termasuk tarif {appliedRules.join(" & ")}.</p>}
+            {memberOnly.length > 0 && <p className="sheet-note member">Jam {memberOnly.join(" & ")} hanya untuk member. Masuk dengan akun member Anda untuk memesannya; keranjang memeriksa keanggotaan sebelum bayar.</p>}
 
             {catalog.length > 0 && (
               <div className="sheet-addons">

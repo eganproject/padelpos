@@ -7,8 +7,8 @@ import { applyLines, bookingAddons, publicAddons, releaseAddons } from "./addons
 import { syncBooking } from "./finance.js";
 import { durationProblem } from "./content.js";
 import { allocate, billOf, memberCut, taxSnapshot } from "./bill.js";
-import { accountMember } from "./member-rates.js";
-import { assertScheduleFree, bookingVoucherPart, closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, scheduleClash, setVoucherOn, timeSchema, type Booking } from "./operations.js";
+import { accountMember, courtPricing, memberSlotProblem } from "./member-rates.js";
+import { assertScheduleFree, bookingVoucherPart, closeSchema, dateSchema, ensureSlot, getBooking, maintenances, priceRules, quote, scheduleClash, setVoucherOn, slotRates, timeSchema, type Booking } from "./operations.js";
 import { minimumLeft, previewVoucher, recordRedemption, resolveVoucher } from "./vouchers.js";
 import {
   createSnapTransaction, fetchTransactionStatus, gatewayFee, outcomeOf, paymentConfig, paymentMethod, payableAmount, pickChannel,
@@ -132,11 +132,13 @@ export async function quoteCart(input: unknown, accountId: string | null = null)
   const snapshot = await taxSnapshot();
   const now = localClock();
   const results = [];
+  // Menit harga member dari sesi sebelumnya di keranjang ini, untuk kuota per hari dan per bulan.
+  const memberDays = new Map<string, number>(), memberMonths = new Map<string, number>();
   for (const [index, item] of items.entries()) results.push(await (async () => {
     const duration = minutes(item.end_time) - minutes(item.start_time);
     const court = await db.prepare("SELECT id,name,hourly_rate,opens_at,closes_at,active FROM courts WHERE id=?").get(item.court_id) as
       { id: string; name: string; hourly_rate: number; opens_at: string; closes_at: string; active: number } | undefined;
-    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0, member_discount: 0, member_plan: "", voucher_discount: 0, extras: 0 };
+    const base = { index, court_id: item.court_id, court_name: court?.name ?? "Lapangan", date: item.date, start_time: item.start_time, end_time: item.end_time, tax: 0, member_discount: 0, member_plan: "", member_note: "", voucher_discount: 0, extras: 0 };
     if (!court || !court.active) return { ...base, ok: false, reason: "Lapangan ini sedang tidak tersedia.", court_total: 0, total: 0, addons: [] };
     // Keranjang yang ditinggal semalam bisa memuat jam yang sudah lewat. Batasnya sama dengan
     // jadwal publik: slot yang dimulai tepat pada menit ini masih boleh dipesan.
@@ -165,13 +167,17 @@ export async function quoteCart(input: unknown, accountId: string | null = null)
     });
     // Hitungan yang sama dengan saat booking dibuat, jadi angka di keranjang = angka yang ditagih.
     const member = await accountMember(accountId, item.date);
+    const exclusive = await memberSlotProblem(item.court_id, item.date, item.start_time, item.end_time, member);
+    const month = item.date.slice(0, 7);
+    const pricing = await courtPricing(member, slotRates(court, rules, item.date, item.start_time, item.end_time), item.date, null, { day: memberDays.get(item.date) ?? 0, month: memberMonths.get(month) ?? 0 });
+    if (pricing.court_cut && !taken && !exclusive) { memberDays.set(item.date, (memberDays.get(item.date) ?? 0) + duration); memberMonths.set(month, (memberMonths.get(month) ?? 0) + duration); }
     const extras = addons.reduce((sum, line) => sum + line.subtotal, 0);
-    const cut = member ? memberCut(courtTotal, extras, member) : 0;
+    const cut = member ? memberCut(pricing.court_cut, extras, member) : 0;
     const { total, tax } = billOf(courtTotal + extras, cut, snapshot);
     return {
-      ...base, member_discount: cut, member_plan: member?.member_plan ?? "", extras, ok: !taken && addons.every(line => line.ok),
-      reason: taken ? `Jam ini ${taken}.`
-        : addons.some(line => !line.ok) ? addonProblem(addons.filter(line => !line.ok), catalog) : "",
+      ...base, member_discount: cut, member_plan: member?.member_plan ?? "", member_note: pricing.note, extras, ok: !taken && !exclusive && addons.every(line => line.ok),
+      reason: taken ? `Jam ini ${taken}.` : exclusive
+        || (addons.some(line => !line.ok) ? addonProblem(addons.filter(line => !line.ok), catalog) : ""),
       court_total: courtTotal, tax, total, addons,
     };
   })());
@@ -317,17 +323,22 @@ export async function createCheckout(input: unknown, accountId: string | null = 
       const court = await ensureSlot(item.court_id, item.date, item.start_time, item.end_time);
       check(!await slotTaken(item), 409, `${label(item, court.name)} sudah dipesan orang lain. Hapus sesi itu dari keranjang.`);
       await assertScheduleFree(item.court_id, item.date, item.start_time, item.end_time);
-      const courtTotal = quote(court, await priceRules(), item.date, item.start_time, item.end_time);
-      // Harga member mengikuti akun yang sedang masuk, diperiksa untuk tanggal main tiap sesi.
+      const rules = await priceRules();
+      const courtTotal = quote(court, rules, item.date, item.start_time, item.end_time);
+      // Harga member mengikuti akun yang sedang masuk, diperiksa untuk tanggal main tiap sesi. Sesi
+      // sebelumnya di keranjang ini sudah tersimpan sebagai hold, jadi ikut terhitung dalam kuota.
       const member = await accountMember(accountId, item.date);
-      const cut = member ? memberCut(courtTotal, 0, member) : 0, bill = billOf(courtTotal, cut, snapshot);
+      const exclusive = await memberSlotProblem(item.court_id, item.date, item.start_time, item.end_time, member);
+      check(!exclusive, 409, `${label(item, court.name)}: ${exclusive}`);
+      const pricing = await courtPricing(member, slotRates(court, rules, item.date, item.start_time, item.end_time), item.date);
+      const cut = pricing.court_cut, bill = billOf(courtTotal, cut, snapshot);
       const id = randomUUID();
       // Baris pesanan baru dibuat setelah seluruh tagihan diketahui, jadi order_id diisi menyusul.
-      await db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,source,hold_expires_at,notes,created_at,membership_id,member_plan,member_court_rate,member_addon_rate,member_discount)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','online',UNIX_TIMESTAMP()+?,?,?,?,?,?,?,?)`)
+      await db.prepare(`INSERT INTO bookings (id,court_id,customer_id,account_id,customer,phone,date,start_time,end_time,total,court_total,tax,tax_rate,tax_inclusive,tax_label,status,source,hold_expires_at,notes,created_at,membership_id,member_plan,member_court_rate,member_addon_rate,member_discount,member_court_cut,member_fixed)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','online',UNIX_TIMESTAMP()+?,?,?,?,?,?,?,?,?,?)`)
         .run(id, item.court_id, customerId, accountId, data.customer, data.phone, item.date, item.start_time, item.end_time, bill.total, courtTotal,
           bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, config.hold_minutes * 60, data.notes, stamp,
-          member?.membership_id ?? null, member?.member_plan ?? "", member?.member_court_rate ?? 0, member?.member_addon_rate ?? 0, cut);
+          member?.membership_id ?? null, member?.member_plan ?? "", pricing.member_court_rate, member?.member_addon_rate ?? 0, cut, cut, pricing.member_fixed);
       if (item.addons.length) await applyLines(await getBooking(id), item.addons, customerId);
       created.push(await getBooking(id));
     }
@@ -459,7 +470,7 @@ async function applyStatus(intent: PaymentIntent, status: MidtransStatus) {
       for (const booking of bookings) settled.push(await getBooking(booking.id));
       const order = intent.order_ref ? await db.prepare("SELECT id,code,customer,email FROM orders WHERE id=?").get(intent.order_ref) as { id: string; code: string; customer: string; email: string } | undefined : undefined;
       await notifyOrderPaid({
-        key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
+        kind: intent.kind, key: intent.order_id, booking_id: intent.booking_id, order_id: order?.id ?? null, code: order?.code ?? bookingCode(intent.booking_id),
         customer: order?.customer ?? settled[0].customer, email: order?.email || await customerEmail(intent.booking_id), amount: intent.amount, surcharge: intent.surcharge,
         total: settled.reduce((sum, booking) => sum + booking.total, 0), paid: settled.reduce((sum, booking) => sum + booking.paid, 0),
         sessions: settled, payment_type: status.payment_type ?? intent.payment_type,

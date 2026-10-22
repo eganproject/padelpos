@@ -4,7 +4,8 @@ import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { clockLabel, localClock, minutes } from "./clock.js";
 import { type Addon, addons, lineSchema, lineTotal, peakUse, recordMove } from "./addons.js";
-import { billOf, taxSnapshot } from "./bill.js";
+import { billOf, memberCut, taxSnapshot } from "./bill.js";
+import { memberRatesFor } from "./member-rates.js";
 import { syncCounterSale } from "./finance.js";
 import {
   createSnapTransaction, expireTransaction, fetchTransactionStatus, gatewayFee, outcomeOf, paymentConfig, paymentMethod, pickChannel, publicFees,
@@ -13,6 +14,7 @@ import {
 import { normalizePhone } from "./payments.js";
 import { publicUrl } from "./config.js";
 import { recordRedemption, resolveVoucher, type Voucher } from "./vouchers.js";
+import { notifyStaffInbox } from "./staff-alerts.js";
 
 /**
  * Transaksi langsung di kasir tanpa booking lapangan: pelanggan datang menyewa raket untuk
@@ -26,6 +28,8 @@ import { recordRedemption, resolveVoucher, type Voucher } from "./vouchers.js";
  * - Barang sewa memegang unit dari jam transaksi sampai `end_time`, dihitung bersama booking
  *   lapangan (lihat peakUse), dan dilepas lebih awal begitu ditandai kembali.
  * - Barang jual memotong stok seperti pada booking dan kembali bila transaksinya dibatalkan.
+ * - Member yang dipilih kasir (aktif hari ini) mendapat diskon tambahan paketnya untuk semua barang
+ *   kecuali biaya lain yang diketik manual, dicatat ke akun Potongan Member seperti pada booking.
  */
 export interface CounterSale {
   id: string; number: string; customer: string; phone: string; date: string; start_time: string; end_time: string;
@@ -36,13 +40,15 @@ export interface CounterSale {
   /** Biaya layanan Midtrans yang dibayar pelanggan di atas `total`, dan metode yang dipilih untuknya. */
   surcharge: number; channel: ChannelKey | null;
   pay_order_id: string | null; snap_token: string | null; pay_url: string | null; pay_expires_at: number | null; payment_type: string | null;
+  /** Salinan keanggotaan saat transaksi: nama paket, diskon tambahan (basis poin), dan nilai potongannya (sudah termasuk dalam `total`). */
+  membership_id: string | null; member_plan: string; member_addon_rate: number; member_discount: number;
   /** Voucher yang dipakai dan potongannya (sudah termasuk dalam `total`). */
   voucher_id: string | null; voucher_code: string; voucher_discount: number;
 }
 export type SaleStatus = "pending" | "paid" | "void" | "expired";
 export interface CounterLine { id: string; sale_id: string; addon_id: string | null; name: string; type: Addon["type"] | "lainnya"; pricing: Addon["pricing"]; unit_price: number; quantity: number; subtotal: number; returned_at: string | null }
 
-const columns = "s.id,s.number,s.customer,s.phone,s.date,s.start_time,s.end_time,s.subtotal,s.discount,s.discount_note,s.tax,s.tax_rate,s.tax_inclusive,s.tax_label,s.total,s.method,s.tendered,s.status,s.notes,s.void_reason,s.voided_at,s.created_by,s.created_at,s.customer_id,s.booking_id,s.fee,s.surcharge,s.channel,s.paid_at,s.pay_order_id,s.snap_token,s.pay_url,s.pay_expires_at,s.payment_type,s.voucher_id,s.voucher_code,s.voucher_discount";
+const columns = "s.id,s.number,s.customer,s.phone,s.date,s.start_time,s.end_time,s.subtotal,s.discount,s.discount_note,s.tax,s.tax_rate,s.tax_inclusive,s.tax_label,s.total,s.method,s.tendered,s.status,s.notes,s.void_reason,s.voided_at,s.created_by,s.created_at,s.customer_id,s.booking_id,s.fee,s.surcharge,s.channel,s.paid_at,s.pay_order_id,s.snap_token,s.pay_url,s.pay_expires_at,s.payment_type,s.membership_id,s.member_plan,s.member_addon_rate,s.member_discount,s.voucher_id,s.voucher_code,s.voucher_discount";
 /** Batas bayar Midtrans di kasir: pelanggan membayar di tempat, jadi cukup singkat. */
 export const payMinutes = 15;
 const rupiah = (value: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
@@ -57,6 +63,8 @@ export const saleSchema = z.object({
   customer_id: z.string().max(64).nullable().default(null),
   /** Booking lapangan hari ini yang dihubungkan; jam sewa barang mengikuti jam booking. */
   booking_id: z.string().max(64).nullable().default(null),
+  /** Keanggotaan yang dipilih kasir; harus aktif hari ini. */
+  membership_id: z.string().max(64).nullable().default(null),
   /** Lama sewa dalam menit, kelipatan 30. Tidak berpengaruh bila tidak ada barang sewa atau harga per jam. */
   duration: z.number().int().min(30, "Lama sewa minimal 30 menit.").max(720, "Lama sewa maksimal 12 jam.").refine(value => value % 30 === 0, "Lama sewa harus kelipatan 30 menit.").default(60),
   lines: z.array(lineSchema.omit({ id: true })).min(1, "Pilih minimal satu barang.").max(30, "Maksimal 30 baris per transaksi."),
@@ -90,8 +98,12 @@ export async function detail(id: string) {
 /** Tautan bayar hanya relevan selama masih menunggu bayar. */
 const publicSale = (sale: CounterSale) => sale.status === "pending" ? sale : { ...sale, snap_token: null, pay_url: null };
 
-export interface LinkedBooking { id: string; code: string; court_name: string; customer: string; phone: string; customer_id: string | null; date: string; start_time: string; end_time: string; status: string }
-const bookingColumns = "b.id,b.customer,b.phone,b.customer_id,b.date,b.start_time,b.end_time,b.status,c.name court_name";
+export interface LinkedBooking {
+  id: string; code: string; court_name: string; customer: string; phone: string; customer_id: string | null; date: string; start_time: string; end_time: string; status: string;
+  /** Kode member bila booking itu memakai harga member, agar kasir bisa langsung memakainya. */
+  member_code: string | null;
+}
+const bookingColumns = "b.id,b.customer,b.phone,b.customer_id,b.date,b.start_time,b.end_time,b.status,c.name court_name,(SELECT m.code FROM memberships m WHERE m.id=b.membership_id) member_code";
 const withCode = (row: Omit<LinkedBooking, "code">): LinkedBooking => ({ ...row, code: row.id.slice(0, 8).toUpperCase() });
 async function linkedBooking(id: string) {
   const row = await db.prepare(`SELECT ${bookingColumns} FROM bookings b JOIN courts c ON c.id=b.court_id WHERE b.id=?`).get(id) as Omit<LinkedBooking, "code"> | undefined;
@@ -162,8 +174,9 @@ export async function customerOptions(input: unknown) {
   const phoneTerm = digits.length >= 3 ? (digits.startsWith("0") ? "62" + digits.slice(1) : digits) : "";
   const rawDigits = digits.length >= 3 ? digits : "";
   const today = await todayBookings();
-  type Hit = { customer_id: string | null; name: string; phone: string; visits: number; last_visit: string };
+  type Hit = { customer_id: string | null; name: string; phone: string; visits: number; last_visit: string; member_code?: string | null };
   const registered = await db.prepare(`SELECT c.id customer_id,c.name,c.phone,
+      (SELECT m.code FROM memberships m WHERE (m.customer_id=c.id OR m.phone=c.phone) AND m.status IN ('active','frozen') ORDER BY m.ends_on DESC LIMIT 1) member_code,
       (SELECT COUNT(*) FROM bookings b WHERE b.customer_id=c.id AND b.status IN ('confirmed','completed'))+(SELECT COUNT(*) FROM counter_sales s WHERE s.customer_id=c.id AND s.status='paid') visits,
       GREATEST(COALESCE((SELECT MAX(b.date) FROM bookings b WHERE b.customer_id=c.id AND b.status IN ('confirmed','completed') AND b.date<=?),''),COALESCE((SELECT MAX(s.date) FROM counter_sales s WHERE s.customer_id=c.id AND s.status='paid'),'')) last_visit
     FROM customers c WHERE (?='' OR lower(c.name) LIKE CONCAT('%',?,'%') OR (?<>'' AND c.phone LIKE CONCAT('%',?,'%')))
@@ -180,13 +193,14 @@ export async function customerOptions(input: unknown) {
   for (const hit of [...registered, ...unregistered]) {
     // Nama yang sama dari sumber lain digabung ke pelanggan terdaftar.
     if (hits.some(other => sameName(other.name, hit.name) && (!hit.phone || !other.phone || normalizePhone(other.phone) === normalizePhone(hit.phone)))) continue;
-    hits.push({ ...hit, phone: localPhone(hit.phone ?? ""), visits: Number(hit.visits), booking: bookingOf(hit) });
+    const booking = bookingOf(hit);
+    hits.push({ ...hit, phone: localPhone(hit.phone ?? ""), visits: Number(hit.visits), booking, member_code: hit.member_code ?? booking?.member_code ?? null });
   }
   // Pemesan lapangan hari ini yang belum punya riwayat lain tetap direkomendasikan.
   for (const booking of today) {
     if (term && !booking.customer.toLowerCase().includes(term) && !(rawDigits && booking.phone.replace(/\D/g, "").includes(rawDigits))) continue;
     if (hits.some(hit => hit.booking?.id === booking.id)) continue;
-    hits.push({ customer_id: booking.customer_id, name: booking.customer, phone: localPhone(booking.phone), visits: 1, last_visit: booking.date, booking });
+    hits.push({ customer_id: booking.customer_id, name: booking.customer, phone: localPhone(booking.phone), visits: 1, last_visit: booking.date, booking, member_code: booking.member_code });
   }
   hits.sort((a, b) => Number(!!b.booking) - Number(!!a.booking) || b.last_visit.localeCompare(a.last_visit) || a.name.localeCompare(b.name));
   return { customers: hits.slice(0, 10) };
@@ -253,27 +267,32 @@ export async function createSale(input: unknown, actor: string) {
     const renting = plan.some(entry => entry.type === "sewa");
     check(!renting || name.length >= 2, 400, "Isi nama penyewa agar barang sewa bisa ditagih kembali.");
     const subtotal = plan.reduce((sum, entry) => sum + entry.subtotal, 0);
-    check(data.discount <= subtotal, 400, `Potongan lebih besar dari subtotal ${rupiah(subtotal)}.`);
+    // Diskon member berlaku untuk barang katalog; biaya lain yang diketik kasir tidak ikut.
+    const member = data.membership_id ? await memberRatesFor(data.membership_id, window.date, "hari ini,") : null;
+    const memberDiscount = member ? memberCut(0, plan.filter(entry => entry.type !== "lainnya").reduce((sum, entry) => sum + entry.subtotal, 0), member) : 0;
+    check(data.discount + memberDiscount <= subtotal, 400, memberDiscount ? `Potongan ditambah potongan member lebih besar dari subtotal ${rupiah(subtotal)}.` : `Potongan lebih besar dari subtotal ${rupiah(subtotal)}.`);
     check(!data.discount || data.discount_note.length >= 3, 400, "Isi alasan potongan harga.");
+    // Potongan member dihitung dulu dari harga normal; voucher memotong sisa tagihan setelahnya.
     // Voucher memotong barang dan layanan dari katalog; biaya lain yang diketik kasir tidak ikut.
     let voucher: { voucher: Voucher; amount: number } | null = null;
     if (data.voucher_code) {
       const discountable = plan.filter(entry => entry.type !== "lainnya").reduce((sum, entry) => sum + entry.subtotal, 0);
-      const found = await resolveVoucher(data.voucher_code, [{ court: 0, extras: discountable, subtotal, cap: subtotal - data.discount }], { channel: "kasir", phone: phone || null });
+      const found = await resolveVoucher(data.voucher_code, [{ court: 0, extras: discountable, subtotal, cap: subtotal - data.discount - memberDiscount }], { channel: "kasir", phone: phone || null });
       voucher = { voucher: found.voucher, amount: found.amount };
     }
-    const snapshot = await taxSnapshot(), bill = billOf(subtotal, data.discount + (voucher?.amount ?? 0), snapshot);
+    const snapshot = await taxSnapshot(), bill = billOf(subtotal, data.discount + memberDiscount + (voucher?.amount ?? 0), snapshot);
     check(bill.total > 0, 400, "Total transaksi harus lebih dari Rp0.");
     if (data.method === "cash" && data.tendered !== null) check(data.tendered >= bill.total, 400, `Uang diterima kurang dari total ${rupiah(bill.total)}.`);
 
     const id = data.id ?? randomUUID(), now = new Date().toISOString(), online = data.method === "midtrans";
     check(!online || bill.total >= 1000, 400, "Pembayaran Midtrans minimal Rp1.000.");
     const surcharge = online ? surchargeFor(channel, bill.total, await paymentConfig()) : 0;
-    await db.prepare(`INSERT INTO counter_sales (id,number,customer,phone,date,start_time,end_time,subtotal,discount,discount_note,tax,tax_rate,tax_inclusive,tax_label,total,method,tendered,status,notes,created_by,created_at,customer_id,booking_id,paid_at,pay_expires_at,surcharge,channel,voucher_id,voucher_code,voucher_discount)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    await db.prepare(`INSERT INTO counter_sales (id,number,customer,phone,date,start_time,end_time,subtotal,discount,discount_note,tax,tax_rate,tax_inclusive,tax_label,total,method,tendered,status,notes,created_by,created_at,customer_id,booking_id,paid_at,pay_expires_at,surcharge,channel,membership_id,member_plan,member_addon_rate,member_discount,voucher_id,voucher_code,voucher_discount)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(id, await nextNumber(window.date.slice(0, 4)), name || walkInName, phone, window.date, window.start, window.end, subtotal, data.discount, data.discount ? data.discount_note : "",
         bill.tax, snapshot.tax_rate, snapshot.tax_inclusive, snapshot.tax_label, bill.total, data.method, data.method === "cash" ? data.tendered : null, online ? "pending" : "paid", data.notes, actor, now,
         customerId, booking?.id ?? null, online ? null : now, online ? Math.floor(Date.now() / 1000) + payMinutes * 60 : null, surcharge, online ? channel : null,
+        member?.membership_id ?? null, member?.member_plan ?? "", member?.member_addon_rate ?? 0, memberDiscount,
         voucher?.voucher.id ?? null, voucher?.voucher.code ?? "", voucher?.amount ?? 0);
     if (voucher) await recordRedemption({ ...voucher, channel: "kasir", sale_id: id, customer_id: customerId, customer: name || walkInName, phone, actor });
     for (const entry of plan) {
@@ -282,7 +301,7 @@ export async function createSale(input: unknown, actor: string) {
       if (entry.type === "jual" && entry.addon) await consume(entry.addon.id, entry.quantity, id, actor);
     }
     await syncCounterSale(id);
-    await audit(actor, "counter.create", id, { total: bill.total, method: data.method, booking: booking?.id ?? null, ...(voucher ? { voucher: voucher.voucher.code, voucher_discount: voucher.amount } : {}) });
+    await audit(actor, "counter.create", id, { total: bill.total, method: data.method, booking: booking?.id ?? null, ...(member ? { membership: member.membership_id, member_discount: memberDiscount } : {}), ...(voucher ? { voucher: voucher.voucher.code, voucher_discount: voucher.amount } : {}) });
     return { id, fresh: true };
   });
   if (data.method === "midtrans" && created.fresh) await openPayment(created.id, actor);
@@ -301,6 +320,7 @@ async function openPayment(id: string, actor: string) {
   const orderId = `${sale.number}-${Date.now().toString(36).toUpperCase()}`;
   const items = [
     ...lines.map(line => ({ id: line.id.slice(0, 50), price: Math.round(line.subtotal / line.quantity), quantity: line.quantity, name: line.name.slice(0, 50) })),
+    ...(sale.member_discount ? [{ id: "member", price: -sale.member_discount, quantity: 1, name: `Potongan member ${sale.member_plan}`.slice(0, 50) }] : []),
     ...(sale.discount ? [{ id: "diskon", price: -sale.discount, quantity: 1, name: `Potongan ${sale.discount_note}`.slice(0, 50) }] : []),
     ...(sale.voucher_discount ? [{ id: "voucher", price: -sale.voucher_discount, quantity: 1, name: `Voucher ${sale.voucher_code}`.slice(0, 50) }] : []),
     ...(sale.tax && !sale.tax_inclusive ? [{ id: "pajak", price: sale.tax, quantity: 1, name: `${sale.tax_label || "Pajak"} ${sale.tax_rate / 100}%`.slice(0, 50) }] : []),
@@ -359,6 +379,12 @@ export async function applySaleStatus(sale: CounterSale, status: MidtransStatus)
         WHERE id=?`).run(method, await gatewayFee(status.payment_type, fresh.total + fresh.surcharge), now, status.payment_type ?? null, status.transaction_id ?? null, late ? 1 : 0, sale.id);
       await syncCounterSale(sale.id);
       await audit("midtrans", "counter.paid", sale.id, { total: fresh.total, method, late });
+      // Kasir pembuatnya sedang menunggu di layar QR; staf lain (mis. pemilik) melihatnya di lonceng.
+      await notifyStaffInbox(`staff-counter-paid:${sale.id}`, "payment_in", {
+        title: `Pembayaran kasir ${fresh.number} lunas lewat Midtrans`,
+        body: `${fresh.customer || "Pelanggan"} membayar Rp${(fresh.total + fresh.surcharge).toLocaleString("id-ID")}.${late ? " Pembayarannya masuk setelah transaksi ditutup: serahkan barangnya atau kembalikan dananya." : ""}`,
+        link: `/admin/bookings?tab=kasir&sale=${encodeURIComponent(sale.id)}`, tone: late ? "warning" : "success",
+      }, sale.id, fresh.created_by);
     });
   } else if (outcome !== "paid" && outcome !== "pending" && sale.status === "pending") {
     await closePending(sale.id, "expired", "midtrans", outcome === "cancelled" ? "Pembayaran dibatalkan di Midtrans" : "Batas waktu bayar lewat");

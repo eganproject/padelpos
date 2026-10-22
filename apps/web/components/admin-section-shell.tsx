@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronRight, ExternalLink, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Search, Sun, UserRound, X } from "lucide-react";
+import { ChevronRight, ExternalLink, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Search, Settings, Sun, UserRound, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "./brand";
 import { useBrand } from "./brand-provider";
 import { brandName } from "@/lib/brand";
 import { StaffAvatar } from "./staff-avatar";
+import { StaffBell } from "./staff-bell";
 import { api, ApiError, forgetSession, clearSession, type User } from "@/lib/api";
-import { AdminNavigation, currentMenu, menuIcon, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
+import { AdminNavigation, currentMenu, isSettingsGroup, menuIcon, SETTINGS_PATH, settingsHubMenu, type NavigationMenu, useAdminNavigation, usePermissionGuard } from "./admin-navigation";
 
 type Theme = "dark" | "light";
 
@@ -30,7 +31,8 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
   const [wide, setWide] = useState(true);
   const { menus, role, loading } = useAdminNavigation();
   usePermissionGuard(menus, loading);
-  const current = currentMenu(menus, pathname);
+  const hub = useMemo(() => settingsHubMenu(menus), [menus]);
+  const current = pathname === SETTINGS_PATH ? hub ?? undefined : currentMenu(menus, pathname);
 
   useEffect(() => {
     const saved: Theme = localStorage.getItem("padelix_theme") === "dark" ? "dark" : "light";
@@ -94,13 +96,16 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
           <Link href="/admin" className="desk-logo" aria-label={`${brandName(brand)}, ke ringkasan`}><Brand /></Link>
           <nav className="desk-breadcrumbs" aria-label="Lokasi halaman">
             {current && <>
-              <ChevronRight aria-hidden="true" /><span>{current.group}</span>
+              {current.id === "settings-hub" ? null : <>
+                <ChevronRight aria-hidden="true" />{isSettingsGroup(current.group) && hub ? <Link href={SETTINGS_PATH}>{current.group}</Link> : <span>{current.group}</span>}
+              </>}
               <ChevronRight aria-hidden="true" /><Link href={current.path} aria-current="page">{current.name}</Link>
             </>}
           </nav>
           <div className="desk-navbar-end">
-            <DeskSearch menus={menus} />
-            <UserMenu user={user} roleName={role.name} theme={theme} toggleTheme={toggleTheme} logout={logout} />
+            <DeskSearch menus={hub ? [hub, ...menus] : menus} />
+            <StaffBell canConfigure={menus.some(menu => menu.id === "notifications")} />
+            <UserMenu user={user} roleName={role.name} canSettings={!!hub} theme={theme} toggleTheme={toggleTheme} logout={logout} />
           </div>
         </div>
       </header>
@@ -189,7 +194,7 @@ function DeskSearch({ menus }: { menus: NavigationMenu[] }) {
   );
 }
 
-function UserMenu({ user, roleName, theme, toggleTheme, logout }: { user:User|null; roleName:string; theme:Theme; toggleTheme:()=>void; logout:()=>void }) {
+function UserMenu({ user, roleName, canSettings, theme, toggleTheme, logout }: { user:User|null; roleName:string; canSettings:boolean; theme:Theme; toggleTheme:()=>void; logout:()=>void }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -208,6 +213,7 @@ function UserMenu({ user, roleName, theme, toggleTheme, logout }: { user:User|nu
       {open && <div className="desk-dropdown desk-user-menu" role="menu">
         <div className="desk-user-head"><span className="desk-avatar large" aria-hidden="true"><StaffAvatar user={user}/></span><div><b>{user?.name || "Admin"}</b><small>{roleName || user?.email}</small></div></div>
         <Link role="menuitem" href="/admin/profile"><UserRound aria-hidden="true" /> Profil saya</Link>
+        {canSettings && <Link role="menuitem" href={SETTINGS_PATH}><Settings aria-hidden="true" /> Pengaturan</Link>}
         <Link role="menuitem" href="/" target="_blank" rel="noopener"><ExternalLink aria-hidden="true" /> Situs pelanggan</Link>
         <button role="menuitem" type="button" onClick={toggleTheme}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />} {theme === "dark" ? "Tema terang" : "Tema gelap"}</button>
         <hr />

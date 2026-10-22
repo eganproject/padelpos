@@ -1,9 +1,10 @@
 "use client";
 import { useCallback,useEffect,useMemo,useState } from "react";
-import { BellRing,Check,History,Loader2,Mail,MailCheck,MessageCircle,RefreshCw,Send,TriangleAlert } from "lucide-react";
+import { BellRing,Check,UsersRound,History,Loader2,Mail,MailCheck,MessageCircle,RefreshCw,Send,TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { ErrorBox } from "./operation-ui";
+import { StaffAlertsSettings } from "./staff-alerts-settings";
 
 /** Sama dengan API (apps/api/src/notify-events.ts). */
 const eventKeys=["bill","payment_due","confirmed","expired","receipt","reschedule","cancelled","reminder","member_bill","member_active","member_expiring","member_expired","staff_new"] as const;
@@ -22,7 +23,7 @@ const eventLabels:Record<EventKey,[string,string]>={
   member_active:["Member aktif","Bukti iuran diterima, kode member, dan masa berlakunya. Juga saat pendaftar disetujui."],
   member_expiring:["Member segera berakhir","Sekali per periode, sesuai jumlah hari di pengaturan Member."],
   member_expired:["Member berakhir","Sekali setelah masa berlaku habis, dengan ajakan memperpanjang."],
-  staff_new:["Pemberitahuan untuk staf","Ke penerima staf: booking online baru dan pindah jadwal oleh pelanggan."],
+  staff_new:["Pemberitahuan untuk staf","Ke penerima staf: booking online baru, link tagihan dibayar, member online, dan pindah jadwal oleh pelanggan. Lonceng di panel admin diatur di tab Lonceng staf."],
 };
 const kindLabel:Record<string,string>={bill:"Tagihan",payment_due:"Pengingat bayar",confirmed:"Pembayaran diterima",expired:"Waktu bayar habis",receipt:"Kwitansi",reschedule:"Pindah jadwal",cancelled:"Pembatalan",reminder:"Pengingat main",member_bill:"Tagihan member",member_active:"Member aktif",member_expiring:"Member segera berakhir",member_expired:"Member berakhir",staff_new:"Untuk staf"};
 const statusLabel={pending:"Antre",sent:"Terkirim",failed:"Gagal"};
@@ -236,7 +237,7 @@ function HistoryTab({data,reload,setData}:{data:Data;reload:()=>void;setData:(up
   </>;
 }
 
-const tabs=[{id:"email",label:"Email",icon:Mail},{id:"whatsapp",label:"WhatsApp",icon:MessageCircle},{id:"riwayat",label:"Riwayat kiriman",icon:History}] as const;
+const tabs=[{id:"email",label:"Email",icon:Mail},{id:"whatsapp",label:"WhatsApp",icon:MessageCircle},{id:"staf",label:"Lonceng staf",icon:UsersRound},{id:"riwayat",label:"Riwayat kiriman",icon:History}] as const;
 type Tab=typeof tabs[number]["id"];
 
 /** Kanal notifikasi pelanggan dan staf: email (SMTP), WhatsApp, dan riwayat antrean kirimannya. */
@@ -247,6 +248,7 @@ export function NotificationsPanel(){
     catch(e){setError((e as Error).message)}
   },[]);
   useEffect(()=>{void load()},[load]);
+  useEffect(()=>{const asked=new URLSearchParams(window.location.search).get("tab");if(tabs.some(t=>t.id===asked))setTab(asked as Tab)},[]);
   const savedEmail=useCallback((settings:EmailSettings)=>setData(d=>d&&{...d,settings}),[]);
   const savedWa=useCallback((settings:WaSettings)=>setData(d=>d&&{...d,whatsapp:{...d.whatsapp,settings}}),[]);
 
@@ -278,6 +280,7 @@ export function NotificationsPanel(){
     </div>
     <div role="tabpanel" hidden={tab!=="email"}><EmailTab settings={email} saved={savedEmail}/></div>
     <div role="tabpanel" hidden={tab!=="whatsapp"}><WhatsAppTab settings={wa} saved={savedWa}/></div>
+    {tab==="staf"&&<div role="tabpanel"><StaffAlertsSettings/></div>}
     {tab==="riwayat"&&<div role="tabpanel"><HistoryTab data={data} reload={()=>void load()} setData={update=>setData(d=>d&&update(d))}/></div>}
   </div>;
 }

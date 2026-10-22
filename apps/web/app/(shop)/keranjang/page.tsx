@@ -85,6 +85,7 @@ export default function CartPage() {
       matches: !!matches,
       memberCut: matches ? checked.member_discount ?? 0 : 0,
       memberPlan: matches ? checked.member_plan ?? "" : "",
+      memberNote: matches ? checked.member_note ?? "" : "",
       voucherCut: matches ? checked.voucher_discount ?? 0 : 0,
     };
   }), [items, quote, payment?.tax]);
@@ -190,7 +191,7 @@ export default function CartPage() {
 
       <div className="cart-grid">
         <div className="cart-list">
-          {priced.map(({ item, courtTotal, total: itemPrice, lineTotals, problem }) => {
+          {priced.map(({ item, courtTotal, total: itemPrice, lineTotals, problem, memberCut: itemCut, memberNote }) => {
             const open = openPicker === item.key;
             const picks = Object.fromEntries(item.addons.map(line => [line.addon_id, line.quantity]));
             return (
@@ -220,7 +221,9 @@ export default function CartPage() {
                       <span>{money(lineTotals.get(line.addon_id) ?? lineTotal(line.unit_price, line.quantity, line.pricing, item.duration))}</span>
                     </li>
                   ))}
+                  {!problem && itemCut > 0 && <li className="member-cut"><span>Harga member</span><span>−{money(itemCut)}</span></li>}
                 </ul>
+                {!problem && memberNote && <p className="cart-member-note">{memberNote}</p>}
 
                 {open && catalog.length > 0 && (
                   <ShopAddonPicker options={catalog} picks={picks} loading={false}

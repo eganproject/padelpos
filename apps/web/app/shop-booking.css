@@ -16,6 +16,7 @@
 .shop .book-legend i.pick{border-color:var(--green);background:var(--green)}
 .shop .book-legend i.busy{border-color:var(--rule);background:repeating-linear-gradient(135deg,var(--sunk) 0 3px,#e2e6dc 3px 6px)}
 .shop .book-legend i.special{width:8px;height:8px;margin-inline:3px;border:0;border-radius:50%;background:#e2a21a}
+.shop .book-legend i.member{width:8px;height:8px;margin-inline:3px;border:0;border-radius:2px;background:var(--blue);transform:rotate(45deg)}
 .shop .book-legend i.incart{border-color:var(--lime-edge);background:var(--lime)}
 .shop .map-toggle{margin-left:auto;display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid var(--rule);border-radius:999px;background:var(--card);color:var(--green);font-size:13px;font-weight:700}
 .shop .book-map{margin-bottom:14px}
@@ -54,6 +55,9 @@
 .shop .slot:disabled{cursor:not-allowed;opacity:1}
 .shop .slot.special small{color:var(--amber)}
 .shop .slot.special:after{content:"";position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:#e2a21a}
+/* Jam khusus member: belah ketupat biru di pojok kiri, agar tidak bertabrakan dengan titik tarif khusus. */
+.shop .slot.member:before{content:"";position:absolute;top:6px;left:6px;width:6px;height:6px;border-radius:1px;background:var(--blue);transform:rotate(45deg)}
+.shop .sheet-note.member{color:var(--blue)}
 .shop .slot.short{border-style:dashed;border-color:var(--rule-2);background:#fff}
 .shop .slot.short small{color:var(--ink-3)}
 .shop .slot.nofit{border-style:dashed;border-color:var(--rule);background:#fafbf8;color:var(--ink-3)}

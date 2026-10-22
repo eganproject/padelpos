@@ -15,7 +15,9 @@ export type ShopCourt = {
   layout: CourtBox;
 };
 /** `rate` adalah tarif per jam slot ini; `rule` nama tarif khusus bila berlaku. */
-export type ShopSlot = { start: string; end: string; state: SlotState; rate: number; rule: string | null };
+export type ShopSlot = { start: string; end: string; state: SlotState; rate: number; rule: string | null; rule_id?: string | null;
+  /** Nama jam khusus member bila slot ini hanya bisa dipesan member. */
+  member_only?: string | null };
 export type CourtAvailability = { court: ShopCourt; slots: ShopSlot[] };
 export type Availability = { date: string; today: string; time: string; timezone: string; venue: Venue; floors: Floor[]; features: VenueFeature[]; courts: CourtAvailability[] };
 
@@ -53,6 +55,8 @@ export const priceFor = (slots: ShopSlot[], start: string, duration: number) =>
 export const rulesFor = (slots: ShopSlot[], start: string, duration: number) =>
   [...new Set(slotsFrom(slots, start, duration).map(slot => slot.rule).filter((rule): rule is string => !!rule))];
 
+export const memberOnlyFor = (slots: ShopSlot[], start: string, duration: number) =>
+  [...new Set(slotsFrom(slots, start, duration).map(slot => slot.member_only).filter((label): label is string => !!label))];
 /** Slot berurutan mulai dari `start` sepanjang `duration` menit, semuanya harus tersedia. */
 export function rangeIsFree(slots: ShopSlot[], start: string, duration: number) {
   const range = slotsFrom(slots, start, duration);

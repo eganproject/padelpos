@@ -53,9 +53,33 @@ export function allocate(amount: number, weights: number[]) {
  * ke booking saat dipesan. Biaya lain yang diketik kasir ("lainnya") tidak ikut didiskon.
  */
 export interface MemberRates { member_court_rate: number; member_addon_rate: number }
-export function memberCut(courtTotal: number, addonsTotal: number, rates: MemberRates) {
-  return Math.round(courtTotal * rates.member_court_rate / 10000) + Math.round(addonsTotal * rates.member_addon_rate / 10000);
+/** Tarif tetap member per jam: kunci id tarif khusus (`price_rules`) atau `normal` untuk tarif dasar lapangan. */
+export type FixedRates = Record<string, number>;
+/** Tarif per jam satu slot 30 menit, dan tarif khusus yang berlaku (null = tarif dasar). */
+export interface SlotRate { rate: number; rule_id: string | null }
+export const fixedKey = (slot: Pick<SlotRate, "rule_id">) => slot.rule_id ?? "normal";
+/**
+ * Potongan member dari sewa lapangan. Slot yang punya tarif tetap member dibayar dengan tarif itu
+ * (tidak pernah lebih mahal dari harga normal); slot lain mendapat diskon persen paket. Tanpa tarif
+ * tetap, hasilnya sama dengan diskon persen dari total sewa.
+ */
+export function memberCourtCut(slots: SlotRate[], courtRate: number, fixed: FixedRates | null) {
+  let normal = 0, saved = 0;
+  for (const slot of slots) {
+    const price = fixed?.[fixedKey(slot)];
+    if (price === undefined) normal += slot.rate;
+    else saved += slot.rate - Math.min(price, slot.rate);
+  }
+  return Math.round(saved / 2) + Math.round(Math.round(normal / 2) * courtRate / 10000);
 }
+/** Potongan member seluruhnya: potongan sewa lapangan (sudah dihitung) ditambah diskon persen tambahan. */
+export function memberCut(courtCut: number, addonsTotal: number, rates: Pick<MemberRates, "member_addon_rate">) {
+  return courtCut + Math.round(addonsTotal * rates.member_addon_rate / 10000);
+}
+export const parseFixed = (value: string | null | undefined): FixedRates | null => {
+  if (!value) return null;
+  try { const parsed = JSON.parse(value) as FixedRates; return Object.keys(parsed).length ? parsed : null; } catch { return null; }
+};
 /** Jumlah tambahan yang ikut diskon member pada sebuah booking. */
 export async function discountableAddons(bookingId: string) {
   return Number((await db.prepare("SELECT COALESCE(SUM(subtotal),0) n FROM booking_addons WHERE booking_id=? AND type<>'lainnya'").get(bookingId) as { n: number }).n);

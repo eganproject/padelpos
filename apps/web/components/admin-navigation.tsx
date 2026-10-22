@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, ArrowLeftRight, BadgeCheck, BookOpenText, CalendarDays, ChartPie, ChevronDown, Circle, Contact, CreditCard, DatabaseBackup, FileChartColumn, History, KeyRound, LayoutDashboard, LayoutGrid, Mail, BellRing, MenuSquare, Palette, Printer, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, TicketPercent, UserRound, UsersRound, Wallet, WalletCards } from "lucide-react";
+import { Activity, ArrowLeftRight, BadgeCheck, BookOpenText, CalendarDays, ChartPie, ChevronDown, Circle, Contact, CreditCard, DatabaseBackup, FileChartColumn, History, KeyRound, LayoutDashboard, LayoutGrid, Mail, BellRing, MenuSquare, Palette, Printer, Settings, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, TicketPercent, UserRound, UsersRound, Wallet, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api, ApiError, forgetSession } from "@/lib/api";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 export type NavigationMenu = { id:string; name:string; path:string; icon:string; group:string; order:number; active:boolean };
 type NavigationResponse = { menus:NavigationMenu[]; role:{ name:string; slug:string } };
 
-const icons = { Activity, ArrowLeftRight, BadgeCheck, BookOpenText, CalendarDays, ChartPie, Contact, CreditCard, DatabaseBackup, FileChartColumn, History, KeyRound, LayoutDashboard, LayoutGrid, Mail, BellRing, MenuSquare, Palette, Printer, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, TicketPercent, UserRound, UsersRound, Wallet, WalletCards };
+const icons = { Activity, ArrowLeftRight, BadgeCheck, BookOpenText, CalendarDays, ChartPie, Contact, CreditCard, DatabaseBackup, FileChartColumn, History, KeyRound, LayoutDashboard, LayoutGrid, Mail, BellRing, MenuSquare, Palette, Printer, Settings, ShieldCheck, ShoppingBag, SlidersHorizontal, Store, TicketPercent, UserRound, UsersRound, Wallet, WalletCards };
 /** Ikon yang benar-benar dapat tampil di sidebar; formulir menu hanya menawarkan nama-nama ini. */
 export const menuIconNames = Object.keys(icons);
 
@@ -41,6 +41,18 @@ export const currentMenu = (menus:NavigationMenu[], pathname:string) =>
   menus.filter(menu => isActiveMenu(menu, pathname)).sort((a, b) => b.path.length - a.path.length)[0];
 export const menuIcon = (name:string) => icons[name as keyof typeof icons] || Circle;
 
+/** Halaman Pengaturan yang memuat semua menu grup Pengaturan sebagai kartu. */
+export const SETTINGS_PATH = "/admin/pengaturan";
+/** Grup sidebar yang diringkas menjadi satu menu Pengaturan (nama grup bisa diubah huruf besar-kecilnya). */
+export const isSettingsGroup = (group:string) => group.trim().toLowerCase() === "pengaturan";
+export const settingsMenus = (menus:NavigationMenu[]) => menus.filter(menu => isSettingsGroup(menu.group));
+/** Menu semu "Pengaturan" yang mewakili seluruh grupnya di sidebar, pencarian, dan menu akun. */
+export const settingsHubMenu = (menus:NavigationMenu[]): NavigationMenu | null => {
+  const items = settingsMenus(menus);
+  if (!items.length) return null;
+  return { id: "settings-hub", name: "Pengaturan", path: SETTINGS_PATH, icon: "Settings", group: items[0].group, order: Math.min(...items.map(menu => menu.order)), active: true };
+};
+
 const GROUPS_KEY = "padelix_nav_closed";
 
 /**
@@ -50,12 +62,18 @@ const GROUPS_KEY = "padelix_nav_closed";
  */
 export function AdminNavigation({ menus, onNavigate, compact = false }: { menus:NavigationMenu[]; onNavigate?:()=>void; compact?:boolean }) {
   const pathname = usePathname();
-  const activeId = currentMenu(menus, pathname)?.id;
+  const active = currentMenu(menus, pathname);
+  /* Halaman Pengaturan dan semua halaman di dalamnya menandai menu Pengaturan sebagai aktif. */
+  const activeId = pathname === SETTINGS_PATH || (active && isSettingsGroup(active.group)) ? "settings-hub" : active?.id;
   const [closed, setClosed] = useState<string[]>([]);
   const [tip, setTip] = useState<{ label:string; top:number; left:number } | null>(null);
   const groups = useMemo(() => {
     const result = new Map<string, NavigationMenu[]>();
-    menus.forEach((menu) => result.set(menu.group, [...(result.get(menu.group) || []), menu]));
+    const hub = settingsHubMenu(menus);
+    menus.forEach((menu) => {
+      if (isSettingsGroup(menu.group)) { if (hub && !result.has(hub.group)) result.set(hub.group, [hub]); return; }
+      result.set(menu.group, [...(result.get(menu.group) || []), menu]);
+    });
     return [...result.entries()];
   }, [menus]);
 
@@ -82,14 +100,16 @@ export function AdminNavigation({ menus, onNavigate, compact = false }: { menus:
         const hasActive = items.some(menu => menu.id === activeId);
         const open = compact || hasActive || !closed.includes(group);
         const id = `nav-${group.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+        /* Grup Pengaturan tinggal satu menu, jadi tampil tanpa judul grup yang bisa dilipat. */
+        const single = isSettingsGroup(group);
         return (
-          <div className="desk-nav-section" key={group}>
-            {compact
+          <div className={`desk-nav-section${single ? " single" : ""}`} key={group}>
+            {single ? (compact ? <span className="desk-nav-divider" aria-hidden="true" /> : null) : compact
               ? <span className="desk-nav-divider" aria-hidden="true" />
               : <button type="button" className="desk-nav-label" aria-expanded={open} aria-controls={id} onClick={() => toggle(group)} disabled={hasActive} title={hasActive ? undefined : open ? `Lipat ${group}` : `Buka ${group}`}>
                   <span>{group}</span><ChevronDown aria-hidden="true" />
                 </button>}
-            {open && <div className="desk-nav-items" id={id} role="list">
+            {(open || single) && <div className="desk-nav-items" id={id} role="list">
               {items.map(menu => {
                 const Icon = menuIcon(menu.icon);
                 const active = menu.id === activeId;
@@ -116,7 +136,7 @@ export function usePermissionGuard(menus:NavigationMenu[], loading:boolean) {
   const router = useRouter();
   useEffect(() => {
     if (loading) return;
-    const allowed = menus.some((menu) => isActiveMenu(menu, pathname));
+    const allowed = menus.some((menu) => isActiveMenu(menu, pathname)) || (pathname === SETTINGS_PATH && settingsMenus(menus).length > 0);
     if (!allowed && menus.length) router.replace(menus[0].path);
   }, [loading, menus, pathname, router]);
 }
