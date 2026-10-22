@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader } from "mysql2/promise";
 import { databaseUrl } from "./config.js";
-import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts, schemaV9, schemaV10, voucherAccounts, schemaV11, schemaV12 } from "./schema.js";
+import { accountSeed, defaultMenus, defaultRoles, membershipAccounts, menuSeed, schema, schemaV2, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, gatewayAccounts, schemaV9, schemaV10, voucherAccounts, schemaV11, schemaV12, schemaV13, inventoryAccounts } from "./schema.js";
 import type { AccessMenu, AccessRole, User } from "./types.js";
 
 /**
@@ -270,6 +270,22 @@ const migrations: { version: number; up: () => Promise<void> }[] = [
     // Notifikasi staf di panel admin.
     version: 12, async up() {
       for (const statement of schemaV12) await db.exec(statement);
+    },
+  },
+  {
+    // Harga pokok barang jual, tutup kasir, dan sumber jurnal `persediaan` serta `tutup_kasir`.
+    version: 13, async up() {
+      for (const statement of schemaV13) await db.exec(statement);
+      const checks = await db.prepare(`SELECT c.CONSTRAINT_NAME name FROM information_schema.CHECK_CONSTRAINTS c
+        JOIN information_schema.TABLE_CONSTRAINTS t ON t.CONSTRAINT_SCHEMA=c.CONSTRAINT_SCHEMA AND t.CONSTRAINT_NAME=c.CONSTRAINT_NAME
+        WHERE c.CONSTRAINT_SCHEMA=DATABASE() AND t.TABLE_NAME='journal_entries' AND c.CHECK_CLAUSE LIKE '%pembayaran%'`).all() as { name: string }[];
+      for (const row of checks) await db.exec(`ALTER TABLE journal_entries DROP CHECK \`${row.name.replace(/`/g, "``")}\``);
+      await db.exec("ALTER TABLE journal_entries ADD CONSTRAINT journal_entries_source CHECK (source IN ('manual','catatan','pelunasan','transfer','modal','booking','pembayaran','keanggotaan','kasir','persediaan','tutup_kasir'))");
+      // Akun bawaan 1-400 sudah berjenis persediaan; jadikan akun sistem bila belum diubah admin.
+      const stock = await db.prepare("SELECT id FROM accounts WHERE code='1-400' AND subtype='persediaan' AND system_key IS NULL").get() as { id: string } | undefined;
+      if (stock && !await db.prepare("SELECT 1 FROM accounts WHERE system_key='persediaan'").get())
+        await db.prepare("UPDATE accounts SET system_key='persediaan' WHERE id=?").run(stock.id);
+      await addSystemAccounts(inventoryAccounts);
     },
   },
 ];

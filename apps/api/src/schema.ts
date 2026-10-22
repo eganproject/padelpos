@@ -797,6 +797,50 @@ export const schemaV12: string[] = [
     CONSTRAINT staff_notification_reads_fk FOREIGN KEY (notification_id) REFERENCES staff_notifications(id) ON DELETE CASCADE
   )`,
 ];
+/**
+ * Versi 13: harga pokok barang jual dan tutup kasir.
+ *
+ * - `addons.cost`: harga beli rata-rata per unit barang jual. Diperbarui saat restok dicatat sebagai pembelian.
+ * - `booking_addons.unit_cost` / `counter_sale_lines.unit_cost`: salinan harga beli saat barang dijual, dasar
+ *   jurnal Harga Pokok Penjualan. Baris lama bernilai 0 sehingga jurnal lamanya tidak berubah.
+ * - `addon_stock_moves.unit_cost` dan `record_id`: harga beli restok dan catatan pengeluaran pembeliannya.
+ * - `cash_shifts`: satu shift kasir per staf, dari modal awal laci sampai uang dihitung saat tutup.
+ * - `membership_invoices.paid_by`: staf yang menerima iuran di kasir, untuk rekap shift.
+ */
+export const schemaV13: string[] = [
+  `ALTER TABLE addons ADD COLUMN cost BIGINT NOT NULL DEFAULT 0 CHECK(cost >= 0)`,
+  `ALTER TABLE booking_addons ADD COLUMN unit_cost BIGINT NOT NULL DEFAULT 0 CHECK(unit_cost >= 0)`,
+  `ALTER TABLE counter_sale_lines ADD COLUMN unit_cost BIGINT NOT NULL DEFAULT 0 CHECK(unit_cost >= 0)`,
+  `ALTER TABLE addon_stock_moves ADD COLUMN unit_cost BIGINT NULL, ADD COLUMN record_id ${id} NULL`,
+  `ALTER TABLE membership_invoices ADD COLUMN paid_by ${id} NULL`,
+  `CREATE TABLE cash_shifts (
+    id ${id} PRIMARY KEY,
+    number VARCHAR(32) NOT NULL,
+    user_id ${id} NOT NULL,
+    opened_at ${stamp} NOT NULL,
+    opening_cash BIGINT NOT NULL CHECK(opening_cash >= 0),
+    open_note TEXT NOT NULL DEFAULT (''),
+    closed_at ${stamp},
+    closed_by ${id},
+    expected_cash BIGINT,
+    counted_cash BIGINT CHECK(counted_cash IS NULL OR counted_cash >= 0),
+    difference BIGINT,
+    summary LONGTEXT CHECK(summary IS NULL OR json_valid(summary)),
+    close_note TEXT NOT NULL DEFAULT (''),
+    UNIQUE KEY cash_shifts_number (number),
+    KEY cash_shifts_user (user_id, opened_at),
+    KEY cash_shifts_opened (opened_at)
+  )`,
+  "ALTER TABLE payments ADD KEY payments_staff (created_by, created_at)",
+  "ALTER TABLE counter_sales ADD KEY counter_sales_cashier (created_by, paid_at)",
+];
+/** Akun sistem untuk persediaan, harga pokok, dan selisih kas, dengan format yang sama seperti `membershipAccounts`. */
+export const inventoryAccounts: typeof membershipAccounts = [
+  [["1-400", "1-410", "1-420"], "Persediaan Barang Dagang", "aset", "persediaan", "persediaan", "Nilai beli bola, minuman, dan barang jual lain yang masih di gudang."],
+  [["5-050", "5-051", "5-052"], "Harga Pokok Penjualan", "beban", "beban", "hpp", "Harga beli barang jual yang sudah terjual."],
+  [["5-960", "5-961", "5-962"], "Selisih & Kerusakan Persediaan", "beban", "beban", "selisih_persediaan", "Barang rusak atau hilang dan selisih hitung fisik stok."],
+  [["5-970", "5-971", "5-972"], "Selisih Kas", "beban", "beban", "selisih_kas", "Kurang (atau lebih, saldonya berkurang) uang laci saat tutup kasir."],
+];
 /** Akun sistem untuk potongan voucher, dengan format yang sama seperti `membershipAccounts`. */
 export const voucherAccounts: typeof membershipAccounts = [
   [["4-970", "4-971", "4-972"], "Potongan Voucher", "pendapatan", "pendapatan", "potongan_voucher",
@@ -862,7 +906,7 @@ export const tableOrder = [
   "users", "roles", "menus", "settings", "sessions", "audit_log", "customers", "otp_codes", "floors", "courts",
   "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "member_slots", "customer_accounts", "avatars", "brand_assets",
   "membership_plans", "membership_plan_rates", "memberships", "membership_invoices", "orders", "vouchers",
-  "bookings", "payments", "addons", "counter_sales", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
+  "bookings", "payments", "addons", "counter_sales", "cash_shifts", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
   "voucher_redemptions", "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "staff_notifications", "staff_notification_reads", "migrations",
 ];
 

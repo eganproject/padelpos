@@ -23,7 +23,7 @@ import { allocate, taxSettings, type TaxSettings } from "./bill.js";
 
 export type AccountType = "aset" | "liabilitas" | "ekuitas" | "pendapatan" | "beban";
 export type AccountSubtype = "kas_bank" | "piutang" | "persediaan" | "aset_tetap" | "utang" | "modal" | "pendapatan" | "beban";
-export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan" | "kasir";
+export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan" | "kasir" | "persediaan" | "tutup_kasir";
 export interface Account { id: string; code: string; name: string; type: AccountType; subtype: AccountSubtype; is_cash: number; system_key: string | null; description: string; active: number; position: number; created_at: string }
 export interface Partner { id: string; name: string; kind: "pemasok" | "pelanggan" | "karyawan" | "lainnya"; phone: string; note: string; active: number; created_at: string }
 export interface JournalLine { id: string; account_id: string; account_code: string; account_name: string; debit: number; credit: number; memo: string; partner_id: string | null; partner_name: string | null; booking_id: string | null }
@@ -126,8 +126,9 @@ async function putEntry(input: EntryInput) {
   const credit = lines.reduce((sum, line) => sum + (line.credit ?? 0), 0);
   check(debit === credit, 400, "Jurnal belum seimbang: total debit harus sama dengan total kredit.");
   const existing = input.ref_id
-    ? await db.prepare("SELECT id FROM journal_entries WHERE source=? AND ref_id=?").get(input.source, input.ref_id) as { id: string } | undefined
+    ? await db.prepare("SELECT id,date FROM journal_entries WHERE source=? AND ref_id=?").get(input.source, input.ref_id) as { id: string; date: string } | undefined
     : undefined;
+  await guardLocked(input.date, existing, lines);
   const id = existing?.id ?? randomUUID();
   if (existing) {
     await db.prepare("UPDATE journal_entries SET date=?,memo=? WHERE id=?").run(input.date, input.memo, id);
@@ -142,8 +143,28 @@ async function putEntry(input: EntryInput) {
   return id;
 }
 async function dropEntry(source: EntrySource, refId: string) {
-  const entry = await db.prepare("SELECT id FROM journal_entries WHERE source=? AND ref_id=?").get(source, refId) as { id: string } | undefined;
-  if (entry) await db.prepare("DELETE FROM journal_entries WHERE id=?").run(entry.id);
+  const entry = await db.prepare("SELECT id,date FROM journal_entries WHERE source=? AND ref_id=?").get(source, refId) as { id: string; date: string } | undefined;
+  if (!entry) return;
+  const locked = (await settings()).locked_until;
+  check(!locked || entry.date > locked, 409, lockedMessage(locked, entry.date));
+  await db.prepare("DELETE FROM journal_entries WHERE id=?").run(entry.id);
+}
+const lockedMessage = (locked: string, date: string) =>
+  `Perubahan ini akan mengubah jurnal tanggal ${date}, padahal pembukuan sampai ${locked} sudah dikunci. Buka kuncinya di Pengaturan Keuangan bila memang perlu dikoreksi.`;
+/**
+ * Penjurnalan otomatis (booking, kasir, member, stok) memakai jalur yang sama dengan pencatatan manual,
+ * jadi kunci periode juga berlaku di sini: jurnal baru tidak boleh masuk periode terkunci, dan jurnal lama
+ * di periode itu tidak boleh berubah nilainya. Menulis ulang dengan isi yang sama (mis. booking ditandai
+ * selesai) tetap boleh karena tidak menggeser angka laporan.
+ */
+async function guardLocked(date: string, existing: { id: string; date: string } | undefined, lines: LineInput[]) {
+  const locked = (await settings()).locked_until;
+  if (!locked || (date > locked && (!existing || existing.date > locked))) return;
+  const signature = (rows: { account_id: string; debit?: number; credit?: number }[]) =>
+    rows.map(row => `${row.account_id}:${Number(row.debit ?? 0)}:${Number(row.credit ?? 0)}`).sort().join("|");
+  const same = !!existing && existing.date === date && signature(lines) ===
+    signature(await db.prepare("SELECT account_id,debit,credit FROM journal_lines WHERE entry_id=?").all(existing.id) as { account_id: string; debit: number; credit: number }[]);
+  check(same, 409, lockedMessage(locked, existing && existing.date <= locked ? existing.date : date));
 }
 
 // --- Penjurnalan otomatis dari operasional ---------------------------------
@@ -186,6 +207,7 @@ export async function syncBooking(bookingId: string) {
         ...(Number(booking.voucher_discount) ? [{ account_id: (await systemAccount("potongan_voucher")).id, debit: Number(booking.voucher_discount), memo: `Voucher ${booking.voucher_code}`.trim() }] : []),
         ...revenueLines,
         { account_id: (await systemAccount("utang_pajak")).id, credit: booking.tax, memo: booking.customer },
+        ...await costLines((await db.prepare("SELECT COALESCE(SUM(unit_cost*quantity),0) n FROM booking_addons WHERE booking_id=? AND type='jual'").get(bookingId) as { n: number }).n, booking.customer),
       ],
     });
   } else if (booking.forfeited > 0) {
@@ -214,6 +236,52 @@ export async function syncBooking(bookingId: string) {
   }
 }
 
+// --- Persediaan barang jual -------------------------------------------------
+
+/** Harga pokok barang jual yang terjual: Dr Harga Pokok Penjualan, Cr Persediaan. */
+async function costLines(amount: number, memo: string): Promise<LineInput[]> {
+  amount = Number(amount);
+  if (amount <= 0) return [];
+  return [
+    { account_id: (await systemAccount("hpp")).id, debit: amount, memo: `Harga pokok ${memo}` },
+    { account_id: (await systemAccount("persediaan")).id, credit: amount, memo },
+  ];
+}
+export const inventoryAccountId = async () => (await systemAccount("persediaan")).id;
+
+/**
+ * Jurnal perubahan nilai persediaan di luar penjualan dan pembelian, bertanggal hari ini:
+ * - `awal`: stok yang sudah ada sebelum dilacak nilainya. Dr Persediaan, Cr Modal Pemilik.
+ * - `selisih`: barang rusak/hilang, hasil hitung fisik, atau harga beli diubah manual. Nilai negatif
+ *   berarti persediaan berkurang: Dr Selisih & Kerusakan Persediaan, Cr Persediaan (dan sebaliknya).
+ */
+export async function postInventory(input: { ref: string; kind: "awal" | "selisih"; amount: number; memo: string; actor: string }) {
+  if (!input.amount) return;
+  const stock = await inventoryAccountId(), value = Math.abs(input.amount);
+  const other = (await systemAccount(input.kind === "awal" ? "modal" : "selisih_persediaan")).id;
+  await putEntry({
+    date: localClock().date, source: "persediaan", ref_id: input.ref, actor: input.actor, memo: input.memo,
+    lines: input.amount > 0
+      ? [{ account_id: stock, debit: value, memo: input.memo }, { account_id: other, credit: value, memo: input.memo }]
+      : [{ account_id: other, debit: value, memo: input.memo }, { account_id: stock, credit: value, memo: input.memo }],
+  });
+}
+
+// --- Selisih tutup kasir -----------------------------------------------------
+
+/** Selisih uang laci saat tutup kasir. Kurang: Dr Selisih Kas, Cr Kas. Lebih: sebaliknya. */
+export async function postCashDifference(input: { shift_id: string; number: string; difference: number; actor: string; name: string }) {
+  if (!input.difference) return null;
+  const cash = await cashAccountFor("cash"), loss = (await systemAccount("selisih_kas")).id, value = Math.abs(input.difference);
+  const memo = `${input.difference < 0 ? "Kurang" : "Lebih"} kas ${input.number} · ${input.name}`;
+  return await putEntry({
+    date: localClock().date, source: "tutup_kasir", ref_id: input.shift_id, actor: input.actor, memo,
+    lines: input.difference < 0
+      ? [{ account_id: loss, debit: value, memo }, { account_id: cash, credit: value, memo }]
+      : [{ account_id: cash, debit: value, memo }, { account_id: loss, credit: value, memo }],
+  });
+}
+
 // --- Penjurnalan transaksi langsung di kasir --------------------------------
 
 /**
@@ -229,6 +297,7 @@ export async function syncCounterSale(saleId: string) {
   if (!sale || !sale.paid_at) return;
   const parts = await db.prepare("SELECT type,SUM(subtotal) amount FROM counter_sale_lines WHERE sale_id=? GROUP BY type ORDER BY type").all(saleId) as { type: string; amount: number }[];
   const revenue = sale.total + sale.discount + Number(sale.member_discount) + Number(sale.voucher_discount) - sale.tax;
+  const cost = Number((await db.prepare("SELECT COALESCE(SUM(unit_cost*quantity),0) n FROM counter_sale_lines WHERE sale_id=? AND type='jual'").get(saleId) as { n: number }).n);
   const shares = allocate(revenue, parts.map(part => Math.max(0, Number(part.amount))));
   const merged = new Map<string, number>();
   parts.forEach((part, index) => { const key = addonAccountKey[part.type] ?? "pendapatan_lain"; merged.set(key, (merged.get(key) ?? 0) + shares[index]); });
@@ -246,6 +315,7 @@ export async function syncCounterSale(saleId: string) {
     if (Number(sale.voucher_discount)) result.push({ account_id: (await systemAccount("potongan_voucher")).id, ...side(Number(sale.voucher_discount), true), memo: `Voucher ${sale.voucher_code}` });
     for (const [key, amount] of merged) result.push({ account_id: (await systemAccount(key)).id, ...side(amount, false), memo: sale.customer });
     result.push({ account_id: (await systemAccount("utang_pajak")).id, ...side(sale.tax, false), memo: sale.customer });
+    for (const line of await costLines(cost, sale.number)) result.push({ account_id: line.account_id, memo: line.memo, ...side(line.debit ?? line.credit ?? 0, !!line.debit) });
     return result;
   };
   if (!await db.prepare("SELECT 1 FROM journal_entries WHERE source='kasir' AND ref_id=?").get(sale.id))

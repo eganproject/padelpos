@@ -20,6 +20,7 @@ import * as receipts from "../receipts.js";
 import * as members from "../membership.js";
 import { memberSlots } from "../member-rates.js";
 import * as counter from "../counter.js";
+import * as shifts from "../shifts.js";
 import * as brand from "../brand.js";
 import * as vouchers from "../vouchers.js";
 import * as staffAlerts from "../staff-alerts.js";
@@ -183,6 +184,12 @@ router.post("/counter/:id/refresh",requireMenu("bookings"),async (req,res)=>res.
 router.get("/counter/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await receipts.saleReceipt(String(req.params.id),req.auth!.sub)));
 router.patch("/counter/:id/returned",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.returnSaleLines(String(req.params.id),req.body,req.auth!.sub)));
 router.post("/counter/:id/void",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.voidSale(String(req.params.id),req.body,req.auth!.sub)));
+// Tutup kasir: shift per staf, modal awal laci, dan hitung uang saat tutup.
+router.get("/shifts",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await shifts.shiftOverview(req.auth!)));
+router.post("/shifts",requireMenu("bookings"),async (req:AuthRequest,res)=>res.status(201).json(await shifts.openShift(req.body,req.auth!)));
+router.get("/shifts/:id",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await shifts.shiftDetail(String(req.params.id),req.auth!)));
+router.post("/shifts/:id/close",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await shifts.closeShift(String(req.params.id),req.body,req.auth!)));
+router.get("/shifts/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({shift:await shifts.shiftDetail(String(req.params.id),req.auth!),...await receipts.receiptFrame(req.auth!.sub)}));
 // --- Keuangan --------------------------------------------------------------
 // Keuangan dipecah menjadi beberapa menu; tiap menu hanya membuka endpoint yang dipakainya.
 const money=requireMenu("finance"),records=requireMenu("finance-records"),journal=requireMenu("finance-journal"),reports=requireMenu("finance-reports"),books=requireMenu("finance-settings");

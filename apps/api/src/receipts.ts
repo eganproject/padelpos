@@ -45,7 +45,7 @@ export async function saveReceiptSettings(input: unknown, actor: string) {
 }
 
 /** Profil venue, pengaturan nota, dan nama kasir yang mencetak: sama untuk semua jenis nota. */
-async function receiptFrame(actor: string) {
+export async function receiptFrame(actor: string) {
   const cashier = await db.prepare("SELECT JSON_UNQUOTE(JSON_EXTRACT(document,'$.name')) name FROM users WHERE id=?").get(actor) as { name: string | null } | undefined;
   const [info, brand] = await Promise.all([getInfo(), publicBrand()]);
   return {
