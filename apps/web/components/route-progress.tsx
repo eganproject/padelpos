@@ -7,7 +7,13 @@ import { Suspense, useEffect, useRef, useState } from "react";
  * Garis tipis di atas layar saat berpindah halaman, di panel staf maupun situs pelanggan.
  * Mulai saat tautan internal diklik (atau tombol kembali/maju browser), lalu selesai
  * begitu alamat halaman berubah. Tanpa pustaka tambahan.
+ * Perpindahan lewat kode (`router.push`) memanggil `startRouteProgress()` agar garisnya ikut tampil.
  */
+const startEvent = "route-progress:start";
+export function startRouteProgress() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(startEvent));
+}
+
 function RouteProgressBar() {
   const pathname = usePathname();
   const search = useSearchParams();
@@ -57,9 +63,11 @@ function RouteProgressBar() {
     const onPop = () => start();
     document.addEventListener("click", onClick, true);
     window.addEventListener("popstate", onPop);
+    window.addEventListener(startEvent, onPop);
     return () => {
       document.removeEventListener("click", onClick, true);
       window.removeEventListener("popstate", onPop);
+      window.removeEventListener(startEvent, onPop);
       clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

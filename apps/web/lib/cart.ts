@@ -62,6 +62,14 @@ function snapshot() { if (!cache) cache = read(); return cache; }
 export function useCart() {
   return useSyncExternalStore(subscribe, snapshot, () => empty);
 }
+const noSubscribe = () => () => { };
+/**
+ * False saat HTML dari server dan hidrasi pertama: isi keranjang di browser belum terbaca,
+ * jadi jangan tampilkan "keranjang kosong" dulu.
+ */
+export function useCartReady() {
+  return useSyncExternalStore(noSubscribe, () => true, () => false);
+}
 
 export const sameSlot = (a: Pick<CartItem, "court_id" | "date" | "start_time">, b: Pick<CartItem, "court_id" | "date" | "start_time">) =>
   a.court_id === b.court_id && a.date === b.date && a.start_time === b.start_time;

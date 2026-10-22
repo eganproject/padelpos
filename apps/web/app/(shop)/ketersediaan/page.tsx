@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, CalendarDays, ChevronDown, Clock3, Layers, Map as MapIcon, PackagePlus, RefreshCw, ShoppingBag, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronDown, Clock3, Layers, Loader2, Map as MapIcon, PackagePlus, RefreshCw, ShoppingBag, X } from "lucide-react";
 import { toast } from "sonner";
 import { money } from "@/lib/api";
 import { VenueMap } from "@/components/venue-map";
 import { CourtCover } from "@/components/photo-gallery";
 import { ShopAddonPicker } from "@/components/shop-addons";
 import { ShopSteps } from "@/components/shop-steps";
+import { startRouteProgress } from "@/components/route-progress";
 import { type AddonOption, fetchAddonOptions, lineTotal, maxFor } from "@/lib/addons";
 import { addToCart, cartTotal, maxCartItems, useCart } from "@/lib/cart";
 import { minute, timeSlots } from "@/lib/operations";
@@ -96,6 +97,8 @@ function AvailabilityView() {
   const [addonOptions, setAddonOptions] = useState<AddonOption[] | null>(null);
   const [picks, setPicks] = useState<Record<string, number>>({});
   const [addonsOpen, setAddonsOpen] = useState(false);
+  /** "Pesan sekarang" sudah ditekan dan keranjang sedang dibuka. */
+  const [going, setGoing] = useState(false);
   const cart = useCart();
 
   // Pemain yang selalu main 2 jam tidak perlu memilih ulang setiap kali datang.
@@ -260,11 +263,12 @@ function AvailabilityView() {
       })),
     });
     if (result === "ok") {
+      // Lembar pilihan tetap terbuka sampai keranjang tampil, supaya jadwal tidak sempat berkedip.
+      if (thenCheckout) { setGoing(true); startRouteProgress(); router.push("/keranjang"); return; }
       setPicked(null);
-      if (thenCheckout) { router.push("/keranjang"); return; }
       toast.success("Masuk keranjang", {
         description: `${pickedCourt.name} · ${formatShortDay(date)} ${picked.start}–${end}`,
-        action: { label: "Lihat", onClick: () => router.push("/keranjang") },
+        action: { label: "Lihat", onClick: () => { startRouteProgress(); router.push("/keranjang"); } },
       });
     } else if (result === "duplicate") toast.info("Sesi ini sudah ada di keranjang.");
     else if (result === "overlap") toast.error("Jam ini bertabrakan dengan sesi lain di keranjang.");
@@ -475,7 +479,11 @@ function AvailabilityView() {
                 <small>{pickedCount ? `Lapangan ${money(total)} + tambahan ${money(extras)}` : "Sewa lapangan"}</small>
                 <b>{money(grandTotal)}</b>
               </div>
-              {pickedInCart ? (
+              {going ? (
+                <button className="shop-btn primary" type="button" disabled aria-busy="true">
+                  <Loader2 size={18} className="spin" aria-hidden="true" /> Membuka keranjang…
+                </button>
+              ) : pickedInCart ? (
                 <Link className="shop-btn primary" href="/keranjang"><ShoppingBag size={18} aria-hidden="true" /> Sudah di keranjang</Link>
               ) : (
                 <div className="sheet-actions">
