@@ -3,7 +3,7 @@ import { z } from "zod";
 import { audit, db, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { clockLabel, localClock, minutes } from "./clock.js";
-import { type Addon, addons, lineSchema, lineTotal, peakUse, recordMove } from "./addons.js";
+import { type Addon, addons, lineSchema, lineTotal, peakUse, recordMove, saleCost } from "./addons.js";
 import { billOf, memberCut, taxSnapshot } from "./bill.js";
 import { memberRatesFor } from "./member-rates.js";
 import { syncCounterSale } from "./finance.js";
@@ -296,8 +296,8 @@ export async function createSale(input: unknown, actor: string) {
         voucher?.voucher.id ?? null, voucher?.voucher.code ?? "", voucher?.amount ?? 0);
     if (voucher) await recordRedemption({ ...voucher, channel: "kasir", sale_id: id, customer_id: customerId, customer: name || walkInName, phone, actor });
     for (const entry of plan) {
-      await db.prepare("INSERT INTO counter_sale_lines (id,sale_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-        .run(randomUUID(), id, entry.addon?.id ?? null, entry.name, entry.type, entry.pricing, entry.unit_price, entry.quantity, entry.subtotal, now);
+      await db.prepare("INSERT INTO counter_sale_lines (id,sale_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_at,unit_cost) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+        .run(randomUUID(), id, entry.addon?.id ?? null, entry.name, entry.type, entry.pricing, entry.unit_price, entry.quantity, entry.subtotal, now, saleCost(entry.addon));
       if (entry.type === "jual" && entry.addon) await consume(entry.addon.id, entry.quantity, id, actor);
     }
     await syncCounterSale(id);

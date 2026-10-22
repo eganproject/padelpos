@@ -100,3 +100,25 @@
   .ops-chart-column>span{font-size:10px}
   .ops-detail-head,.ops-card-head{flex-wrap:wrap;align-items:flex-start}
 }
+
+/* Tutup kasir */
+.shift-open,.shift-close,.shift-done{margin-bottom:var(--s4)}
+.shift-open .field-grid,.shift-close .field-grid{align-items:end}
+.shift-metrics{margin-bottom:var(--s4)}
+.shift-since{font-variant-numeric:tabular-nums}
+.shift-breakdown{display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,300px);gap:var(--s4);align-items:start;margin-bottom:var(--s4)}
+.shift-breakdown .manage-table-card{margin:0}
+.shift-sources{list-style:none;margin:0;padding:var(--s3) var(--s4);display:flex;flex-direction:column;gap:var(--s2);border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);font-size:var(--fs-sm)}
+.shift-sources li{display:flex;justify-content:space-between;gap:var(--s3);color:var(--muted)}
+.shift-sources b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
+.shift-diff{display:flex;flex-direction:column;gap:2px;padding:var(--s2) var(--s3);border-radius:var(--r-sm);background:var(--subtle);font-size:var(--fs-sm)}
+.shift-diff small{color:var(--label)}
+.shift-diff b{font-size:var(--fs-md);font-weight:600;font-variant-numeric:tabular-nums;color:var(--text)}
+.shift-diff.ok b{color:var(--green-text)}
+.shift-diff.short b{color:var(--red-text)}
+.shift-diff.over b{color:var(--orange-text)}
+.shift-diff-pill{font-weight:500;font-variant-numeric:tabular-nums;white-space:nowrap}
+.shift-diff-pill.ok{color:var(--green-text)}
+.shift-diff-pill.short{color:var(--red-text)}
+.shift-diff-pill.over{color:var(--orange-text)}
+@media (max-width:760px){.shift-breakdown{grid-template-columns:1fr}}

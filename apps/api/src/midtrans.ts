@@ -4,6 +4,7 @@ import { audit, db, saveSetting, transaction } from "./store.js";
 import { check } from "./errors.js";
 import { publicUrl } from "./config.js";
 import { taxSnapshot } from "./bill.js";
+import { seal, unseal } from "./secrets.js";
 
 /**
  * Midtrans Snap. Kunci dapat diisi dari panel admin atau dari environment; environment selalu
@@ -50,7 +51,7 @@ async function stored(): Promise<PaymentSettings> {
   const row = await db.prepare("SELECT document FROM settings WHERE `key`='payment'").get() as { document: string } | undefined;
   const saved = row ? JSON.parse(row.document) as Partial<PaymentSettings> : {};
   // Kanal yang belum pernah disimpan memakai tarif standar Midtrans.
-  return { ...defaults, ...saved, channels: { ...defaultChannels(), ...(saved.channels ?? {}) } };
+  return { ...defaults, ...saved, server_key: unseal(saved.server_key), channels: { ...defaultChannels(), ...(saved.channels ?? {}) } };
 }
 export async function paymentConfig() {
   const settings = await stored();
@@ -261,7 +262,7 @@ export async function savePaymentSettings(input: unknown, actor: string) {
       fee_bearer: data.fee_bearer ?? current.fee_bearer, vat_percent: data.vat_percent ?? current.vat_percent, channels,
       updated_at: new Date().toISOString(),
     };
-    await saveSetting("payment", next);
+    await saveSetting("payment", { ...next, server_key: seal(next.server_key) });
     await audit(actor, "payment.settings", "payment");
     return await adminPayment();
   });

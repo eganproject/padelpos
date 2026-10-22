@@ -9,6 +9,7 @@ import { passwordSchema,publicUser,staffName } from "./auth.js";
 import { contactPhoneSchema } from "../operations.js";
 import type { AccessMenu,AccessRole,User } from "../types.js";
 import { dropAvatar } from "../avatars.js";
+import { resetByAdmin as resetTwoFactor } from "../two-factor.js";
 const router=Router();
 router.use(requireAdmin);
 router.get("/overview",async (_req,res)=>res.json({users:(await getUsers()).map(publicUser),roles:await getRoles(),menus:await getMenus()}));
@@ -42,6 +43,7 @@ router.put("/users/:id",async(req:AuthRequest,res)=>{
     await audit(req.auth!.sub,"user.update",users[index].id);return users[index];
   });res.json({user:publicUser(user)});
 });
+router.post("/users/:id/reset-2fa",async(req:AuthRequest,res)=>{await resetTwoFactor(String(req.params.id),req.auth!.sub);res.json({user:publicUser((await getUsers()).find(u=>u.id===req.params.id)!)})});
 router.delete("/users/:id",async (req:AuthRequest,res)=>{await transaction(async ()=>{
   const users=await getUsers(),target=users.find(u=>u.id===req.params.id);
   check(target,404,"Pengguna tidak ditemukan.");

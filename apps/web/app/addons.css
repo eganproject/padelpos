@@ -47,6 +47,12 @@
 .stock-preview{font-size:var(--fs-sm);color:var(--muted)}
 .stock-preview b{color:var(--text);font-size:var(--fs-md)}
 .stock-preview.invalid b{color:var(--danger)}
+.stock-purchase{display:flex;flex-direction:column;gap:var(--s3);padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--subtle)}
+.stock-purchase .ops-muted{margin:0}
+.cost-hint{display:flex;flex-direction:column;justify-content:flex-end;gap:2px;padding-bottom:6px;font-size:var(--fs-sm)}
+.cost-hint small{color:var(--label)}
+.cost-hint b{color:var(--green-text);font-variant-numeric:tabular-nums}
+.cost-hint b.loss{color:var(--red-text)}
 .stock-delta{white-space:nowrap;font-variant-numeric:tabular-nums}
 .stock-delta small{margin-left:6px;font-weight:420;color:var(--muted)}
 .stock-delta.plus{color:var(--green-text)}

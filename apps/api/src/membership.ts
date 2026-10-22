@@ -265,8 +265,8 @@ async function startPeriod(member: Membership, invoice: Invoice, on = today()) {
 async function settle(invoice: Invoice, payment: { method: string; fee: number; actor: string; online: boolean; payment_type?: string | null; transaction_id?: string | null }) {
   const stamp = new Date().toISOString();
   // Dibayar di kasir berarti biaya layanan dari halaman Midtrans yang pernah dibuka tidak berlaku.
-  const changed = await db.prepare("UPDATE membership_invoices SET status='paid',method=?,fee=?,surcharge=IF(?,surcharge,0),paid_at=?,payment_type=COALESCE(?,payment_type),transaction_id=COALESCE(?,transaction_id),updated_at=? WHERE id=? AND status<>'paid'")
-    .run(payment.method, payment.fee, payment.online ? 1 : 0, stamp, payment.payment_type ?? null, payment.transaction_id ?? null, stamp, invoice.id);
+  const changed = await db.prepare("UPDATE membership_invoices SET status='paid',method=?,fee=?,surcharge=IF(?,surcharge,0),paid_at=?,paid_by=?,payment_type=COALESCE(?,payment_type),transaction_id=COALESCE(?,transaction_id),updated_at=? WHERE id=? AND status<>'paid'")
+    .run(payment.method, payment.fee, payment.online ? 1 : 0, stamp, payment.online ? null : payment.actor, payment.payment_type ?? null, payment.transaction_id ?? null, stamp, invoice.id);
   if (!changed.changes) return null;
   const member = await getMember(invoice.membership_id);
   const paid = await getInvoice(invoice.id);

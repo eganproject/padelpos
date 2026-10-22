@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -7,7 +7,12 @@ import { production } from "../config.js";
 import { contactPhoneSchema } from "../operations.js";
 import { getMenus,getRoles,getUsers,saveUsers,transaction } from "../store.js";
 import type { User } from "../types.js";
-export const publicUser=({passwordHash:_,...user}:User)=>user;
+import { readTicket,signTicket } from "../secrets.js";
+import { useSecondFactor } from "../two-factor.js";
+import { checkReset,completeReset,recoveryOptions,requestReset } from "../password-reset.js";
+export const publicUser=({passwordHash:_,twoFactor,pendingTwoFactor:__,...user}:User)=>({...user,twoFactorEnabled:!!twoFactor});
+/** Tiket login 2 langkah: berlaku 5 menit dan gugur bila password berubah sementara itu. */
+const passwordMark=(user:User)=>createHash("sha256").update(user.passwordHash).digest("hex").slice(0,16);
 export const passwordSchema=z.string().min(8,"Password minimal 8 karakter.").max(72,"Password maksimal 72 karakter.").regex(/[A-Z]/,"Password harus memuat huruf kapital.").regex(/[0-9]/,"Password harus memuat angka.");
 /** Nama staf; pesan galatnya dibaca langsung di formulir admin. */
 export const staffName=z.string().trim().min(3,"Nama minimal 3 karakter.").max(60,"Nama maksimal 60 karakter.");
@@ -39,8 +44,26 @@ router.post("/login",async(req,res)=>{
   if(!user||!await bcrypt.compare(parsed.data.password,user.passwordHash)) return res.status(401).json({message:"Email atau password tidak sesuai."});
   const current=(await getUsers()).find(u=>u.id===user.id&&u.passwordHash===user.passwordHash);
   if(!current) return res.status(401).json({message:"Akun berubah. Silakan masuk kembali."});
+  if(current.twoFactor) return res.json({twoFactor:true,ticket:signTicket({u:current.id,h:passwordMark(current)},5*60000)});
   await createSession(res,current.id);res.json({user:publicUser(current)});
 });
+/** Langkah kedua login: kode authenticator atau kode cadangan. */
+router.post("/login/2fa",async(req,res)=>{
+  const parsed=z.object({ticket:z.string().max(1000),code:z.string().trim().min(6).max(20)}).safeParse(req.body);
+  if(!parsed.success) return res.status(400).json({message:"Masukkan kode 6 angka dari aplikasi authenticator."});
+  const ticket=readTicket<{u:string;h:string}>(parsed.data.ticket);
+  const user=ticket&&(await getUsers()).find(u=>u.id===ticket.u);
+  if(!ticket||!user||passwordMark(user)!==ticket.h||!user.twoFactor) return res.status(401).json({message:"Waktu verifikasi habis. Masukkan email dan password lagi.",expired:true});
+  const used=await useSecondFactor(user.id,parsed.data.code);
+  if(!used) return res.status(401).json({message:"Kode tidak cocok. Coba kode terbaru dari aplikasi."});
+  await createSession(res,user.id);
+  const left=used==="recovery"?(await getUsers()).find(u=>u.id===user.id)?.twoFactor?.recovery.length??0:null;
+  res.json({user:publicUser(user),recoveryLeft:left});
+});
+router.get("/recovery",async(_req,res)=>res.json(await recoveryOptions()));
+router.post("/forgot",async(req,res)=>res.json(await requestReset(req.body)));
+router.get("/reset",async(req,res)=>res.json(await checkReset(req.query)));
+router.post("/reset",async(req,res)=>res.json(await completeReset(req.body)));
 router.post("/logout",async (req,res)=>{await endSession(req,res);res.status(204).send()});
 router.get("/me",requireAuth,async (req:AuthRequest,res)=>res.json({user:publicUser((await getUsers()).find(u=>u.id===req.auth!.sub)!)}));
 router.get("/navigation",requireAuth,async (req:AuthRequest,res)=>{

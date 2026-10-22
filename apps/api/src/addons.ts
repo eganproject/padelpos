@@ -5,6 +5,7 @@ import { check } from "./errors.js";
 import { clockLabel, localClock, minutes } from "./clock.js";
 import { checkImage } from "./photos.js";
 import { billOf,memberCut } from "./bill.js";
+import { ensureOpen,inventoryAccountId,postInventory,saveRecord } from "./finance.js";
 
 /**
  * Sewa & tambahan yang ditagihkan bersama booking: raket, bola, sepatu, pelatih, dan sejenisnya.
@@ -25,13 +26,13 @@ export const addonTypes=["sewa","jual","layanan"] as const;
 export const addonPricings=["per_booking","per_hour"] as const;
 export type AddonType=typeof addonTypes[number];
 export type AddonPricing=typeof addonPricings[number];
-export interface Addon {id:string;name:string;category:typeof addonCategories[number];type:AddonType;pricing:AddonPricing;price:number;stock:number|null;low_stock:number;max_per_booking:number;description:string;active:number;online:number;position:number;photo_id:string|null;created_at:string}
+export interface Addon {id:string;name:string;category:typeof addonCategories[number];type:AddonType;pricing:AddonPricing;price:number;stock:number|null;low_stock:number;max_per_booking:number;description:string;active:number;online:number;position:number;photo_id:string|null;created_at:string;cost:number}
 export interface BookingAddon {id:string;booking_id:string;addon_id:string|null;name:string;type:AddonType|"lainnya";pricing:AddonPricing;unit_price:number;quantity:number;subtotal:number;returned_at:string|null;created_at:string}
 type StockReason="awal"|"restok"|"koreksi"|"rusak"|"terpakai"|"kembali";
 
 /** Booking yang sedang memegang barang: aktif, selesai, atau hold online yang belum kedaluwarsa. */
 const holding="(b.status IN ('confirmed','completed') OR (b.status='pending' AND b.hold_expires_at>UNIX_TIMESTAMP()))";
-const columns="id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,photo_id,created_at";
+const columns="id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,photo_id,created_at,cost";
 const rupiah=(value:number)=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(value);
 
 export const addonSchema=z.object({
@@ -40,6 +41,8 @@ export const addonSchema=z.object({
   type:z.enum(addonTypes),
   pricing:z.enum(addonPricings),
   price:z.number().int().min(0,"Harga tidak boleh negatif.").max(10000000,"Harga maksimal Rp10.000.000."),
+  /** Harga beli per unit barang jual, dasar harga pokok penjualan. 0 = belum diisi. */
+  cost:z.number().int().min(0,"Harga beli tidak boleh negatif.").max(10000000,"Harga beli maksimal Rp10.000.000.").default(0),
   stock:z.number().int().min(0,"Stok tidak boleh negatif.").max(100000,"Stok maksimal 100.000.").nullable(),
   low_stock:z.number().int().min(0).max(100000).default(0),
   max_per_booking:z.number().int().min(1,"Batas per booking minimal 1.").max(99,"Batas per booking maksimal 99."),
@@ -62,10 +65,19 @@ export async function manageAddons(){
 }
 const managed=async(id:string)=>(await manageAddons()).find(addon=>addon.id===id)!;
 
-export async function recordMove(addonId:string,delta:number,reason:StockReason,stockAfter:number,actor:string,note="",bookingId:string|null=null,saleId:string|null=null){
-  await db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,booking_id,sale_id,stock_after,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
-    .run(randomUUID(),addonId,delta,reason,note,bookingId,saleId,stockAfter,actor,new Date().toISOString());
+export async function recordMove(addonId:string,delta:number,reason:StockReason,stockAfter:number,actor:string,note="",bookingId:string|null=null,saleId:string|null=null,unitCost:number|null=null){
+  const id=randomUUID();
+  await db.prepare("INSERT INTO addon_stock_moves (id,addon_id,delta,reason,note,booking_id,sale_id,stock_after,created_by,created_at,unit_cost) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+    .run(id,addonId,delta,reason,note,bookingId,saleId,stockAfter,actor,new Date().toISOString(),unitCost);
+  return id;
 }
+/**
+ * Nilai persediaan mengikuti stok barang jual yang dilacak dan punya harga beli. Barang sewa dan
+ * layanan adalah aset atau jasa, bukan persediaan, jadi tidak dijurnal di sini.
+ */
+const valued=(addon:{type:string;stock:number|null})=>addon.type==="jual"&&addon.stock!==null;
+/** Harga beli yang disalin ke baris penjualan: hanya barang jual yang stoknya dilacak. */
+export const saleCost=(addon:Pick<Addon,"type"|"stock"|"cost">|undefined)=>addon&&valued(addon)?Number(addon.cost):0;
 
 export async function saveAddon(input:unknown,actor:string,id?:string){
   const data=addonSchema.parse(input);
@@ -73,19 +85,34 @@ export async function saveAddon(input:unknown,actor:string,id?:string){
     const all=await addons(),existing=id?all.find(item=>item.id===id):undefined;
     check(!id||existing,404,"Item tambahan tidak ditemukan.");
     check(!all.some(item=>item.id!==id&&item.name.toLowerCase()===data.name.toLowerCase()),409,"Nama item sudah digunakan.");
+    const cost=data.type==="jual"?data.cost:0;
     if(existing){
       // Stok barang jual sudah dipotong oleh booking lama; mengganti jenis akan merusak hitungannya.
       check(existing.type===data.type||!await usedInBooking(existing.id),409,"Jenis item tidak dapat diubah setelah dipakai di booking. Buat item baru bila perlu.");
-      await db.prepare("UPDATE addons SET name=?,category=?,type=?,pricing=?,price=?,stock=?,low_stock=?,max_per_booking=?,description=?,active=?,online=? WHERE id=?")
-        .run(data.name,data.category,data.type,data.pricing,data.price,data.stock,data.low_stock,data.max_per_booking,data.description,Number(data.active),Number(data.online),existing.id);
+      // Nilai persediaan ikut berubah, jadi jurnalnya (bertanggal hari ini) harus masuk periode terbuka.
+      const before=valued(existing)?(existing.stock??0)*Number(existing.cost):0;
+      const after=valued({type:data.type,stock:data.stock})?(data.stock??0)*cost:0;
+      if(before!==after)await ensureOpen(localClock().date);
+      await db.prepare("UPDATE addons SET name=?,category=?,type=?,pricing=?,price=?,cost=?,stock=?,low_stock=?,max_per_booking=?,description=?,active=?,online=? WHERE id=?")
+        .run(data.name,data.category,data.type,data.pricing,data.price,cost,data.stock,data.low_stock,data.max_per_booking,data.description,Number(data.active),Number(data.online),existing.id);
+      let moveId:string|null=null;
       if(data.stock!==null&&data.stock!==existing.stock)
-        await recordMove(existing.id,data.stock-(existing.stock??0),existing.stock===null?"awal":"koreksi",data.stock,actor,existing.stock===null?"Stok mulai dilacak":"Diubah dari formulir item");
+        moveId=await recordMove(existing.id,data.stock-(existing.stock??0),existing.stock===null?"awal":"koreksi",data.stock,actor,existing.stock===null?"Stok mulai dilacak":"Diubah dari formulir item");
+      // Stok lama yang baru diberi harga beli adalah saldo awal persediaan; perubahan lain adalah selisih.
+      const opening=valued(existing)&&Number(existing.cost)===0?(existing.stock??0)*cost:0;
+      const fresh=existing.stock===null&&valued({type:data.type,stock:data.stock})?(data.stock??0)*cost:0;
+      await postInventory({ref:moveId??randomUUID(),kind:"awal",amount:opening+fresh,memo:`Saldo awal persediaan ${data.name}`,actor});
+      await postInventory({ref:randomUUID(),kind:"selisih",amount:after-before-opening-fresh,memo:`Penyesuaian nilai persediaan ${data.name}`,actor});
     }else{
       id=randomUUID();
       const position=all.length?Math.max(...all.map(item=>item.position))+1:0;
-      await db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        .run(id,data.name,data.category,data.type,data.pricing,data.price,data.stock,data.low_stock,data.max_per_booking,data.description,Number(data.active),Number(data.online),position,new Date().toISOString());
-      if(data.stock!==null)await recordMove(id,data.stock,"awal",data.stock,actor);
+      if(data.stock&&cost)await ensureOpen(localClock().date);
+      await db.prepare("INSERT INTO addons (id,name,category,type,pricing,price,cost,stock,low_stock,max_per_booking,description,active,online,position,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(id,data.name,data.category,data.type,data.pricing,data.price,cost,data.stock,data.low_stock,data.max_per_booking,data.description,Number(data.active),Number(data.online),position,new Date().toISOString());
+      if(data.stock!==null){
+        const moveId=await recordMove(id,data.stock,"awal",data.stock,actor,"",null,null,cost||null);
+        if(data.type==="jual")await postInventory({ref:moveId,kind:"awal",amount:data.stock*cost,memo:`Saldo awal persediaan ${data.name}`,actor});
+      }
     }
     await audit(actor,existing?"addon.update":"addon.create",id!);
     return await managed(id!);
@@ -135,6 +162,16 @@ export const stockSchema=z.object({
   reason:z.enum(["restok","koreksi","rusak"]),
   quantity:z.number().int().min(0,"Jumlah tidak boleh negatif.").max(100000,"Jumlah maksimal 100.000."),
   note:z.string().trim().max(200,"Keterangan maksimal 200 karakter.").default(""),
+  /**
+   * Restok barang jual yang dibeli: dicatat sebagai pengeluaran ke akun Persediaan (tunai dari kas/bank,
+   * atau tempo ke pemasok) dan harga beli rata-ratanya diperbarui. Kosong = stok masuk tanpa pembelian.
+   */
+  purchase:z.object({
+    unit_cost:z.number().int().min(1,"Harga beli minimal Rp1.").max(10000000,"Harga beli maksimal Rp10.000.000."),
+    settle:z.enum(["tunai","tempo"]),
+    cash_account_id:z.string().min(1).max(64).nullish(),
+    partner_id:z.string().min(1).max(64).nullish(),
+  }).nullish(),
 });
 /** restok menambah, rusak mengurangi, koreksi menyetel stok ke hasil hitung fisik. */
 export async function adjustStock(id:string,input:unknown,actor:string){
@@ -149,16 +186,34 @@ export async function adjustStock(id:string,input:unknown,actor:string){
     check(next<=100000,400,"Stok maksimal 100.000.");
     check(next!==current,400,"Jumlah stok tidak berubah.");
     if(data.reason==="rusak")check(data.note.length>=3,400,"Isi keterangan barang rusak atau hilang.");
-    await db.prepare("UPDATE addons SET stock=? WHERE id=?").run(next,id);
-    await recordMove(id,next-current,data.reason,next,actor,data.note);
-    await audit(actor,"addon.stock",id);
+    const purchase=data.reason==="restok"?data.purchase??null:null;
+    check(!purchase||addon.type==="jual",400,"Harga beli hanya dicatat untuk barang jual. Peralatan sewa dicatat sebagai aset di Kas & Transaksi.");
+    const cost=Number(addon.cost);
+    // Harga beli rata-rata tertimbang: stok lama dengan harga lama ditambah stok baru dengan harga belinya.
+    const nextCost=purchase?Math.round((current*cost+data.quantity*purchase.unit_cost)/next):cost;
+    if(purchase||(valued(addon)&&cost&&data.reason!=="restok"))await ensureOpen(localClock().date);
+    await db.prepare("UPDATE addons SET stock=?,cost=? WHERE id=?").run(next,nextCost,id);
+    const moveId=await recordMove(id,next-current,data.reason,next,actor,data.note,null,null,purchase?purchase.unit_cost:valued(addon)&&cost?cost:null);
+    if(purchase){
+      const record=await saveRecord({
+        kind:"pengeluaran",date:localClock().date,account_id:await inventoryAccountId(),amount:data.quantity*purchase.unit_cost,
+        settle:purchase.settle,cash_account_id:purchase.cash_account_id??null,partner_id:purchase.partner_id??null,
+        description:`Pembelian ${addon.name} ${data.quantity} × ${rupiah(purchase.unit_cost)}${data.note?` · ${data.note}`:""}`.slice(0,200),
+      },actor);
+      await db.prepare("UPDATE addon_stock_moves SET record_id=? WHERE id=?").run(record.id,moveId);
+      // Selisih pembulatan harga rata-rata agar nilai persediaan tetap sama dengan stok × harga beli.
+      await postInventory({ref:`${moveId}:bulat`,kind:"selisih",amount:next*nextCost-(current*cost+data.quantity*purchase.unit_cost),memo:`Pembulatan harga beli rata-rata ${addon.name}`,actor});
+    }else if(valued(addon)&&cost&&data.reason!=="restok"){
+      await postInventory({ref:moveId,kind:"selisih",amount:(next-current)*cost,memo:`${data.reason==="rusak"?"Barang rusak/hilang":"Selisih hitung stok"} ${addon.name}${data.note?` · ${data.note}`:""}`.slice(0,200),actor});
+    }
+    await audit(actor,"addon.stock",id,purchase?{quantity:data.quantity,unit_cost:purchase.unit_cost,settle:purchase.settle}:undefined);
     return {addon:await managed(id),moves:await stockMoves(id)};
   });
 }
 export async function stockMoves(id:string){
   await getAddon(id);
   const names=new Map((await getUsers()).map(user=>[user.id,user.name]));
-  const rows=await db.prepare("SELECT m.id,m.delta,m.reason,m.note,m.booking_id,m.sale_id,s.number sale_number,m.stock_after,m.created_by,m.created_at,COALESCE(b.customer,s.customer) booking_customer,COALESCE(b.date,s.date) booking_date FROM addon_stock_moves m LEFT JOIN bookings b ON b.id=m.booking_id LEFT JOIN counter_sales s ON s.id=m.sale_id WHERE m.addon_id=? ORDER BY m.created_at DESC,m.seq DESC LIMIT 60").all(id) as {created_by:string|null}[];
+  const rows=await db.prepare("SELECT m.id,m.delta,m.reason,m.note,m.booking_id,m.sale_id,s.number sale_number,m.stock_after,m.unit_cost,r.number record_number,m.created_by,m.created_at,COALESCE(b.customer,s.customer) booking_customer,COALESCE(b.date,s.date) booking_date FROM addon_stock_moves m LEFT JOIN bookings b ON b.id=m.booking_id LEFT JOIN counter_sales s ON s.id=m.sale_id LEFT JOIN finance_records r ON r.id=m.record_id WHERE m.addon_id=? ORDER BY m.created_at DESC,m.seq DESC LIMIT 60").all(id) as {created_by:string|null}[];
   return rows.map(row=>({...row,actor:row.created_by?names.get(row.created_by)??"":""}));
 }
 
@@ -323,8 +378,8 @@ export async function applyLines(booking:BookingRef,input:unknown,actor:string){
       await db.prepare("UPDATE booking_addons SET quantity=?,subtotal=?,returned_at=CASE WHEN ?>quantity THEN NULL ELSE returned_at END WHERE id=?").run(entry.quantity,subtotal,entry.quantity,entry.line.id);
       if(entry.type==="jual")await consume(entry.line.addon_id,entry.quantity-entry.line.quantity,booking.id,actor);
     }else{
-      await db.prepare("INSERT INTO booking_addons (id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
-        .run(randomUUID(),booking.id,entry.addon?.id??null,entry.name,entry.type,entry.pricing,entry.unit_price,entry.quantity,subtotal,actor,now);
+      await db.prepare("INSERT INTO booking_addons (id,booking_id,addon_id,name,type,pricing,unit_price,quantity,subtotal,created_by,created_at,unit_cost) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+        .run(randomUUID(),booking.id,entry.addon?.id??null,entry.name,entry.type,entry.pricing,entry.unit_price,entry.quantity,subtotal,actor,now,saleCost(entry.addon));
       if(entry.type==="jual")await consume(entry.addon!.id,entry.quantity,booking.id,actor);
     }
   }

@@ -24,6 +24,8 @@ export type Addon = {
   id: string; name: string; category: AddonCategory; type: AddonType; pricing: AddonPricing; price: number;
   stock: number | null; low_stock: number; max_per_booking: number; description: string;
   active: number; online: number; position: number; photo_id: string | null; in_use: boolean;
+  /** Harga beli rata-rata per unit barang jual; 0 = belum diisi. */
+  cost: number;
 };
 /** Pilihan saat booking. `available` null berarti tidak dibatasi. */
 export type AddonOption = {
@@ -37,6 +39,7 @@ export type BookingAddon = {
 export type StockMove = {
   id: string; delta: number; reason: "awal" | "restok" | "koreksi" | "rusak" | "terpakai" | "kembali"; note: string;
   booking_id: string | null; sale_id?: string | null; sale_number?: string | null; booking_customer: string | null; stock_after: number; actor: string; created_at: string;
+  unit_cost?: number | null; record_number?: string | null;
 };
 export type AddonSummary = {
   since: string; revenue: number; today: number;

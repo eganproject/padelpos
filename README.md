@@ -23,6 +23,25 @@ menu **Users**, lengkap dengan pemilihan role.
 Di produksi (`NODE_ENV=production`), pembuatan admin pertama mewajibkan `BOOTSTRAP_TOKEN`
 pada `.env`. Hapus variabel itu setelah admin pertama dibuat.
 
+### Lupa password dan verifikasi 2 langkah
+
+- **Lupa password**: tautan "Lupa password?" di halaman masuk mengirim tautan reset ke email staf
+  (berlaku 30 menit, sekali pakai, semua sesi lama dicabut). Butuh email SMTP aktif di Pengaturan → Notifikasi.
+- **Verifikasi 2 langkah**: tiap staf bisa mengaktifkannya di **Profil Saya** dengan memindai QR di
+  aplikasi authenticator, lalu menyimpan 8 kode cadangan sekali pakai. Admin bisa mematikannya untuk
+  staf yang kehilangan ponsel dari menu **Pengguna**.
+- **Darurat** (admin terakhir terkunci, email belum aktif), dari server:
+  `npm run reset-password -w apps/api -- admin@venue.com` (tambahkan `--matikan-2fa` bila ponselnya hilang;
+  di produksi `node dist/reset-password.js admin@venue.com`). Perintah ini mencetak password sementara.
+
+### Kunci rahasia terenkripsi
+
+Server key Midtrans, password SMTP, token WhatsApp, dan rahasia verifikasi 2 langkah disimpan terenkripsi
+(AES-256-GCM). Kuncinya dari `SECRET_KEY`, atau dibuat otomatis di `DATA_DIR/secret-key`. **Simpan berkas
+kunci itu terpisah dari backup**: database yang dipulihkan di server dengan kunci berbeda tetap jalan, tetapi
+kunci-kunci tadi perlu diisi ulang dan staf perlu mengaktifkan ulang verifikasi 2 langkah. Data lama berupa
+teks biasa dienkripsi otomatis saat API mulai.
+
 ## Perintah
 
 - `npm run dev` — menjalankan frontend dan API bersamaan
@@ -33,6 +52,7 @@ pada `.env`. Hapus variabel itu setelah admin pertama dibuat.
 - `npm run backup -w apps/api` — membuat berkas backup di folder backup (lihat [Cadangan data](#cadangan-data))
 - `npm run restore -w apps/api -- <berkas>` — memulihkan database dari berkas backup
 - `npm run import:sqlite -w apps/api` — memindahkan data dari versi SQLite lama ke MySQL
+- `npm run reset-password -w apps/api -- <email>` — password sementara untuk staf yang terkunci
 
 ## Data contoh
 
@@ -79,6 +99,12 @@ menyimpan salinan nama dan harga, jadi perubahan katalog tidak mengubah tagihan 
 - **Pengembalian**: barang sewa ditandai sudah kembali dari detail booking. Barang yang belum kembali
   tampil di menu ini dan di ringkasan.
 - **Stok**: restok, barang rusak atau hilang, dan hitung ulang tercatat di riwayat stok.
+- **Harga beli (HPP)**: barang jual yang stoknya dilacak boleh diberi harga beli per pcs. Restok barang
+  jual dapat dicatat sekaligus sebagai pembelian (lunas dari kas/bank atau tempo ke pemasok); catatannya
+  masuk Kas & Transaksi ke akun Persediaan Barang Dagang, dan harga beli rata-ratanya diperbarui. Setiap
+  penjualan mencatat *Harga Pokok Penjualan* sebesar harga beli saat itu, barang rusak dan selisih hitung
+  fisik menjadi *Selisih & Kerusakan Persediaan*, dan stok lama yang baru diberi harga beli dicatat sebagai
+  saldo awal persediaan (lawan Modal Pemilik).
 - **Pelanggan**: melihat katalog di beranda, memilih tambahan di ringkasan pesanan, dan pilihannya
   ikut di pesan WhatsApp. Item yang tidak ditandai tampil online hanya tersedia untuk kasir.
 
@@ -288,6 +314,10 @@ jumlahnya sama, sehingga neraca tidak pernah perlu dicocokkan manual.
   masuk ke rekening sebesar uang yang benar-benar diterima, dan potongannya menjadi *Biaya Bank &
   Payment Gateway*. Tagihan pelanggan tetap lunas penuh.
 
+- **Barang jual** yang punya harga beli mencatat *Harga Pokok Penjualan* dan mengurangi *Persediaan Barang
+  Dagang* pada jurnal booking atau transaksi kasirnya (lihat [Sewa & tambahan](#sewa--tambahan)).
+- **Tutup kasir**: selisih uang laci saat shift ditutup dicatat ke akun *Selisih Kas*.
+
 Karena itu, membatalkan booking atau mengubah tambahannya langsung terlihat di laporan tanpa pencatatan
 ulang. Jurnal yang dibuat otomatis ditandai sumbernya dan tidak dapat diubah dari menu Keuangan; yang
 berubah adalah data operasionalnya.
@@ -317,7 +347,44 @@ Tiga rincian yang paling sering ditanyakan:
 Bagan akun bawaan sudah memakai istilah sehari-hari dan cukup untuk kebanyakan venue. Akun baru boleh
 ditambahkan; akun bawaan tidak dapat dihapus, dan jenis akun yang sudah dipakai jurnal tidak dapat
 diubah lagi agar riwayatnya tetap benar. Setelah laporan sebuah bulan selesai, isi **Kunci pembukuan**
-agar catatan manual pada periode itu tidak berubah diam-diam.
+agar periode itu tidak berubah diam-diam. Kunci berlaku untuk catatan manual maupun jurnal otomatis:
+membatalkan booking, mengubah potongan, voucher, member, atau tambahan booking yang tanggal mainnya ada di
+periode terkunci ditolak, begitu pula perubahan stok bernilai bila hari ini terkunci. Perubahan yang tidak
+menggeser angka (mis. menandai booking selesai) tetap boleh. Untuk koreksi, buka kuncinya dulu.
+
+### Arus kas, neraca saldo, dan laporan operasional
+
+Menu **Laporan** juga berisi **Arus kas** (metode langsung: tiap jurnal yang menyentuh kas/bank dibaca dari
+akun lawannya, dikelompokkan operasi, investasi, pendanaan), **Neraca saldo** (saldo awal, mutasi, saldo akhir
+tiap akun), dan **Operasional**: okupansi per lapangan dan peta jam × hari, pendapatan per lapangan,
+pelanggan teratas, pemakaian voucher, dan penjualan per item beserta marginnya.
+
+### Aset tetap dan penyusutan
+
+Menu **Keuangan → Aset Tetap** mendaftar peralatan (raket sewa, lampu, karpet, AC) dengan harga perolehan,
+nilai sisa, dan umur manfaat. Penyusutan garis lurus dibukukan otomatis per bulan (satu jurnal per bulan:
+Dr Beban Penyusutan, Cr Akumulasi Penyusutan) sampai bulan lalu; bulan di periode terkunci dilewati.
+Pembelian bisa langsung dicatat sebagai pengeluaran. Aset yang dijual atau rusak **dilepas**: Dr Kas +
+Dr Akumulasi = Cr Aset ± Laba (Rugi) Pelepasan Aset.
+
+### Tutup buku tahunan
+
+**Pengaturan Keuangan → Tutup buku** memindahkan laba rugi setahun ke **Laba Ditahan** lewat jurnal
+penutup 31 Desember, lalu mengunci pembukuan sampai tanggal itu. Laporan laba rugi mengabaikan jurnal
+penutup, jadi tahun yang sudah ditutup tetap terbaca utuh. Neraca memisahkan Laba Ditahan dan Laba Tahun
+Berjalan. Tutup buku terakhir bisa dibatalkan.
+
+## Tutup kasir
+
+Tab **Booking → Tutup kasir** dipakai tiap staf yang memegang laci. Saat mulai jaga, buka shift dengan
+modal awal uang tunai. Selama shift berjalan, layar itu menampilkan uang tunai yang seharusnya ada dan
+rekap per metode bayar dari transaksi yang dicatat staf itu sendiri: pembayaran dan pengembalian booking,
+transaksi kasir beserta pembatalannya, dan iuran member yang diterima di kasir. Pembayaran Midtrans tidak
+ikut karena masuk ke rekening, bukan laci.
+
+Saat selesai, hitung uang laci dan masukkan jumlahnya. Selisih wajib diberi catatan dan otomatis dijurnal
+ke akun *Selisih Kas* (kurang menambah beban, lebih menguranginya). Rekap shift bisa dicetak di printer
+nota. Satu staf hanya punya satu shift terbuka; Super Admin melihat dan boleh menutup shift semua staf.
 
 ## Tampilan
 
@@ -412,7 +479,8 @@ Menu **Pengaturan → Cadangan Data** (bawaannya hanya admin) menampilkan backup
 - **Pemulihan**: hentikan API, lalu jalankan
   `npm run restore -w apps/api -- padelix-20261017-020000-auto.json.gz --yes`. Seluruh isi database
   diganti isi berkas dalam satu transaksi; berkas rusak ditolak tanpa mengubah apa pun. Sesi login dan
-  kode OTP tidak dicadangkan, jadi semua orang masuk ulang setelah pemulihan.
+  kode OTP tidak dicadangkan, jadi semua orang masuk ulang setelah pemulihan. Simpan juga
+  `DATA_DIR/secret-key` (atau `SECRET_KEY`) di tempat aman; lihat [Kunci rahasia terenkripsi](#kunci-rahasia-terenkripsi).
 
 ## Log aktivitas
 

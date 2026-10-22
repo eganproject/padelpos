@@ -10,6 +10,7 @@ import { maxAvatarSize,removeUserAvatar,setUserAvatar } from "../avatars.js";
 import { photoTypes } from "../photos.js";
 import { limiter } from "../ratelimit.js";
 import { markStaffRead,staffInbox,staffUnread } from "../staff-alerts.js";
+import { confirmSetup,disable as disableTwoFactor,regenerateRecovery,startSetup,twoFactorStatus } from "../two-factor.js";
 const router=Router();router.use(requireAuth);
 router.put("/",async (req:AuthRequest,res)=>{
   const data=z.object({name:staffName,phone:contactPhoneSchema}).parse(req.body);
@@ -33,6 +34,13 @@ router.put("/password",async(req:AuthRequest,res)=>{
   });
   await createSession(res,user.id);res.json({message:"Password diperbarui. Sesi perangkat lain telah dicabut."});
 });
+// Verifikasi 2 langkah milik sendiri.
+const twoFactorLimit=limiter(15*60*1000,20,"Terlalu banyak percobaan. Coba lagi dalam 15 menit.");
+router.get("/2fa",async(req:AuthRequest,res)=>res.json(twoFactorStatus((await getUsers()).find(u=>u.id===req.auth!.sub)!)));
+router.post("/2fa/setup",twoFactorLimit,async(req:AuthRequest,res)=>res.json(await startSetup(req.auth!.sub,req.body)));
+router.post("/2fa/enable",twoFactorLimit,async(req:AuthRequest,res)=>res.json(await confirmSetup(req.auth!.sub,req.body)));
+router.post("/2fa/disable",twoFactorLimit,async(req:AuthRequest,res)=>res.json(await disableTwoFactor(req.auth!.sub,req.body)));
+router.post("/2fa/recovery",twoFactorLimit,async(req:AuthRequest,res)=>res.json(await regenerateRecovery(req.auth!.sub,req.body)));
 // Lonceng notifikasi staf di bilah atas panel admin.
 router.get("/notifications",async(req:AuthRequest,res)=>res.json(await staffInbox(req.auth!.sub,req.query)));
 router.get("/notifications/unread",async(req:AuthRequest,res)=>res.json({unread:await staffUnread(req.auth!.sub)}));

@@ -45,7 +45,7 @@ test("pembukuan: jurnal berpasangan, laba rugi, neraca, buku besar, dan buku bes
 
       const setup = await request("/operations/finance/setup", "GET", undefined, admin);
       assert.equal(setup.status, 200);
-      assert.equal(setup.data.accounts.length, 34, "26 akun bawaan, Utang Pajak, Potongan Harga, Pendapatan Pembatalan, tiga akun keanggotaan, Pendapatan Biaya Layanan, dan Potongan Voucher");
+      assert.equal(setup.data.accounts.length, 39, "26 akun bawaan, Utang Pajak, Potongan Harga, Pendapatan Pembatalan, tiga akun keanggotaan, Pendapatan Biaya Layanan, Potongan Voucher, Harga Pokok Penjualan, Selisih Persediaan, Selisih Kas, Laba Pelepasan Aset, dan Laba Ditahan");
       assert.equal(setup.data.accounts.filter((row: { is_cash: number }) => row.is_cash).length, 2, "Kas dan Bank");
       assert.equal(setup.data.settings.cash_accounts.cash, await account("1-100"), "pembayaran tunai masuk ke Kas");
       assert.equal(setup.data.settings.cash_accounts.qris, await account("1-200"), "pembayaran online masuk ke Bank");

@@ -5,6 +5,7 @@ import { check } from "./errors.js";
 import { getInfo } from "./content.js";
 import type { NotifyEvent } from "./notify-events.js";
 import { defaultEvents, eventsSchema } from "./notify-events.js";
+import { seal, unseal } from "./secrets.js";
 
 /**
  * Notifikasi WhatsApp lewat penyedia pihak ketiga. Polanya sama dengan email: pesan ditulis ke
@@ -34,7 +35,7 @@ const defaults: WhatsAppSettings = {
 };
 async function stored(): Promise<WhatsAppSettings> {
   const value = await readSetting<Partial<WhatsAppSettings>>("whatsapp") ?? {};
-  return { ...defaults, ...value, events: { ...defaultEvents, ...value.events } };
+  return { ...defaults, ...value, token: unseal(value.token), events: { ...defaultEvents, ...value.events } };
 }
 export async function whatsappConfig() {
   const settings = await stored();
@@ -180,7 +181,7 @@ export async function saveWhatsAppSettings(input: unknown, actor: string) {
       staff_numbers: [...new Set(data.staff_numbers.map(waNumber))], reminder_hours: data.reminder_hours,
       events: { ...defaultEvents, ...data.events }, updated_at: new Date().toISOString(),
     };
-    await saveSetting("whatsapp", next);
+    await saveSetting("whatsapp", { ...next, token: seal(next.token) });
     const config = await whatsappConfig();
     const problem = missing(config);
     check(!next.enabled || !problem, 409, problem || "Pengaturan WhatsApp belum lengkap.");

@@ -49,6 +49,10 @@ const loginEmail=(req:express.Request)=>typeof req.body?.email==="string"?req.bo
 const emailLimit=limiter(15*60*1000,10,"Terlalu banyak percobaan masuk untuk email ini. Coba lagi dalam 15 menit.",{key:loginEmail,skipSuccessfulRequests:true});
 app.use("/api/auth/login",authLimit,emailLimit);
 app.use("/api/auth/register",authLimit);
+// Lupa password: sedikit per email agar kotak masuk staf tidak dibanjiri tautan.
+const forgotLimit=limiter(60*60*1000,5,"Terlalu sering meminta tautan reset. Coba lagi dalam 1 jam.",{key:loginEmail});
+app.use("/api/auth/forgot",authLimit,forgotLimit);
+app.use("/api/auth/reset",authLimit);
 app.use("/api/auth",authRoutes);
 app.use("/api/dashboard",dashboardRoutes);
 app.use("/api/access",accessRoutes);

@@ -13,7 +13,8 @@
     "seed": "tsx src/seed.ts",
     "seed:dua-lantai": "tsx src/seed.ts --dua-lantai",
     "restore": "tsx src/restore.ts",
-    "import:sqlite": "tsx src/import-sqlite.ts"
+    "import:sqlite": "tsx src/import-sqlite.ts",
+    "reset-password": "tsx src/reset-password.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.0",

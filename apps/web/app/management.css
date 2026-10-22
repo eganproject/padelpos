@@ -558,3 +558,22 @@ body:has(.desk) [data-sonner-toast],body:has(.auth-page) [data-sonner-toast]{fon
 .settings-hub-text small{font-size:var(--fs-sm);line-height:var(--lh-snug);color:var(--muted)}
 .settings-hub-arrow{width:16px;height:16px;flex:none;margin-top:10px;color:var(--gray-500);transition:transform var(--fast) var(--ease)}
 .settings-hub-card:hover .settings-hub-arrow{transform:translateX(2px);color:var(--text)}
+
+/* --- Verifikasi 2 langkah (components/two-factor-card.tsx) --- */
+.two-factor-state{display:flex;gap:var(--s3);align-items:center;padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-md);background:var(--panel2)}
+.two-factor-state svg{width:22px;height:22px;flex:none;color:var(--muted)}
+.two-factor-state.on{border-color:color-mix(in srgb,var(--green-text) 30%,transparent);background:var(--green-bg)}
+.two-factor-state.on svg{color:var(--green-text)}
+.two-factor-state b{display:block}
+.two-factor-state small{color:var(--muted);font-size:var(--fs-sm)}
+.two-factor-warn{margin:0;padding:var(--s2) var(--s3);border-radius:var(--r-sm);background:var(--yellow-bg);color:var(--yellow-text);font-size:var(--fs-sm)}
+.two-factor-steps{margin:0;padding-left:1.2em;display:grid;gap:var(--s1);font-size:var(--fs-sm);line-height:var(--lh-normal)}
+.two-factor-qr{display:grid;place-items:center;padding:var(--s3);border:1px solid var(--line);border-radius:var(--r-md);background:#fff}
+.two-factor-qr img{width:180px;height:180px;image-rendering:pixelated}
+.two-factor-manual summary{cursor:pointer;font-size:var(--fs-sm);color:var(--muted)}
+.secret-row{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap;margin-top:var(--s2)}
+.secret-row code{font-size:var(--fs-sm);padding:var(--s1) var(--s2);border-radius:var(--r-sm);background:var(--panel2);word-break:break-all}
+.modal-fields input.otp-field{letter-spacing:.3em;font-size:var(--fs-lg);font-variant-numeric:tabular-nums}
+.recovery-codes{list-style:none;margin:0;padding:var(--s3);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s2);border:1px dashed var(--line);border-radius:var(--r-md)}
+.recovery-codes code{font-size:var(--fs-md);letter-spacing:.06em}
+.access-badge.secure{background:var(--green-bg);color:var(--green-text)}

@@ -20,6 +20,10 @@ import * as receipts from "../receipts.js";
 import * as members from "../membership.js";
 import { memberSlots } from "../member-rates.js";
 import * as counter from "../counter.js";
+import * as shifts from "../shifts.js";
+import * as statements from "../statements.js";
+import * as assets from "../assets.js";
+import * as closing from "../closing.js";
 import * as brand from "../brand.js";
 import * as vouchers from "../vouchers.js";
 import * as staffAlerts from "../staff-alerts.js";
@@ -47,6 +51,11 @@ router.put("/addons/:id",requireMenu("addons"),async (req:AuthRequest,res)=>res.
 router.delete("/addons/:id",requireMenu("addons"),async (req:AuthRequest,res)=>{await addons.removeAddon(String(req.params.id),req.auth!.sub);res.status(204).send()});
 router.post("/addons/:id/photo",requireMenu("addons"),express.raw({type:[...photoTypes],limit:maxPhotoSize}),async (req:AuthRequest,res)=>res.status(201).json({addon:await addons.setAddonPhoto(String(req.params.id),req.get("content-type"),req.body,req.auth!.sub)}));
 router.delete("/addons/:id/photo",requireMenu("addons"),async (req:AuthRequest,res)=>res.json({addon:await addons.removeAddonPhoto(String(req.params.id),req.auth!.sub)}));
+// Pilihan sumber dana dan pemasok untuk mencatat restok sebagai pembelian, tanpa perlu akses menu Keuangan.
+router.get("/addons/purchase-options",requireMenu("addons"),async (_req,res)=>res.json({
+  cash_accounts:(await finance.accounts()).filter(a=>a.is_cash&&a.active).map(a=>({id:a.id,code:a.code,name:a.name})),
+  partners:(await finance.partners()).filter(p=>p.active&&p.kind==="pemasok").map(p=>({id:p.id,name:p.name})),
+}));
 router.get("/addons/:id/stock",requireMenu("addons"),async (req,res)=>res.json({moves:await addons.stockMoves(String(req.params.id))}));
 router.post("/addons/:id/stock",requireMenu("addons"),async (req:AuthRequest,res)=>res.status(201).json(await addons.adjustStock(String(req.params.id),req.body,req.auth!.sub)));
 router.get("/context",requireAnyMenu(["bookings","courts"]),async (req,res)=>{
@@ -183,6 +192,12 @@ router.post("/counter/:id/refresh",requireMenu("bookings"),async (req,res)=>res.
 router.get("/counter/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await receipts.saleReceipt(String(req.params.id),req.auth!.sub)));
 router.patch("/counter/:id/returned",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.returnSaleLines(String(req.params.id),req.body,req.auth!.sub)));
 router.post("/counter/:id/void",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await counter.voidSale(String(req.params.id),req.body,req.auth!.sub)));
+// Tutup kasir: shift per staf, modal awal laci, dan hitung uang saat tutup.
+router.get("/shifts",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await shifts.shiftOverview(req.auth!)));
+router.post("/shifts",requireMenu("bookings"),async (req:AuthRequest,res)=>res.status(201).json(await shifts.openShift(req.body,req.auth!)));
+router.get("/shifts/:id",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await shifts.shiftDetail(String(req.params.id),req.auth!)));
+router.post("/shifts/:id/close",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json(await shifts.closeShift(String(req.params.id),req.body,req.auth!)));
+router.get("/shifts/:id/receipt",requireMenu("bookings"),async (req:AuthRequest,res)=>res.json({shift:await shifts.shiftDetail(String(req.params.id),req.auth!),...await receipts.receiptFrame(req.auth!.sub)}));
 // --- Keuangan --------------------------------------------------------------
 // Keuangan dipecah menjadi beberapa menu; tiap menu hanya membuka endpoint yang dipakainya.
 const money=requireMenu("finance"),records=requireMenu("finance-records"),journal=requireMenu("finance-journal"),reports=requireMenu("finance-reports"),books=requireMenu("finance-settings");
@@ -221,4 +236,21 @@ router.get("/finance/reports/laba-rugi",reports,async (req,res)=>res.json(await 
 router.get("/finance/reports/neraca",reports,async (req,res)=>res.json(await finance.balanceSheet(req.query)));
 router.get("/finance/reports/buku-besar",reports,async (req,res)=>res.json(await finance.generalLedger(req.query)));
 router.get("/finance/reports/pembantu",reports,async (req,res)=>res.json(await finance.subsidiaryLedger(req.query)));
+router.get("/finance/reports/arus-kas",reports,async (req,res)=>res.json(await statements.cashFlow(req.query)));
+router.get("/finance/reports/neraca-saldo",reports,async (req,res)=>res.json(await statements.trialBalance(req.query)));
+router.get("/finance/reports/operasional",reports,async (req,res)=>res.json(await statements.operationsReport(req.query)));
+// Tutup buku tahunan di Pengaturan Keuangan, di samping kunci pembukuan.
+router.get("/finance/closing",books,async (_req,res)=>res.json(await closing.closingOverview()));
+router.post("/finance/closing",books,async (req:AuthRequest,res)=>res.json(await closing.closeYear(req.body,req.auth!.sub)));
+router.post("/finance/closing/undo",books,async (req:AuthRequest,res)=>res.json(await closing.undoClosing(req.body,req.auth!.sub)));
+// Aset tetap dan penyusutan.
+const fixedAssets=requireMenu("finance-assets");
+router.get("/finance/assets",fixedAssets,async (_req,res)=>res.json(await assets.assetOverview()));
+router.post("/finance/assets",fixedAssets,async (req:AuthRequest,res)=>res.status(201).json({asset:await assets.saveAsset(req.body,req.auth!.sub)}));
+router.post("/finance/assets/depreciate",fixedAssets,async (req:AuthRequest,res)=>res.json(await assets.runDepreciation({through:z.object({through:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/,"Bulan tidak valid.").optional()}).parse(req.body??{}).through},req.auth!.sub)));
+router.get("/finance/assets/:id",fixedAssets,async (req,res)=>res.json(await assets.assetSchedule(String(req.params.id))));
+router.put("/finance/assets/:id",fixedAssets,async (req:AuthRequest,res)=>res.json({asset:await assets.saveAsset(req.body,req.auth!.sub,String(req.params.id))}));
+router.delete("/finance/assets/:id",fixedAssets,async (req:AuthRequest,res)=>{await assets.removeAsset(String(req.params.id),req.auth!.sub);res.status(204).send()});
+router.post("/finance/assets/:id/dispose",fixedAssets,async (req:AuthRequest,res)=>res.json({asset:await assets.disposeAsset(String(req.params.id),req.body,req.auth!.sub)}));
+router.post("/finance/assets/:id/undo-dispose",fixedAssets,async (req:AuthRequest,res)=>res.json({asset:await assets.undoDisposal(String(req.params.id),req.auth!.sub)}));
 export default router;

@@ -269,3 +269,57 @@ html[data-theme="dark"] .fin-subtabs>button[aria-selected="true"]{background:var
 .fin-bars{flex:1;height:auto;min-height:110px}
 .fin-bars>i{min-height:0}
 @media(min-width:1100px){.fin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Arus kas, neraca saldo, laporan operasional (components/finance-statements.tsx) */
+.fin-flow{display:grid;gap:var(--s4)}
+.fin-sheet>header span.minus,.fin-report .minus{color:var(--red-text)}
+.fin-trial td.right,.fin-trial th.right{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fin-trial tfoot td{border-top:2px solid var(--line-strong);background:var(--subtle)}
+.occupancy{display:flex;align-items:center;gap:var(--s2);min-width:120px}
+.occupancy .fin-share{flex:1}
+.heat-scroll{overflow-x:auto}
+.heatmap{border-collapse:separate!important;border-spacing:3px;min-width:420px}
+.heatmap th{font-size:var(--fs-xs)!important;text-align:center!important;border:0!important;padding:2px!important;color:var(--muted)}
+.heatmap tbody th{text-align:right!important;padding-right:var(--s2)!important;font-variant-numeric:tabular-nums}
+.heatmap td{border:0!important;padding:0!important;height:26px;text-align:center;font-size:var(--fs-xs)!important;border-radius:4px;font-variant-numeric:tabular-nums;color:var(--text)}
+.heatmap td.none{background:transparent}
+.heatmap .h0,.heat-legend .h0{background:var(--panel2);color:var(--muted)}
+.heatmap .h1{background:color-mix(in srgb,var(--green-solid) 14%,var(--panel))}
+.heatmap .h2{background:color-mix(in srgb,var(--green-solid) 28%,var(--panel))}
+.heatmap .h3,.heat-legend .h3{background:color-mix(in srgb,var(--green-solid) 45%,var(--panel))}
+.heatmap .h4{background:color-mix(in srgb,var(--green-solid) 65%,var(--panel));color:#fff}
+.heatmap .h5,.heat-legend .h5{background:var(--green-solid);color:#fff}
+.heat-legend{display:inline-flex!important;align-items:center;gap:6px;font-size:var(--fs-xs)!important;font-weight:400!important;color:var(--muted)!important}
+.heat-legend i{display:inline-block;width:12px;height:12px;border-radius:3px}
+.fin-note svg{vertical-align:-1px}
+.fin-stale{display:flex!important;align-items:center;gap:4px;color:var(--orange-text)!important}
+.fin-closing-actions{justify-content:flex-end}
+
+/* Aset tetap (components/assets-panel.tsx) */
+.asset-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--s3)}
+.asset-toolbar .fin-note{margin:0;display:flex;align-items:center;gap:6px}
+.asset-toolbar .fin-toolbar-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2)}
+.asset-bar{display:block;height:4px;margin-top:6px;border-radius:2px;background:var(--panel2);overflow:hidden;min-width:60px}
+.asset-bar i{display:block;height:100%;background:var(--green-solid)}
+.muted-row td{color:var(--muted)}
+.fin-fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:var(--s3);min-width:0}
+.fin-fieldset:disabled{opacity:.6}
+.asset-life{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-sm);color:var(--muted)}
+.asset-life input{width:72px}
+.asset-monthly{font-size:var(--fs-xl);font-weight:600;font-variant-numeric:tabular-nums;min-height:var(--control);display:flex;align-items:center}
+.fin-advanced summary{cursor:pointer;font-size:var(--fs-sm);color:var(--muted)}
+.fin-advanced[open] summary{margin-bottom:var(--s2)}
+.asset-purchase{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3);border:1px dashed var(--line);border-radius:var(--r-md)}
+.asset-schedule{max-height:min(60vh,520px);overflow:auto}
+.asset-schedule table{width:100%;border-collapse:collapse}
+.asset-schedule th,.asset-schedule td{padding:6px var(--s2);border-bottom:1px solid var(--line);font-size:var(--fs-sm);text-align:left}
+.asset-schedule .right{text-align:right;font-variant-numeric:tabular-nums}
+.asset-schedule thead th{position:sticky;top:0;background:var(--panel);color:var(--muted);font-weight:420}
+.asset-schedule tr.sebelum td,.asset-schedule tr.dilepas td{color:var(--muted)}
+.fin .ops-table th.right,.fin .ops-table td.right,.fin-report .ops-table th.right,.fin-report .ops-table td.right{text-align:right}
+.asset-actions{flex-wrap:nowrap!important;justify-content:flex-end}
+.fin-flow table{table-layout:fixed}
+.fin-flow th:nth-child(2){width:100px}
+.fin-flow th:nth-child(3),.fin-flow th:nth-child(4){width:150px}
+.heatmap{width:100%;table-layout:fixed}
+.heatmap thead th:first-child,.heatmap tbody th{width:56px}
