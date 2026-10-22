@@ -40,30 +40,30 @@ export interface FinanceSettings {
 }
 
 const maxAmount = 999_999_999_999;
-const periodOf = (input: unknown) => {
+export const periodOf = (input: unknown) => {
   const value = z.object({ from: dateSchema, to: dateSchema }).parse(input);
   check(value.from <= value.to, 400, "Tanggal akhir harus sama dengan atau setelah tanggal mulai.");
   return value;
 };
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid.").refine(value => {
+export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Tanggal tidak valid.").refine(value => {
   const date = new Date(value + "T00:00:00Z");
   return !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }, "Tanggal tidak valid.");
 const optionalDate = z.union([dateSchema, z.literal("")]).default("");
-const amountSchema = z.number().int().positive().max(maxAmount, "Nominal terlalu besar.");
-const idSchema = z.string().trim().min(1).max(64);
+export const amountSchema = z.number().int().positive().max(maxAmount, "Nominal terlalu besar.");
+export const idSchema = z.string().trim().min(1).max(64);
 
 // --- Akun & mitra ----------------------------------------------------------
 
 const accountColumns = "id,code,name,type,subtype,is_cash,system_key,description,active,position,created_at";
 export const accounts = async () => await db.prepare(`SELECT ${accountColumns} FROM accounts ORDER BY code`).all() as Account[];
 export const partners = async () => await db.prepare("SELECT id,name,kind,phone,note,active,created_at FROM partners ORDER BY name").all() as Partner[];
-async function getAccount(id: string) {
+export async function getAccount(id: string) {
   const account = await db.prepare(`SELECT ${accountColumns} FROM accounts WHERE id=?`).get(id) as Account | undefined;
   check(account, 404, "Akun tidak ditemukan.");
   return account;
 }
-async function systemAccount(key: string) {
+export async function systemAccount(key: string) {
   const account = await db.prepare(`SELECT ${accountColumns} FROM accounts WHERE system_key=?`).get(key) as Account | undefined;
   check(account, 500, "Bagan akun bawaan tidak lengkap. Jalankan ulang API agar akun standar dibuat kembali.");
   return account;
@@ -106,10 +106,10 @@ export async function ensureOpen(date: string) {
 
 // --- Jurnal ----------------------------------------------------------------
 
-interface LineInput { account_id: string; debit?: number; credit?: number; memo?: string; partner_id?: string | null; booking_id?: string | null }
-interface EntryInput { date: string; memo: string; source: EntrySource; ref_id?: string | null; lines: LineInput[]; actor: string | null }
+export interface LineInput { account_id: string; debit?: number; credit?: number; memo?: string; partner_id?: string | null; booking_id?: string | null }
+interface EntryInput { date: string; memo: string; source: EntrySource; ref_id?: string | null; lines: LineInput[]; actor: string | null; /** Hanya jurnal tutup buku: boleh masuk periode terkunci karena tidak mengubah laba rugi. */ closing?: boolean }
 
-async function nextNumber(table: "journal_entries" | "finance_records", prefix: string, year: string) {
+export async function nextNumber(table: "journal_entries" | "finance_records", prefix: string, year: string) {
   const last = await db.prepare(`SELECT number FROM ${table} WHERE number LIKE ? ORDER BY number DESC LIMIT 1`).get(`${prefix}-${year}-%`) as { number: string } | undefined;
   return `${prefix}-${year}-${String(last ? Number(last.number.slice(-5)) + 1 : 1).padStart(5, "0")}`;
 }
@@ -118,7 +118,7 @@ async function nextNumber(table: "journal_entries" | "finance_records", prefix: 
  * Tulis satu jurnal. Bila `ref_id` diisi, jurnal lama dengan sumber dan rujukan yang sama ditimpa —
  * itulah yang membuat penjurnalan otomatis aman dipanggil berulang kali.
  */
-async function putEntry(input: EntryInput) {
+export async function putEntry(input: EntryInput) {
   const lines = input.lines.filter(line => (line.debit ?? 0) > 0 || (line.credit ?? 0) > 0);
   check(lines.length >= 2, 400, "Jurnal membutuhkan minimal dua baris.");
   check(lines.every(line => ((line.debit ?? 0) > 0) !== ((line.credit ?? 0) > 0)), 400, "Setiap baris hanya boleh diisi debit saja atau kredit saja.");
@@ -128,7 +128,7 @@ async function putEntry(input: EntryInput) {
   const existing = input.ref_id
     ? await db.prepare("SELECT id,date FROM journal_entries WHERE source=? AND ref_id=?").get(input.source, input.ref_id) as { id: string; date: string } | undefined
     : undefined;
-  await guardLocked(input.date, existing, lines);
+  if (!(input.closing && input.source === "tutup_buku")) await guardLocked(input.date, existing, lines);
   const id = existing?.id ?? randomUUID();
   if (existing) {
     await db.prepare("UPDATE journal_entries SET date=?,memo=? WHERE id=?").run(input.date, input.memo, id);
@@ -142,16 +142,16 @@ async function putEntry(input: EntryInput) {
       .run(randomUUID(), id, line.account_id, line.debit ?? 0, line.credit ?? 0, line.memo ?? "", line.partner_id ?? null, line.booking_id ?? null, position);
   return id;
 }
-async function dropEntry(source: EntrySource, refId: string) {
+export async function dropEntry(source: EntrySource, refId: string) {
   const entry = await db.prepare("SELECT id,date FROM journal_entries WHERE source=? AND ref_id=?").get(source, refId) as { id: string; date: string } | undefined;
   if (!entry) return;
   const locked = (await settings()).locked_until;
-  if (locked && entry.date <= locked) check(false, 409, lockedMessage(locked, entry.date));
+  if (locked && entry.date <= locked && source !== "tutup_buku") check(false, 409, lockedMessage(locked, entry.date));
   await db.prepare("DELETE FROM journal_entries WHERE id=?").run(entry.id);
 }
 const longDate = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
-const dayText = (date: string) => longDate.format(new Date(`${date}T00:00:00Z`));
-const lockedMessage = (locked: string, date: string) =>
+export const dayText = (date: string) => longDate.format(new Date(`${date}T00:00:00Z`));
+export const lockedMessage = (locked: string, date: string) =>
   `Perubahan ini mengubah pembukuan tanggal ${dayText(date)}, padahal pembukuan sampai ${dayText(locked)} sudah dikunci. Buka kuncinya di Pengaturan Keuangan bila memang perlu dikoreksi.`;
 /**
  * Penjurnalan otomatis (booking, kasir, member, stok) memakai jalur yang sama dengan pencatatan manual,
@@ -422,20 +422,24 @@ export async function closeMembershipBooks(membershipId: string, date: string, r
 // --- Saldo & rangkuman -----------------------------------------------------
 
 interface Movement { account_id: string; debit: number; credit: number }
-async function movements(from: string | null, to: string | null) {
+/**
+ * Mutasi per akun. `withClosing=false` mengabaikan jurnal tutup buku, untuk laporan laba rugi: tanpa itu
+ * pendapatan dan beban tahun yang sudah ditutup akan terbaca nol.
+ */
+export async function movements(from: string | null, to: string | null, withClosing = true) {
   const rows = await db.prepare(`SELECT l.account_id,SUM(l.debit) debit,SUM(l.credit) credit FROM journal_lines l JOIN journal_entries e ON e.id=l.entry_id
-    WHERE (? IS NULL OR e.date>=?) AND (? IS NULL OR e.date<=?) GROUP BY l.account_id`).all(from, from, to, to) as Movement[];
+    WHERE (? IS NULL OR e.date>=?) AND (? IS NULL OR e.date<=?) AND (? OR e.source<>'tutup_buku') GROUP BY l.account_id`).all(from, from, to, to, withClosing ? 1 : 0) as Movement[];
   return new Map(rows.map(row => [row.account_id, row]));
 }
 /** Saldo positif berarti "normal": aset dan beban bertambah di debit, sisanya di kredit. */
-const signed = (type: AccountType, debit: number, credit: number) => (type === "aset" || type === "beban" ? debit - credit : credit - debit);
-const balanceOf = (account: Account, index: Map<string, Movement>) => {
+export const signed = (type: AccountType, debit: number, credit: number) => (type === "aset" || type === "beban" ? debit - credit : credit - debit);
+export const balanceOf = (account: Account, index: Map<string, Movement>) => {
   const row = index.get(account.id);
   return row ? signed(account.type, row.debit, row.credit) : 0;
 };
-const shiftDay = (date: string, days: number) => { const value = new Date(date + "T00:00:00Z"); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10) };
+export const shiftDay = (date: string, days: number) => { const value = new Date(date + "T00:00:00Z"); value.setUTCDate(value.getUTCDate() + days); return value.toISOString().slice(0, 10) };
 const shiftMonth = (date: string, months: number) => { const value = new Date(date.slice(0, 7) + "-01T00:00:00Z"); value.setUTCMonth(value.getUTCMonth() + months); return value.toISOString().slice(0, 10) };
-const monthEnd = (date: string) => shiftDay(shiftMonth(date, 1), -1);
+export const monthEnd = (date: string) => shiftDay(shiftMonth(date, 1), -1);
 const dayCount = (from: string, to: string) => Math.round((Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86400000) + 1;
 
 /** Saldo piutang tiap pelanggan, dipakai buku besar pembantu sekaligus reklasifikasi neraca. */
@@ -467,10 +471,10 @@ async function receivableByBooking(to: string) {
 
 export async function profitLoss(input: unknown) {
   const { from, to } = periodOf(input);
-  const index = await movements(from, to);
+  const index = await movements(from, to, false);
   const span = dayCount(from, to);
   const previousTo = shiftDay(from, -1), previousFrom = shiftDay(previousTo, -(span - 1));
-  const previousIndex = await movements(previousFrom, previousTo);
+  const previousIndex = await movements(previousFrom, previousTo, false);
   const rows = (await accounts()).filter(account => account.type === "pendapatan" || account.type === "beban")
     .map(account => ({ id: account.id, code: account.code, name: account.name, type: account.type, amount: balanceOf(account, index), previous: balanceOf(account, previousIndex) }))
     .filter(row => row.amount !== 0 || row.previous !== 0);
@@ -501,9 +505,15 @@ export async function balanceSheet(input: unknown) {
   const liabilities = all.filter(account => account.type === "liabilitas").map(line).filter(row => row.amount !== 0);
   if (advances > 0) liabilities.push({ id: "uang-muka", code: "2-900", name: "Uang Muka Pelanggan", amount: advances });
   const equityAccounts = all.filter(account => account.type === "ekuitas").map(line).filter(row => row.amount !== 0);
-  const income = all.filter(account => account.type === "pendapatan").reduce((sum, account) => sum + balanceOf(account, index), 0);
-  const expense = all.filter(account => account.type === "beban").reduce((sum, account) => sum + balanceOf(account, index), 0);
-  const equity = [...equityAccounts, { id: "laba", code: "3-900", name: "Laba Ditahan & Laba Berjalan", amount: income - expense }].filter(row => row.amount !== 0);
+  // Laba yang belum dipindahkan ke Laba Ditahan lewat tutup buku: tahun ini, dan tahun lalu yang belum ditutup.
+  const profit = (movement: Map<string, Movement>) => all.reduce((sum, account) =>
+    sum + (account.type === "pendapatan" ? balanceOf(account, movement) : account.type === "beban" ? -balanceOf(account, movement) : 0), 0);
+  const unclosed = profit(index), yearStart = as_of.slice(0, 4) + "-01-01";
+  const currentYear = profit(await movements(yearStart, as_of));
+  const equity = [...equityAccounts,
+    { id: "laba-lalu", code: "3-890", name: "Laba Tahun Lalu (belum tutup buku)", amount: unclosed - currentYear },
+    { id: "laba", code: "3-900", name: "Laba Tahun Berjalan", amount: currentYear },
+  ].filter(row => row.amount !== 0);
   const totalAssets = assets.reduce((sum, row) => sum + row.amount, 0);
   const totalLiabilities = liabilities.reduce((sum, row) => sum + row.amount, 0);
   const totalEquity = equity.reduce((sum, row) => sum + row.amount, 0);
@@ -623,7 +633,7 @@ export async function overview(input: unknown) {
   const series = await Promise.all(Array.from({ length: 6 }, async (_, offset) => {
     const start = shiftMonth(to, offset - 5);
     const end = offset === 5 ? to : monthEnd(start);
-    const period = await movements(start, end);
+    const period = await movements(start, end, false);
     const sum = (type: AccountType) => all.filter(account => account.type === type).reduce((value, account) => value + balanceOf(account, period), 0);
     return { month: start.slice(0, 7), income: sum("pendapatan"), expense: sum("beban") };
   }));

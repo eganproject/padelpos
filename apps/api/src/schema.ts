@@ -874,6 +874,7 @@ export const schemaV14: string[] = [
     disposal_amount BIGINT CHECK(disposal_amount IS NULL OR disposal_amount >= 0),
     disposal_cash_account_id ${id},
     note TEXT NOT NULL DEFAULT (''),
+    record_id ${id},
     created_by ${id},
     created_at ${stamp} NOT NULL,
     updated_at ${stamp} NOT NULL,
