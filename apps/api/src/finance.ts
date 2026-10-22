@@ -23,7 +23,7 @@ import { allocate, taxSettings, type TaxSettings } from "./bill.js";
 
 export type AccountType = "aset" | "liabilitas" | "ekuitas" | "pendapatan" | "beban";
 export type AccountSubtype = "kas_bank" | "piutang" | "persediaan" | "aset_tetap" | "utang" | "modal" | "pendapatan" | "beban";
-export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan" | "kasir" | "persediaan" | "tutup_kasir";
+export type EntrySource = "manual" | "catatan" | "pelunasan" | "transfer" | "modal" | "booking" | "pembayaran" | "keanggotaan" | "kasir" | "persediaan" | "tutup_kasir" | "penyusutan" | "aset" | "tutup_buku";
 export interface Account { id: string; code: string; name: string; type: AccountType; subtype: AccountSubtype; is_cash: number; system_key: string | null; description: string; active: number; position: number; created_at: string }
 export interface Partner { id: string; name: string; kind: "pemasok" | "pelanggan" | "karyawan" | "lainnya"; phone: string; note: string; active: number; created_at: string }
 export interface JournalLine { id: string; account_id: string; account_code: string; account_name: string; debit: number; credit: number; memo: string; partner_id: string | null; partner_name: string | null; booking_id: string | null }

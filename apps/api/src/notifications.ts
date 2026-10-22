@@ -13,6 +13,7 @@ import { notifyInbox } from "./inbox.js";
 import { notifyStaffInbox, pruneStaffNotifications, type StaffEvent } from "./staff-alerts.js";
 import { bookingAddons, unreturnedRentals } from "./addons.js";
 import type { Booking } from "./operations.js";
+import { seal, unseal } from "./secrets.js";
 
 export type { NotifyEvent } from "./notify-events.js";
 /** Nama lama, dipertahankan untuk pemanggil yang sudah ada. */
@@ -44,7 +45,7 @@ const defaults: EmailSettings = {
 };
 async function stored(): Promise<EmailSettings> {
   const value = await readSetting<Partial<EmailSettings>>("email") ?? {};
-  return { ...defaults, ...value, events: { ...defaultEvents, ...value.events } };
+  return { ...defaults, ...value, password: unseal(value.password), events: { ...defaultEvents, ...value.events } };
 }
 export async function emailConfig() {
   const settings = await stored();
@@ -708,7 +709,7 @@ export async function saveEmailSettings(input: unknown, actor: string) {
       from_name: data.from_name, from_email: data.from_email, staff_recipients: [...new Set(data.staff_recipients.map(value => value.toLowerCase()))],
       reminder_hours: data.reminder_hours, events: data.events, updated_at: new Date().toISOString(),
     };
-    await saveSetting("email", next);
+    await saveSetting("email", { ...next, password: seal(next.password) });
     const config = await emailConfig();
     check(!next.enabled || (config.host && config.from_email), 409, "Isi server SMTP dan email pengirim sebelum mengaktifkan notifikasi.");
     await audit(actor, "email.settings", "email");
@@ -750,4 +751,16 @@ export async function sendTestEmail(input: unknown, actor: string) {
   }
   await audit(actor, "email.test", to);
   return { ok: true, message: `Email uji terkirim ke ${to}.` };
+}
+
+/** Tautan reset password staf. Dikirim langsung lewat antrean email; tidak memakai WhatsApp atau kotak masuk. */
+export async function notifyPasswordReset(input: { reset_id: string; name: string; email: string; url: string; minutes: number }) {
+  const queued = await enqueueEmail(`password-reset:${input.reset_id}`, "password_reset", input.email, {
+    subject: `Reset password panel ${await venueName()}`, heading: "Reset password",
+    intro: `Halo ${input.name}, ada permintaan untuk mengganti password akun panel admin Anda. Tautan di bawah berlaku ${input.minutes} menit dan hanya bisa dipakai sekali.`,
+    link: { label: "Buat password baru", url: input.url },
+    outro: "Bila Anda tidak memintanya, abaikan email ini. Password Anda tidak berubah.", tone: "warning",
+  }, null);
+  if (queued) void deliverDue().catch(error => console.error("Gagal mengirim email reset password:", (error as Error).message));
+  return queued;
 }

@@ -4,6 +4,11 @@ import { paymentConfig } from "./midtrans.js";
 import { startBackups } from "./backups.js";
 import { startHousekeeping } from "./housekeeping.js";
 import { db } from "./store.js";
+import { sealStoredSecrets } from "./secrets.js";
+
+// Kunci rahasia dari versi lama dienkripsi sebelum server menerima permintaan.
+const sealed = await sealStoredSecrets().catch(error => { console.error("Gagal mengenkripsi kunci rahasia:", (error as Error).message); return 0; });
+if (sealed) console.log(`${sealed} kunci rahasia lama kini disimpan terenkripsi.`);
 
 const port = Number(process.env.PORT || 4000);
 const server = app.listen(port, () => console.log(`Padelix API running at http://localhost:${port}`));

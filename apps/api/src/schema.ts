@@ -834,6 +834,78 @@ export const schemaV13: string[] = [
   "ALTER TABLE payments ADD KEY payments_staff (created_by, created_at)",
   "ALTER TABLE counter_sales ADD KEY counter_sales_cashier (created_by, paid_at)",
 ];
+/**
+ * Versi 14: keamanan staf, aset tetap, dan tutup buku.
+ *
+ * - `password_resets`: tautan lupa password staf. Token hanya disimpan sebagai hash SHA-256, berlaku 30 menit.
+ * - `fixed_assets`: daftar aset tetap (raket sewa, lampu, karpet lapangan) dengan penyusutan garis lurus
+ *   per bulan mulai `depreciate_from` (YYYY-MM). Bulan sebelumnya dianggap sudah disusutkan di luar aplikasi.
+ * - `asset_depreciations`: penyusutan yang sudah dibukukan per aset per bulan. Jurnalnya satu per bulan
+ *   (sumber `penyusutan`, ref = bulan) dan selalu dihitung ulang dari tabel ini.
+ * - `fiscal_closings`: tutup buku tahunan. Jurnal penutup (sumber `tutup_buku`) memindahkan saldo pendapatan
+ *   dan beban setahun ke Laba Ditahan.
+ */
+export const schemaV14: string[] = [
+  `CREATE TABLE password_resets (
+    id ${id} PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL,
+    user_id ${id} NOT NULL,
+    expires_at BIGINT NOT NULL,
+    used_at ${stamp},
+    created_at ${stamp} NOT NULL,
+    UNIQUE KEY password_resets_token (token_hash),
+    KEY password_resets_user (user_id)
+  )`,
+  `CREATE TABLE fixed_assets (
+    id ${id} PRIMARY KEY,
+    number VARCHAR(32) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    category VARCHAR(60) NOT NULL DEFAULT '',
+    acquired_on ${date} NOT NULL,
+    cost BIGINT NOT NULL CHECK(cost > 0),
+    salvage BIGINT NOT NULL DEFAULT 0 CHECK(salvage >= 0),
+    life_months INT NOT NULL CHECK(life_months BETWEEN 1 AND 600),
+    depreciate_from CHAR(7) NOT NULL,
+    asset_account_id ${id} NOT NULL,
+    accumulated_account_id ${id} NOT NULL,
+    expense_account_id ${id} NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'aktif' CHECK(status IN ('aktif','dilepas')),
+    disposed_on ${date},
+    disposal_amount BIGINT CHECK(disposal_amount IS NULL OR disposal_amount >= 0),
+    disposal_cash_account_id ${id},
+    note TEXT NOT NULL DEFAULT (''),
+    created_by ${id},
+    created_at ${stamp} NOT NULL,
+    updated_at ${stamp} NOT NULL,
+    UNIQUE KEY fixed_assets_number (number),
+    CONSTRAINT fixed_assets_asset_fk FOREIGN KEY (asset_account_id) REFERENCES accounts(id),
+    CONSTRAINT fixed_assets_accumulated_fk FOREIGN KEY (accumulated_account_id) REFERENCES accounts(id),
+    CONSTRAINT fixed_assets_expense_fk FOREIGN KEY (expense_account_id) REFERENCES accounts(id)
+  )`,
+  `CREATE TABLE asset_depreciations (
+    asset_id ${id} NOT NULL,
+    period CHAR(7) NOT NULL,
+    amount BIGINT NOT NULL CHECK(amount >= 0),
+    created_at ${stamp} NOT NULL,
+    PRIMARY KEY (asset_id, period),
+    KEY asset_depreciations_period (period),
+    CONSTRAINT asset_depreciations_asset FOREIGN KEY (asset_id) REFERENCES fixed_assets(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE fiscal_closings (
+    year INT PRIMARY KEY,
+    net_income BIGINT NOT NULL,
+    closed_by ${id},
+    closed_at ${stamp} NOT NULL
+  )`,
+];
+/** Akun sistem untuk aset tetap dan tutup buku, dengan format yang sama seperti `membershipAccounts`. */
+export const closingAccounts: typeof membershipAccounts = [
+  [["1-500", "1-510", "1-520"], "Peralatan & Inventaris", "aset", "aset_tetap", "aset_tetap", "Raket, jaring, lampu, dan peralatan yang dipakai bertahun-tahun."],
+  [["1-600", "1-610", "1-620"], "Akumulasi Penyusutan", "aset", "aset_tetap", "akumulasi_penyusutan", "Pengurang nilai peralatan karena umur pakai. Saldonya negatif."],
+  [["5-900", "5-910", "5-920"], "Beban Penyusutan", "beban", "beban", "beban_penyusutan", "Penurunan nilai peralatan yang dicatat tiap bulan."],
+  [["4-950", "4-951", "4-952"], "Laba (Rugi) Pelepasan Aset", "pendapatan", "pendapatan", "laba_pelepasan_aset", "Selisih harga jual aset dengan nilai bukunya. Negatif berarti rugi."],
+  [["3-300", "3-310", "3-320"], "Laba Ditahan", "ekuitas", "modal", "laba_ditahan", "Akumulasi laba tahun-tahun yang sudah ditutup bukunya."],
+];
 /** Akun sistem untuk persediaan, harga pokok, dan selisih kas, dengan format yang sama seperti `membershipAccounts`. */
 export const inventoryAccounts: typeof membershipAccounts = [
   [["1-400", "1-410", "1-420"], "Persediaan Barang Dagang", "aset", "persediaan", "persediaan", "Nilai beli bola, minuman, dan barang jual lain yang masih di gudang."],
@@ -907,7 +979,7 @@ export const tableOrder = [
   "venue_features", "court_photos", "price_rules", "price_rule_courts", "maintenance", "member_slots", "customer_accounts", "avatars", "brand_assets",
   "membership_plans", "membership_plan_rates", "memberships", "membership_invoices", "orders", "vouchers",
   "bookings", "payments", "addons", "counter_sales", "cash_shifts", "counter_sale_lines", "booking_addons", "addon_stock_moves", "payment_intents", "accounts", "partners",
-  "voucher_redemptions", "journal_entries", "journal_lines", "finance_records", "email_outbox", "whatsapp_outbox", "customer_notifications", "staff_notifications", "staff_notification_reads", "migrations",
+  "voucher_redemptions", "journal_entries", "journal_lines", "finance_records", "fixed_assets", "asset_depreciations", "fiscal_closings", "password_resets", "email_outbox", "whatsapp_outbox", "customer_notifications", "staff_notifications", "staff_notification_reads", "migrations",
 ];
 
 type MenuSeed = [id: string, name: string, path: string, icon: string, group: string, order: number];
@@ -922,6 +994,7 @@ export const menuSeed: MenuSeed[] = [
   ["finance-records", "Kas & Transaksi", "/admin/keuangan/transaksi", "ArrowLeftRight", "Keuangan", 52],
   ["finance-journal", "Jurnal Umum", "/admin/keuangan/jurnal", "BookOpenText", "Keuangan", 53],
   ["finance-reports", "Laporan", "/admin/keuangan/laporan", "FileChartColumn", "Keuangan", 54],
+  ["finance-assets", "Aset Tetap", "/admin/keuangan/aset", "Warehouse", "Keuangan", 55],
   ["courts", "Lapangan", "/admin/courts", "Activity", "Venue & Layanan", 101],
   ["addons", "Sewa & Tambahan", "/admin/addons", "ShoppingBag", "Venue & Layanan", 102],
   ["layout", "Denah Venue", "/admin/layout", "LayoutGrid", "Venue & Layanan", 103],

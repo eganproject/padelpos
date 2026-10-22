@@ -10,6 +10,10 @@ export interface User {
   createdAt: string;
   /** Foto profil di tabel `avatars`; kosong berarti memakai inisial nama. */
   avatarId?: string;
+  /** Verifikasi 2 langkah (TOTP). `secret` terenkripsi (secrets.ts); kode cadangan disimpan sebagai hash SHA-256. */
+  twoFactor?: { secret: string; enabledAt: string; recovery: string[]; lastStep: number };
+  /** Rahasia yang sedang disiapkan dan belum dikonfirmasi dengan kode dari aplikasi. */
+  pendingTwoFactor?: { secret: string; createdAt: string };
 }
 
 export interface AccessRole {
@@ -33,4 +37,4 @@ export interface AccessMenu {
   createdAt: string;
 }
 
-export type PublicUser = Omit<User, "passwordHash">;
+export type PublicUser = Omit<User, "passwordHash" | "twoFactor" | "pendingTwoFactor"> & { twoFactorEnabled: boolean };
