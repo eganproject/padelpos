@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { Select } from "./form-controls";
 import { ErrorBox } from "./operation-ui";
+import { InfoTip } from "@/components/tooltip";
 
 type Settings = { enabled:boolean; hour:number; keep:number; updated_at:string|null };
 type BackupFile = { name:string; bytes:number; created_at:string; kind:"manual"|"otomatis" };
@@ -69,7 +70,7 @@ export function BackupsPanel() {
           <label className="cms-check"><input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled:e.target.checked })}/> Buat backup setiap hari</label>
           <div className="field-grid">
             <label className="cms-field"><span className="cms-label">Mulai pukul</span><Select value={String(form.hour)} onChange={e => setForm({ ...form, hour:Number(e.target.value) })}>{Array.from({ length:24 }, (_, hour) => <option key={hour} value={hour}>{String(hour).padStart(2, "0")}.00</option>)}</Select></label>
-            <label className="cms-field"><span className="cms-label">Simpan berkas terakhir</span><input type="number" min={1} max={90} value={form.keep} onChange={e => setForm({ ...form, keep:Number(e.target.value) })}/></label>
+            <label className="cms-field"><span className="cms-label">Simpan berkas terakhir<InfoTip text="Jumlah berkas backup terbaru yang disimpan, termasuk backup manual. Berkas yang lebih lama dihapus otomatis."/></span><input type="number" min={1} max={90} value={form.keep} onChange={e => setForm({ ...form, keep:Number(e.target.value) })}/></label>
           </div>
           <p className="cms-hint">Berkas tertua dihapus otomatis bila jumlahnya melebihi batas ini, termasuk backup manual.</p>
         </section>
@@ -88,14 +89,14 @@ export function BackupsPanel() {
       <div className="ops-actions"><button type="button" className="ops-secondary" onClick={() => void load()} disabled={!!busy}><RefreshCw size={14}/> Muat ulang</button>
         <button type="button" className="ops-primary" onClick={() => void create()} disabled={!!busy || data.running}>{busy === "buat" || data.running ? <><Loader2 size={15} className="spin"/> Membuat backup…</> : "Backup sekarang"}</button></div></div>
     <div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>Berkas</th><th>Jenis</th><th>Ukuran</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Berkas</th><th>Jenis<InfoTip text="Otomatis: dibuat oleh jadwal harian. Manual: dibuat lewat tombol Backup sekarang."/></th><th>Ukuran</th><th>Aksi</th></tr></thead>
       <tbody>{data.files.map(file => <tr key={file.name}>
         <td className="wide" data-label="Berkas"><b>{new Date(file.created_at).toLocaleString("id-ID", { dateStyle:"medium", timeStyle:"short" })}</b><small className="table-description">{file.name}</small></td>
         <td data-label="Jenis"><span className={`status-pill ${file.kind === "manual" ? "wait" : "on"}`}>{file.kind === "manual" ? "Manual" : "Otomatis"}</span></td>
         <td data-label="Ukuran">{size(file.bytes)}</td>
         <td className="actions"><div className="row-actions">
-          <a href={`/api/operations/backups/${encodeURIComponent(file.name)}/download`} download aria-label={`Unduh ${file.name}`} title="Unduh"><Download/></a>
-          <button className="delete" onClick={() => void remove(file.name)} disabled={!!busy} aria-label={`Hapus ${file.name}`}><Trash2/></button>
+          <a href={`/api/operations/backups/${encodeURIComponent(file.name)}/download`} download aria-label={`Unduh ${file.name}`} data-tip="Unduh"><Download/></a>
+          <button className="delete" onClick={() => void remove(file.name)} disabled={!!busy} aria-label={`Hapus ${file.name}`} data-tip="Hapus"><Trash2/></button>
         </div></td>
       </tr>)}</tbody>
     </table>{!data.files.length && <p className="empty-state">Belum ada berkas backup.</p>}</div>

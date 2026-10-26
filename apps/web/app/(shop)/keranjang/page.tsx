@@ -19,6 +19,7 @@ import { amountDue, quoteCart, startCheckout, surchargeFor, type CartQuote, type
 import { ChannelPicker, cheapestChannel } from "@/components/channel-picker";
 import { billOf, taxName } from "@/lib/bill";
 import { useAccount, validPhone } from "@/lib/account";
+import { InfoTip } from "@/components/tooltip";
 
 const durationLabel = (minutes: number) => `${(minutes / 60).toLocaleString("id-ID")} jam`;
 const dayNumber = (date: string) => Number(date.slice(8, 10));
@@ -246,7 +247,7 @@ export default function CartPage() {
                       <span>{money(lineTotals.get(line.addon_id) ?? lineTotal(line.unit_price, line.quantity, line.pricing, item.duration))}</span>
                     </li>
                   ))}
-                  {!problem && itemCut > 0 && <li className="member-cut"><span>Harga member</span><span>−{money(itemCut)}</span></li>}
+                  {!problem && itemCut > 0 && <li className="member-cut"><span>Harga member<InfoTip text="Potongan otomatis karena akun Anda terhubung ke member aktif."/></span><span>−{money(itemCut)}</span></li>}
                 </ul>
                 {!problem && memberNote && <p className="cart-member-note">{memberNote}</p>}
 
@@ -283,8 +284,8 @@ export default function CartPage() {
               <div className="total"><dt>Total</dt><dd>{money(total)}</dd></div>
               {payment?.enabled && later > 0 && (
                 <>
-                  <div className={surcharge > 0 ? "" : "now"}><dt>Bayar sekarang (DP {payment.dp_percent}%)</dt><dd>{money(payNow)}</dd></div>
-                  <div><dt>Sisa, dibayar di venue</dt><dd>{money(later)}</dd></div>
+                  <div className={surcharge > 0 ? "" : "now"}><dt>Bayar sekarang (DP {payment.dp_percent}%)<InfoTip text="DP (uang muka) mengunci jadwal Anda. Setelah DP dibayar, booking langsung terkonfirmasi."/></dt><dd>{money(payNow)}</dd></div>
+                  <div><dt>Sisa, dibayar di venue<InfoTip text="Lunasi sisa tagihan di kasir saat datang, sebelum mulai main."/></dt><dd>{money(later)}</dd></div>
                 </>
               )}
               {payment?.enabled && surcharge > 0 && (
@@ -321,7 +322,7 @@ export default function CartPage() {
                 {touched && !nameValid && <small className="field-error">Isi nama pemesan, minimal 2 huruf.</small>}
               </label>
               <label className="field">
-                <span>Nomor WhatsApp</span>
+                <span>Nomor WhatsApp<InfoTip text="Kami kirim tagihan, bukti bayar, dan pengingat jadwal ke nomor ini. Nomor yang sama juga dipakai untuk mencocokkan member dan promo."/></span>
                 <input required inputMode="tel" autoComplete="tel" maxLength={20} placeholder="0812 3456 7890" value={form.phone}
                   aria-invalid={(touched || form.phone !== "") && !phoneValid} onChange={event => setForm({ ...form, phone: event.target.value })} />
                 {(touched || form.phone !== "") && !phoneValid
@@ -399,13 +400,13 @@ function VoucherBox({ open, onOpen, input, setInput, applied, result, checking, 
     <div className="voucher-applied" role="status">
       <TicketPercent size={18} aria-hidden="true" />
       <div><b>{result.code}</b><small>{result.name}{result.summary ? ` · ${result.summary}` : ""}</small></div>
-      <button type="button" className="icon-btn" aria-label="Hapus kode promo" onClick={remove}><X size={16} aria-hidden="true" /></button>
+      <button type="button" className="icon-btn" aria-label="Hapus kode promo" data-tip="Hapus kode promo" onClick={remove}><X size={16} aria-hidden="true" /></button>
     </div>
   );
   return (
     <div className="voucher-box">
       <label className="field">
-        <span>Kode promo</span>
+        <span>Kode promo<InfoTip text="Punya kode dari venue? Masukkan di sini. Potongan langsung terlihat di rincian pembayaran bila syaratnya terpenuhi."/></span>
         <div className="voucher-input">
           <input value={input} maxLength={32} autoCapitalize="characters" autoComplete="off" spellCheck={false} placeholder="Mis. MAINPAGI"
             aria-invalid={!!applied && !!result && !result.ok}

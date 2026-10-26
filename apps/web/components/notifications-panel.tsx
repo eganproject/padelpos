@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { ErrorBox } from "./operation-ui";
 import { StaffAlertsSettings } from "./staff-alerts-settings";
+import { InfoTip } from "@/components/tooltip";
 
 /** Sama dengan API (apps/api/src/notify-events.ts). */
 const eventKeys=["bill","payment_due","confirmed","expired","receipt","reschedule","cancelled","reminder","member_bill","member_active","member_expiring","member_expired","staff_new"] as const;
@@ -87,11 +88,11 @@ function EmailTab({settings,saved}:{settings:EmailSettings;saved:(s:EmailSetting
           {env&&<p className="cms-hint">Server SMTP saat ini diambil dari environment (SMTP_HOST dan lainnya) dan mengalahkan isian di bawah.</p>}
           <div className="field-grid">
             <label className="cms-field"><span className="cms-label">Host</span><input value={form.host} maxLength={200} placeholder="smtp.gmail.com" disabled={env} onChange={e=>set("host",e.target.value)}/></label>
-            <label className="cms-field"><span className="cms-label">Port</span><input type="number" min={1} max={65535} value={form.port} disabled={env} onChange={e=>set("port",Number(e.target.value))}/></label>
+            <label className="cms-field"><span className="cms-label">Port<InfoTip text="587 untuk STARTTLS (paling umum, termasuk Gmail). 465 untuk SSL langsung; nyalakan juga Koneksi SSL langsung."/></span><input type="number" min={1} max={65535} value={form.port} disabled={env} onChange={e=>set("port",Number(e.target.value))}/></label>
           </div>
           <label className="cms-check"><input type="checkbox" checked={form.secure} disabled={env} onChange={e=>set("secure",e.target.checked)}/> Koneksi SSL langsung (biasanya port 465). Biarkan mati untuk port 587.</label>
           <label className="cms-field"><span className="cms-label">Nama pengguna</span><input value={form.user} maxLength={200} autoComplete="off" placeholder="booking@venue-anda.com" disabled={env} onChange={e=>set("user",e.target.value)}/></label>
-          <label className="cms-field"><span className="cms-label">Password</span>
+          <label className="cms-field"><span className="cms-label">Password<InfoTip text="Untuk Gmail, pakai App Password 16 huruf dari pengaturan keamanan akun Google, bukan password login biasa. Disimpan terenkripsi."/></span>
             <input type="password" autoComplete="new-password" maxLength={200} value={form.password} disabled={env||form.clear_password} placeholder={settings.password_set?"Tersimpan, isi hanya bila ingin mengganti":"Password atau App Password"} onChange={e=>set("password",e.target.value)}/>
           </label>
           {settings.password_set&&!env&&<label className="cms-check"><input type="checkbox" checked={form.clear_password} onChange={e=>set("clear_password",e.target.checked)}/> Hapus password tersimpan</label>}
@@ -101,9 +102,9 @@ function EmailTab({settings,saved}:{settings:EmailSettings;saved:(s:EmailSetting
           <label className="cms-field"><span className="cms-label">Nama pengirim</span><input value={form.from_name} maxLength={80} placeholder="Bawaan: nama venue" onChange={e=>set("from_name",e.target.value)}/></label>
           <label className="cms-field"><span className="cms-label">Email pengirim</span><input type="email" value={form.from_email} maxLength={200} placeholder="Bawaan: nama pengguna SMTP" onChange={e=>set("from_email",e.target.value)}/>
             <small className="cms-hint">Gmail hanya mengizinkan alamat akun itu sendiri atau alias yang sudah diverifikasi.</small></label>
-          <label className="cms-field"><span className="cms-label">Email staf</span><input value={form.staff_recipients} maxLength={600} placeholder="kasir@venue.com, pemilik@venue.com" onChange={e=>set("staff_recipients",e.target.value)}/>
+          <label className="cms-field"><span className="cms-label">Email staf<InfoTip text="Alamat yang menerima email saat ada booking online baru, mis. kasir atau pemilik."/></span><input value={form.staff_recipients} maxLength={600} placeholder="kasir@venue.com, pemilik@venue.com" onChange={e=>set("staff_recipients",e.target.value)}/>
             <small className="cms-hint">Maksimal 5, dipisah koma. Menerima pemberitahuan booking online baru.</small></label>
-          <label className="cms-field"><span className="cms-label">Pengingat dikirim (jam sebelum main)</span><input type="number" min={0} max={72} value={form.reminder_hours} onChange={e=>set("reminder_hours",Number(e.target.value))}/>
+          <label className="cms-field"><span className="cms-label">Pengingat dikirim (jam sebelum main)<InfoTip text="Pelanggan menerima pengingat jadwal main sekian jam sebelum sesi dimulai. Isi 0 untuk mematikan."/></span><input type="number" min={0} max={72} value={form.reminder_hours} onChange={e=>set("reminder_hours",Number(e.target.value))}/>
             <small className="cms-hint">Isi 0 untuk mematikan pengingat lewat email.</small></label>
         </section>
         <EventChecks events={form.events} onChange={events=>set("events",events)} channel="email"/>
@@ -160,7 +161,7 @@ function WhatsAppTab({settings,saved}:{settings:WaSettings;saved:(s:WaSettings)=
             </label>)}
           </div>
           {real&&<div className="field-grid">
-            <label className="cms-field"><span className="cms-label">{form.provider==="cloud"?"Access token":"Token API"}</span>
+            <label className="cms-field"><span className="cms-label">{form.provider==="cloud"?"Access token":"Token API"}<InfoTip text="Salin dari dashboard penyedia WhatsApp Anda. Disimpan terenkripsi dan tidak ditampilkan lagi."/></span>
               <input type="password" autoComplete="new-password" maxLength={500} value={form.token} disabled={env||form.clear_token} placeholder={settings.token_set?"Tersimpan, isi hanya bila ingin mengganti":"Tempel token dari penyedia"} onChange={e=>set("token",e.target.value)}/></label>
             {form.provider==="cloud"
               ?<label className="cms-field"><span className="cms-label">Phone number ID</span><input inputMode="numeric" value={form.phone_number_id} maxLength={40} disabled={env} placeholder="1234567890123456" onChange={e=>set("phone_number_id",e.target.value)}/></label>
@@ -168,9 +169,9 @@ function WhatsAppTab({settings,saved}:{settings:WaSettings;saved:(s:WaSettings)=
           </div>}
           {real&&settings.token_set&&!env&&<label className="cms-check"><input type="checkbox" checked={form.clear_token} onChange={e=>set("clear_token",e.target.checked)}/> Hapus token tersimpan</label>}
           <div className="field-grid">
-            <label className="cms-field"><span className="cms-label">Nomor WhatsApp staf</span><input value={form.staff_numbers} maxLength={200} placeholder="0812 3456 7890, 0813…" onChange={e=>set("staff_numbers",e.target.value)}/>
+            <label className="cms-field"><span className="cms-label">Nomor WhatsApp staf<InfoTip text="Nomor yang menerima pemberitahuan booking online baru lewat WhatsApp."/></span><input value={form.staff_numbers} maxLength={200} placeholder="0812 3456 7890, 0813…" onChange={e=>set("staff_numbers",e.target.value)}/>
               <small className="cms-hint">Maksimal 5, dipisah koma.</small></label>
-            <label className="cms-field"><span className="cms-label">Pengingat dikirim (jam sebelum main)</span><input type="number" min={0} max={72} value={form.reminder_hours} onChange={e=>set("reminder_hours",Number(e.target.value))}/>
+            <label className="cms-field"><span className="cms-label">Pengingat dikirim (jam sebelum main)<InfoTip text="Pelanggan menerima pengingat jadwal main sekian jam sebelum sesi dimulai. Isi 0 untuk mematikan."/></span><input type="number" min={0} max={72} value={form.reminder_hours} onChange={e=>set("reminder_hours",Number(e.target.value))}/>
               <small className="cms-hint">Isi 0 untuk mematikan pengingat lewat WhatsApp.</small></label>
           </div>
         </section>
@@ -215,7 +216,7 @@ function HistoryTab({data,reload,setData}:{data:Data;reload:()=>void;setData:(up
     </div>
     <p className="cms-hint">Pesan yang gagal dicoba ulang otomatis sampai 5 kali, lalu dapat dikirim ulang dari sini.{channel==="whatsapp"?" Klik baris untuk membaca isi pesannya.":""}</p>
     {channel==="email"?<div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>Waktu</th><th>Penerima</th><th>Jenis</th><th>Status</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Waktu</th><th>Penerima</th><th>Jenis</th><th>Status<InfoTip text="Antre: menunggu dikirim. Terkirim: diterima server email/WhatsApp. Gagal: sudah dicoba ulang 5 kali; lihat pesan galatnya lalu kirim ulang."/></th><th>Aksi</th></tr></thead>
       <tbody>{data.outbox.items.map(item=><tr key={item.id}>
         <td data-label="Waktu">{when(item.created_at)}</td>
         <td className="wide" data-label="Penerima"><b>{item.recipient}</b><small className="table-description">{item.subject}</small></td>
@@ -225,7 +226,7 @@ function HistoryTab({data,reload,setData}:{data:Data;reload:()=>void;setData:(up
       </tr>)}</tbody>
     </table>{!data.outbox.items.length&&<p className="empty-state">Belum ada email yang dikirim.</p>}</div>
     :<div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>Waktu</th><th>Penerima</th><th>Jenis</th><th>Status</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Waktu</th><th>Penerima</th><th>Jenis</th><th>Status<InfoTip text="Antre: menunggu dikirim. Terkirim: diterima server email/WhatsApp. Gagal: sudah dicoba ulang 5 kali; lihat pesan galatnya lalu kirim ulang."/></th><th>Aksi</th></tr></thead>
       <tbody>{data.whatsapp.outbox.items.map(item=><tr key={item.id}>
         <td data-label="Waktu">{when(item.created_at)}</td>
         <td className="wide" data-label="Penerima"><details className="notif-preview"><summary><b>+{item.recipient}</b>{item.provider==="simulasi"&&<span className="status-pill done">Simulasi</span>}</summary><pre>{item.text}</pre></details></td>
@@ -275,7 +276,7 @@ export function NotificationsPanel(){
     <div className="cms-tabs" role="tablist" aria-label="Kanal notifikasi">
       {tabs.map(item=><button key={item.id} type="button" role="tab" aria-selected={tab===item.id} onClick={()=>setTab(item.id)}>
         <item.icon size={16} aria-hidden="true"/><span>{item.label}</span>
-        {item.id==="riwayat"&&!!((data.outbox.counts.failed??0)+(data.whatsapp.outbox.counts.failed??0))&&<i className="cms-dot" title="Ada pesan gagal"/>}
+        {item.id==="riwayat"&&!!((data.outbox.counts.failed??0)+(data.whatsapp.outbox.counts.failed??0))&&<i className="cms-dot" data-tip="Ada pesan gagal"/>}
       </button>)}
     </div>
     <div role="tabpanel" hidden={tab!=="email"}><EmailTab settings={email} saved={savedEmail}/></div>

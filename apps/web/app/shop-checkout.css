@@ -2,7 +2,7 @@
 
 .shop .cart{padding-bottom:24px}
 .shop .cart.has-bar{padding-bottom:96px}
-.shop .cart-grid{display:grid;gap:16px}
+.shop .cart-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
 .shop .cart-list{display:flex;flex-direction:column;gap:12px}
 
 .shop .cart-item{background:var(--card);border:1px solid var(--rule);border-radius:20px;padding:14px;box-shadow:var(--shadow)}

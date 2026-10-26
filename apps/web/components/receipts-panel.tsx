@@ -6,6 +6,7 @@ import { useVenueInfo } from "@/lib/use-venue-info";
 import { defaultReceiptSettings, paperLabel, paperOptions, type ReceiptData, type ReceiptSettings } from "@/lib/receipt";
 import { Receipt } from "./receipt";
 import { ErrorBox } from "./operation-ui";
+import { InfoTip } from "@/components/tooltip";
 
 type Form = Omit<ReceiptSettings, "updated_at">;
 const formFrom = (s: ReceiptSettings): Form => ({ paper: s.paper, custom_width: s.custom_width, header_note: s.header_note, footer_note: s.footer_note, show_payments: s.show_payments, show_cashier: s.show_cashier, show_logo: s.show_logo !== false });
@@ -61,13 +62,13 @@ export function ReceiptsPanel() {
             <span><b>{option.label}</b><small className="cms-hint">{option.hint}</small></span>
           </label>)}
         </div>
-        {form.paper === "custom" && <label className="cms-field"><span className="cms-label">Lebar kertas (mm)</span><input type="number" min={40} max={216} required value={form.custom_width} onChange={e => setForm({ ...form, custom_width: Number(e.target.value) })} /></label>}
+        {form.paper === "custom" && <label className="cms-field"><span className="cms-label">Lebar kertas (mm)<InfoTip text="Lebar gulungan kertas printer thermal, mis. 58 atau 80. Lihat di label kertas atau buku manual printer."/></span><input type="number" min={40} max={216} required value={form.custom_width} onChange={e => setForm({ ...form, custom_width: Number(e.target.value) })} /></label>}
         <p className="cms-hint">Kertas thermal dan lebar lain dicetak sebagai kertas gulung: panjangnya mengikuti isi nota. Di dialog cetak, atur Margin ke None dan Skala 100%.</p>
       </section>
       <section className="cms-card">
         <header><h2>Isi nota</h2><p>Logo, nama, dan kontak diambil dari Pengaturan &gt; Brand; alamat dari Info Venue.</p></header>
-        <label className="cms-field"><span className="cms-label">Teks kepala (opsional)</span><input maxLength={160} value={form.header_note} placeholder="Mis. NPWP 01.234.567.8-901.000" onChange={e => setForm({ ...form, header_note: e.target.value })} /></label>
-        <label className="cms-field"><span className="cms-label">Teks kaki</span><textarea maxLength={300} rows={3} value={form.footer_note} onChange={e => setForm({ ...form, footer_note: e.target.value })} /></label>
+        <label className="cms-field"><span className="cms-label">Teks kepala (opsional)<InfoTip text="Tercetak di bawah nama venue, mis. NPWP, nomor izin usaha, atau jam operasional."/></span><input maxLength={160} value={form.header_note} placeholder="Mis. NPWP 01.234.567.8-901.000" onChange={e => setForm({ ...form, header_note: e.target.value })} /></label>
+        <label className="cms-field"><span className="cms-label">Teks kaki<InfoTip text="Tercetak di bagian bawah nota, mis. ucapan terima kasih, kebijakan refund, atau akun media sosial."/></span><textarea maxLength={300} rows={3} value={form.footer_note} onChange={e => setForm({ ...form, footer_note: e.target.value })} /></label>
         <label className="cms-check"><input type="checkbox" checked={form.show_payments} onChange={e => setForm({ ...form, show_payments: e.target.checked })} /> Tampilkan rincian setiap pembayaran (DP, pelunasan, metode)</label>
         <label className="cms-check"><input type="checkbox" checked={form.show_cashier} onChange={e => setForm({ ...form, show_cashier: e.target.checked })} /> Tampilkan nama kasir yang mencetak</label>
         <label className="cms-check"><input type="checkbox" checked={form.show_logo} onChange={e => setForm({ ...form, show_logo: e.target.checked })} /> Tampilkan logo brand di kepala nota</label>

@@ -7,6 +7,7 @@ import { formatShortDay } from "@/lib/shop";
 import { type Redemption, type Voucher, channelLabel, stateLabel, stateTone, valueText } from "@/lib/vouchers";
 import { ErrorBox, Modal, Submit } from "./operation-ui";
 import { DateInput, MoneyInput, Select } from "./form-controls";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 type Data = { vouchers: Voucher[]; today: string };
 const fail = (error: unknown) => toast.error((error as Error).message);
@@ -30,9 +31,9 @@ export function VouchersPanel() {
   if (!data) return error ? <ErrorBox message={error} retry={() => void load()} /> : <p className="empty-state">Memuat voucher…</p>;
   const running = data.vouchers.filter(voucher => voucher.state === "running");
   const metrics = [
-    { label: "Voucher berjalan", value: String(running.length), hint: `${data.vouchers.filter(voucher => voucher.state === "scheduled").length} terjadwal`, Icon: TicketPercent, tone: "violet" },
-    { label: "Kali dipakai", value: String(data.vouchers.reduce((sum, voucher) => sum + voucher.used, 0)), hint: "Pesanan dan transaksi yang masih berlaku", Icon: Users, tone: "cyan" },
-    { label: "Total potongan", value: money(data.vouchers.reduce((sum, voucher) => sum + voucher.discount_given, 0)), hint: "Dicatat di akun Potongan Voucher", Icon: CircleDollarSign, tone: "orange" },
+    { label: "Voucher berjalan", tip: "Voucher aktif yang sedang dalam masa berlaku dan kuotanya belum habis. Terjadwal = aktif tapi tanggal mulainya belum tiba.", value: String(running.length), hint: `${data.vouchers.filter(voucher => voucher.state === "scheduled").length} terjadwal`, Icon: TicketPercent, tone: "violet" },
+    { label: "Kali dipakai", tip: "Jumlah pesanan online dan transaksi kasir yang memakai voucher. Pesanan yang dibatalkan tidak dihitung dan kuotanya kembali.", value: String(data.vouchers.reduce((sum, voucher) => sum + voucher.used, 0)), hint: "Pesanan dan transaksi yang masih berlaku", Icon: Users, tone: "cyan" },
+    { label: "Total potongan", tip: "Total rupiah yang dipotong voucher. Di laporan Laba Rugi tercatat sebagai Potongan Voucher yang mengurangi pendapatan.", value: money(data.vouchers.reduce((sum, voucher) => sum + voucher.discount_given, 0)), hint: "Dicatat di akun Potongan Voucher", Icon: CircleDollarSign, tone: "orange" },
   ];
 
   async function remove(voucher: Voucher) {
@@ -46,7 +47,7 @@ export function VouchersPanel() {
         <p>Pelanggan mengetik kode di keranjang situs, kasir memasukkannya di booking atau transaksi kasir. Potongannya mengurangi pendapatan lewat akun Potongan Voucher.</p>
         <button className="ops-primary" onClick={() => setEditing(null)}><Plus size={16} /> Buat voucher</button>
       </div>
-      <div className="metric-grid addon-metrics">{metrics.map(({ label, value, hint, Icon, tone }) => <article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon /></span></div><p>{label}</p><h2>{value}</h2><small>{hint}</small></article>)}</div>
+      <div className="metric-grid addon-metrics">{metrics.map(({ label, tip, value, hint, Icon, tone }) => <article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon /></span></div><p><span className="metric-label">{label}</span><InfoTip text={tip} /></p><h2>{value}</h2><small>{hint}</small></article>)}</div>
       {!data.vouchers.length ? (
         <div className="ops-empty">
           <h2>Belum ada voucher</h2>
@@ -60,7 +61,7 @@ export function VouchersPanel() {
         </div>
         <div className="manage-table-card ops-table table-cards">
           <table>
-            <thead><tr><th>Kode</th><th>Potongan</th><th>Berlaku</th><th>Pemakaian</th><th>Status</th><th>Aksi</th></tr></thead>
+            <thead><tr><th>Kode<InfoTip text="Kode yang diketik pelanggan di keranjang atau oleh kasir. Huruf besar/kecil dianggap sama."/></th><th>Potongan</th><th>Berlaku</th><th>Pemakaian<InfoTip text="Sudah dipakai berapa kali dibanding kuota total."/></th><th>Status<InfoTip text="Berjalan: bisa dipakai sekarang. Terjadwal: tanggal mulainya belum tiba. Berakhir: lewat tanggal atau kuota habis. Nonaktif: dimatikan manual."/></th><th>Aksi</th></tr></thead>
             <tbody>{list.map(voucher => (
               <tr key={voucher.id} className={voucher.state === "inactive" ? "inactive" : ""}>
                 <td className="wide" data-label="Kode"><b className="voucher-code">{voucher.code}</b><small className="table-description">{voucher.name}</small></td>
@@ -69,9 +70,9 @@ export function VouchersPanel() {
                 <td data-label="Pemakaian">{voucher.used}{voucher.quota ? ` / ${voucher.quota}` : "×"}<small className="table-description">{money(voucher.discount_given)}{voucher.per_customer ? ` · maks ${voucher.per_customer}× per pelanggan` : ""}</small></td>
                 <td data-label="Status"><span className={`status-pill ${stateTone[voucher.state]}`}>{voucher.quota && voucher.used >= voucher.quota && voucher.state === "running" ? "Kuota habis" : stateLabel[voucher.state]}</span></td>
                 <td className="actions"><div className="row-actions">
-                  <button onClick={() => setOpenId(voucher.id)} aria-label={`Riwayat ${voucher.code}`} title="Riwayat pemakaian"><Receipt /></button>
-                  <button onClick={() => setEditing(voucher)} aria-label={`Ubah ${voucher.code}`}><Pencil /></button>
-                  <button className="delete" disabled={voucher.used > 0} onClick={() => void remove(voucher)} aria-label={`Hapus ${voucher.code}`} title={voucher.used ? "Sudah dipakai. Nonaktifkan saja." : "Hapus"}><Trash2 /></button>
+                  <button onClick={() => setOpenId(voucher.id)} aria-label={`Riwayat ${voucher.code}`} data-tip="Riwayat pemakaian"><Receipt /></button>
+                  <button onClick={() => setEditing(voucher)} aria-label={`Ubah ${voucher.code}`} data-tip={`Ubah ${voucher.code}`}><Pencil /></button>
+                  <button className="delete" disabled={voucher.used > 0} onClick={() => void remove(voucher)} aria-label={`Hapus ${voucher.code}`} data-tip={voucher.used ? "Sudah dipakai. Nonaktifkan saja." : "Hapus"}><Trash2 /></button>
                 </div></td>
               </tr>
             ))}</tbody>
@@ -137,7 +138,7 @@ function VoucherModal({ voucher, today, close, done }: { voucher: Voucher | null
           <div className="field-grid">
             <label>Kode voucher
               <span className="voucher-code-field">
-                <input autoFocus={!voucher} required minLength={3} maxLength={32} value={form.code} disabled={used} pattern="[A-Za-z0-9_\-]+" title="Huruf, angka, tanda hubung, atau garis bawah"
+                <input autoFocus={!voucher} required minLength={3} maxLength={32} value={form.code} disabled={used} pattern="[A-Za-z0-9_\-]+" data-tip="Huruf, angka, tanda hubung, atau garis bawah"
                   onChange={event => set("code", event.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder="Mis. MAINPAGI" />
                 {!used && <button type="button" className="ops-secondary" onClick={() => set("code", randomCode())}>Acak</button>}
               </span>
@@ -147,7 +148,7 @@ function VoucherModal({ voucher, today, close, done }: { voucher: Voucher | null
           </div>
           <label>Keterangan internal (opsional)<textarea rows={2} maxLength={500} value={form.description} onChange={event => set("description", event.target.value)} placeholder="Mis. Untuk kampanye Instagram bulan November." /></label>
 
-          <fieldset className="chip-field"><legend>Jenis potongan</legend>
+          <fieldset className="chip-field"><legend>Jenis potongan<InfoTip text="Persen: potongan mengikuti besar belanja, bisa dibatasi nominal maksimal. Nominal: potongan rupiah tetap."/></legend>
             <div className="chip-group">
               <button type="button" aria-pressed={form.kind === "percent"} onClick={() => set("kind", "percent")}>Persen (%)</button>
               <button type="button" aria-pressed={form.kind === "amount"} onClick={() => set("kind", "amount")}>Nominal (Rp)</button>
@@ -156,18 +157,18 @@ function VoucherModal({ voucher, today, close, done }: { voucher: Voucher | null
           {form.kind === "percent" ? (
             <div className="field-grid">
               <label>Besar potongan (%)<input type="number" required min={1} max={99} step={0.5} value={form.percent} onChange={event => set("percent", Number(event.target.value))} /></label>
-              <label>Potongan maksimal (opsional)<MoneyInput min={0} max={240000000} value={form.max_discount} onChange={event => set("max_discount", Number(event.target.value) || 0)} /><small className="field-hint">0 = tanpa batas</small></label>
+              <label><LabelTip tip="Batas atas potongan persen, mis. diskon 20% maksimal Rp50.000.">Potongan maksimal (opsional)</LabelTip><MoneyInput min={0} max={240000000} value={form.max_discount} onChange={event => set("max_discount", Number(event.target.value) || 0)} /><small className="field-hint">0 = tanpa batas</small></label>
             </div>
           ) : (
             <label>Besar potongan<MoneyInput required min={1000} max={240000000} value={form.amount} onChange={event => set("amount", Number(event.target.value) || 0)} /></label>
           )}
           <div className="field-grid">
-            <label>Berlaku untuk<Select value={form.target} onChange={event => set("target", event.target.value as Form["target"])}><option value="all">Seluruh belanja (lapangan + sewa & tambahan)</option><option value="court">Sewa lapangan saja</option></Select></label>
+            <label><LabelTip tip="Bagian tagihan yang didiskon. Sewa lapangan saja: raket dan tambahan tetap harga penuh.">Berlaku untuk</LabelTip><Select value={form.target} onChange={event => set("target", event.target.value as Form["target"])}><option value="all">Seluruh belanja (lapangan + sewa & tambahan)</option><option value="court">Sewa lapangan saja</option></Select></label>
             <label>Minimal belanja<MoneyInput min={0} max={240000000} value={form.min_order} onChange={event => set("min_order", Number(event.target.value) || 0)} /><small className="field-hint">Dihitung dari subtotal sebelum potongan. 0 = tanpa minimal.</small></label>
           </div>
           <p className="ops-muted">Contoh: belanja {money(sample)} mendapat potongan <b>{money(cut)}</b>. Biaya lain yang diketik manual oleh kasir tidak ikut dipotong.</p>
 
-          <label>Bisa dipakai di<Select value={form.channel} onChange={event => set("channel", event.target.value as Form["channel"])}><option value="all">Situs pelanggan dan kasir</option><option value="online">Situs pelanggan saja</option><option value="kasir">Kasir saja</option></Select></label>
+          <label><LabelTip tip="Situs pelanggan: diketik sendiri saat checkout. Kasir: dimasukkan staf saat booking atau transaksi di kasir.">Bisa dipakai di</LabelTip><Select value={form.channel} onChange={event => set("channel", event.target.value as Form["channel"])}><option value="all">Situs pelanggan dan kasir</option><option value="online">Situs pelanggan saja</option><option value="kasir">Kasir saja</option></Select></label>
           <div className="field-grid">
             <label>Kuota total (opsional)<input type="number" min={1} max={1000000} value={form.quota} onChange={event => set("quota", event.target.value)} placeholder="Tanpa batas" /><small className="field-hint">Satu pesanan online dihitung sekali, berapa pun sesinya.</small></label>
             <label>Maksimal per pelanggan (opsional)<input type="number" min={1} max={1000} value={form.per_customer} onChange={event => set("per_customer", event.target.value)} placeholder="Tanpa batas" /><small className="field-hint">Dikenali dari nomor HP atau akun pelanggan.</small></label>

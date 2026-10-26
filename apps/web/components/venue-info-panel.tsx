@@ -13,6 +13,7 @@ import { FacilityIcon } from "./facility-icon";
 import { RichText } from "./rich-text";
 import { ErrorBox } from "./operation-ui";
 import { Select } from "./form-controls";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 type ContentResponse = {
   info: VenueInfo;
@@ -76,7 +77,7 @@ export function VenueInfoPanel() {
           <button key={item.id} type="button" role="tab" id={`tab-${item.id}`} aria-selected={tab === item.id} aria-controls={`panel-${item.id}`} onClick={() => open(item.id)}>
             <item.icon size={16} aria-hidden="true" />
             <span>{item.label}</span>
-            {dirty[item.id] && <i className="cms-dot" title="Ada perubahan yang belum disimpan" />}
+            {dirty[item.id] && <i className="cms-dot" data-tip="Ada perubahan yang belum disimpan" />}
           </button>
         ))}
         <a className="cms-site-link" href="/" target="_blank" rel="noopener"><ExternalLink size={15} aria-hidden="true" /> Lihat situs</a>
@@ -139,10 +140,10 @@ function Checklist({ data, open }: { data: ContentResponse; open: (tab: Tab) => 
   );
 }
 
-export function Field({ label, hint, counter, children, className = "" }: { label: string; hint?: React.ReactNode; counter?: string; children: React.ReactNode; className?: string }) {
+export function Field({ label, hint, tip, counter, children, className = "" }: { label: string; hint?: React.ReactNode; tip?: string; counter?: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={`cms-field ${className}`.trim()}>
-      <span className="cms-label">{label}{counter && <small>{counter}</small>}</span>
+      <span className="cms-label">{tip ? <LabelTip tip={tip}>{label}</LabelTip> : label}{counter && <small>{counter}</small>}</span>
       {children}
       {hint && <small className="cms-hint">{hint}</small>}
     </label>
@@ -200,7 +201,7 @@ function ProfileForm({ info, saved, onDirty }: { info: VenueInfo; saved: (info: 
         </section>
         <section className="cms-card">
           <header><h2>Jam buka & booking</h2><p>Keterangan jam buka dan batas lama booking online.</p></header>
-          <Field label="Keterangan jam buka"><input maxLength={120} value={form.hours_note} onChange={event => set("hours_note")(event.target.value)} placeholder="Setiap hari, 06.00–23.00" /></Field>
+          <Field label="Keterangan jam buka" tip="Teks bebas yang tampil di beranda. Jam yang bisa dipesan tetap mengikuti jam buka tiap lapangan di menu Lapangan."><input maxLength={120} value={form.hours_note} onChange={event => set("hours_note")(event.target.value)} placeholder="Setiap hari, 06.00–23.00" /></Field>
           <Field label="Lama booking online" hint="Batas lama main untuk satu booking dari situs pelanggan. Booking lewat kasir tidak dibatasi.">
             <Select value={form.max_booking_hours ?? 0} onChange={event => set("max_booking_hours")(Number(event.target.value))}>
               <option value={0}>Bebas, sampai jam tutup lapangan</option>
@@ -279,7 +280,7 @@ function FacilitiesForm({ info, saved, onDirty }: { info: VenueInfo; saved: (inf
           {extras.length > 0 ? (
             <ul className="cms-chips">
               {extras.map(item => (
-                <li key={item}>{item}<button type="button" onClick={() => setExtras(extras.filter(value => value !== item))} aria-label={`Hapus ${item}`}><X size={14} /></button></li>
+                <li key={item}>{item}<button type="button" onClick={() => setExtras(extras.filter(value => value !== item))} aria-label={`Hapus ${item}`} data-tip={`Hapus ${item}`}><X size={14} /></button></li>
               ))}
             </ul>
           ) : <p className="cms-empty">Belum ada fasilitas tambahan.</p>}
@@ -319,7 +320,7 @@ function PoliciesForm({ policies, saved, onDirty }: { policies: Policies; saved:
           <header><h2>Pembatalan & pengembalian dana</h2><p>Aturan ini tampil di halaman Kebijakan dan di ringkasan pesanan pelanggan.</p></header>
           <div className="cms-policy">
             <div className="cms-stack">
-              <span className="cms-label">Tingkat pengembalian dana</span>
+              <span className="cms-label">Tingkat pengembalian dana<InfoTip text="Contoh: 24 jam → 100% berarti pembatalan paling lambat 24 jam sebelum main mendapat dana kembali penuh. Aturan ini ditampilkan ke pelanggan; pengembaliannya tetap dicatat staf di detail booking."/></span>
               {form.refund_tiers.length === 0 && <p className="cms-empty">Belum ada aturan pengembalian dana.</p>}
               {form.refund_tiers.map((tier, index) => (
                 <div className="cms-tier" key={index}>
@@ -328,14 +329,14 @@ function PoliciesForm({ policies, saved, onDirty }: { policies: Policies; saved:
                   <span>jam sebelum main → kembali</span>
                   <input type="number" min={1} max={100} value={tier.percent} onChange={event => setTier(index, { percent: Number(event.target.value) })} aria-label="Persentase dana kembali" />
                   <span>%</span>
-                  <button type="button" className="cms-icon danger" onClick={() => set("refund_tiers", form.refund_tiers.filter((_, i) => i !== index))} aria-label="Hapus tingkat ini"><Trash2 size={15} /></button>
+                  <button type="button" className="cms-icon danger" onClick={() => set("refund_tiers", form.refund_tiers.filter((_, i) => i !== index))} aria-label="Hapus tingkat ini" data-tip="Hapus tingkat ini"><Trash2 size={15} /></button>
                 </div>
               ))}
               {problem && <small className="cms-hint warn" role="alert">{problem}</small>}
               <button type="button" className="ops-secondary cms-add" onClick={addTier} disabled={form.refund_tiers.length >= 4}><Plus size={15} aria-hidden="true" /> Tambah tingkat</button>
 
               <div className="cms-row">
-                <Field label="Ubah jadwal">
+                <Field label="Ubah jadwal" tip="Kebijakan yang ditampilkan ke pelanggan. Pindah jadwal dilakukan staf dari detail booking.">
                   <Select value={form.reschedule} onChange={event => set("reschedule", event.target.value as PolicyFields["reschedule"])}>
                     <option value="unset">Tidak ditampilkan</option>
                     <option value="yes">Boleh ubah jadwal</option>
@@ -435,9 +436,9 @@ function FaqForm({ faqs, saved, onDirty }: { faqs: ContentResponse["faqs"]; save
               <div className="cms-faq-head">
                 <span className="cms-faq-number">{index + 1}</span>
                 <div className="cms-faq-actions">
-                  <button type="button" className="cms-icon" onClick={() => move(index, -1)} disabled={index === 0} aria-label="Pindah ke atas"><ArrowUp size={15} /></button>
-                  <button type="button" className="cms-icon" onClick={() => move(index, 1)} disabled={index === items.length - 1} aria-label="Pindah ke bawah"><ArrowDown size={15} /></button>
-                  <button type="button" className="cms-icon danger" onClick={() => remove(index)} aria-label="Hapus pertanyaan"><Trash2 size={15} /></button>
+                  <button type="button" className="cms-icon" onClick={() => move(index, -1)} disabled={index === 0} aria-label="Pindah ke atas" data-tip="Pindah ke atas"><ArrowUp size={15} /></button>
+                  <button type="button" className="cms-icon" onClick={() => move(index, 1)} disabled={index === items.length - 1} aria-label="Pindah ke bawah" data-tip="Pindah ke bawah"><ArrowDown size={15} /></button>
+                  <button type="button" className="cms-icon danger" onClick={() => remove(index)} aria-label="Hapus pertanyaan" data-tip="Hapus pertanyaan"><Trash2 size={15} /></button>
                 </div>
               </div>
               <Field label="Pertanyaan" counter={`${item.question.length}/160`}>

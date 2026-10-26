@@ -15,6 +15,7 @@ import { RecordsTab, type RecordAction } from "./finance-records";
 import { JournalReport, ReportsTab } from "./finance-reports";
 import { SetupTab } from "./finance-setup";
 import { useAdminNavigation } from "./admin-navigation";
+import { InfoTip } from "@/components/tooltip";
 
 type Range = { from:string; to:string };
 const RANGE_KEY = "padelix_fin_range";
@@ -53,7 +54,7 @@ function useFinance() {
 function LockBadge({ setup }: { setup:Setup }) {
   if (!setup.settings.locked_until) return null;
   return (
-    <span className="fin-locked" title={`Catatan sampai ${formatDate(setup.settings.locked_until)} dibekukan`}>
+    <span className="fin-locked" data-tip={`Catatan sampai ${formatDate(setup.settings.locked_until)} dibekukan`}>
       <Lock size={13}/> Terkunci s.d. {formatDate(setup.settings.locked_until)}
     </span>
   );
@@ -160,11 +161,11 @@ function OverviewTab({ setup, range, onRange, canRecord, canJournal, canReport }
       </div>
 
       <div className="fin-stats">
-        <StatCard label="Uang di kas & bank" value={money(data.cash_total)} tone="cash"
+        <StatCard label="Uang di kas & bank" value={money(data.cash_total)} tone="cash" tip="Saldo saat ini semua akun kas dan bank (laci kasir, rekening, saldo Midtrans). Tidak terpengaruh periode yang dipilih."
           hint={data.cash.map(account => `${account.name} ${moneyShort(account.balance)}`).join(" · ")}/>
-        <StatCard label="Pemasukan" value={money(data.income)} tone="plus" change={chip(incomeChange)} hint={rangeLabel(range.from,range.to)}/>
-        <StatCard label="Pengeluaran" value={money(data.expense)} tone="minus" change={chip(expenseChange,true)} hint={rangeLabel(range.from,range.to)}/>
-        <StatCard label={data.net>=0?"Laba bersih":"Rugi bersih"} value={money(data.net)} tone={data.net>=0?"plus":"minus"}
+        <StatCard label="Pemasukan" tip="Pendapatan yang diakui pada periode ini: sewa lapangan untuk sesi yang sudah main, penjualan, iuran member, dan pemasukan lain. Uang DP untuk sesi mendatang belum dihitung." value={money(data.income)} tone="plus" change={chip(incomeChange)} hint={rangeLabel(range.from,range.to)}/>
+        <StatCard label="Pengeluaran" tip="Semua biaya pada periode ini, termasuk HPP barang terjual dan penyusutan aset. Pembelian stok dan aset baru tidak langsung dihitung sebagai biaya." value={money(data.expense)} tone="minus" change={chip(expenseChange,true)} hint={rangeLabel(range.from,range.to)}/>
+        <StatCard label={data.net>=0?"Laba bersih":"Rugi bersih"} tip="Sama dengan angka di laporan Laba Rugi untuk periode yang sama." value={money(data.net)} tone={data.net>=0?"plus":"minus"}
           change={chip(netChange)} hint="Pemasukan dikurangi pengeluaran"/>
       </div>
 
@@ -188,8 +189,8 @@ function OverviewTab({ setup, range, onRange, canRecord, canJournal, canReport }
               return (
                 <div className="fin-chart-col" key={month.month}>
                   <div className="fin-bars">
-                    <i className="plus" style={{height:bar(month.income)}} title={`Pemasukan ${money(month.income)}`}/>
-                    <i className="minus" style={{height:bar(month.expense)}} title={`Pengeluaran ${money(month.expense)}`}/>
+                    <i className="plus" style={{height:bar(month.income)}} data-tip={`Pemasukan ${money(month.income)}`}/>
+                    <i className="minus" style={{height:bar(month.expense)}} data-tip={`Pengeluaran ${money(month.expense)}`}/>
                   </div>
                   <span>{formatMonth(month.month)}</span>
                   <small className={quiet?"muted":month.income-month.expense>=0?"plus":"minus"}>{quiet?"—":moneyShort(month.income-month.expense)}</small>
@@ -224,7 +225,7 @@ function OverviewTab({ setup, range, onRange, canRecord, canJournal, canReport }
           <header><h3>Ke mana uang pergi</h3><p>Biaya terbesar pada periode ini.</p></header>
           {data.expense_lines.length ? (
             <ul className="fin-breakdown">{data.expense_lines.map(line => (
-              <li key={line.id}><span title={line.name}>{line.name}</span><ShareBar value={line.amount} max={expenseMax} tone="minus"/><b>{money(line.amount)}</b></li>
+              <li key={line.id}><span data-tip={line.name}>{line.name}</span><ShareBar value={line.amount} max={expenseMax} tone="minus"/><b>{money(line.amount)}</b></li>
             ))}</ul>
           ) : <Empty title="Belum ada pengeluaran" text="Catat pengeluaran pertama lewat tombol di atas."/>}
         </section>
@@ -233,7 +234,7 @@ function OverviewTab({ setup, range, onRange, canRecord, canJournal, canReport }
           <header><h3>Dari mana uang datang</h3><p>Sumber pendapatan pada periode ini.</p></header>
           {data.income_lines.length ? (
             <ul className="fin-breakdown">{data.income_lines.map(line => (
-              <li key={line.id}><span title={line.name}>{line.name}</span><ShareBar value={line.amount} max={incomeMax} tone="plus"/><b>{money(line.amount)}</b></li>
+              <li key={line.id}><span data-tip={line.name}>{line.name}</span><ShareBar value={line.amount} max={incomeMax} tone="plus"/><b>{money(line.amount)}</b></li>
             ))}</ul>
           ) : <Empty title="Belum ada pendapatan" text="Pendapatan booking muncul sendiri pada tanggal sesi bermain."/>}
         </section>
@@ -244,7 +245,7 @@ function OverviewTab({ setup, range, onRange, canRecord, canJournal, canReport }
           {canJournal && <Link className="ops-link" href="/admin/keuangan/jurnal">Lihat jurnal umum <ArrowRight size={14}/></Link>}</header>
         <div className="manage-table-card ops-table table-cards">
           <table>
-            <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Sumber</th><th className="right">Nilai</th></tr></thead>
+            <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Sumber<InfoTip text="Manual: dicatat staf di Kas & Transaksi. Lainnya dibuat otomatis oleh sistem dari booking, kasir, pembayaran online, member, atau penyusutan aset."/></th><th className="right">Nilai</th></tr></thead>
             <tbody>{data.entries.map(entry => (
               <tr key={entry.id}>
                 <td data-label="Tanggal">{formatDate(entry.date)}<small className="table-description">{entry.number}</small></td>

@@ -7,6 +7,7 @@ import { formatShortDay } from "@/lib/shop";
 import { type AdminIntent,type ChannelFee,type FeeBearer,type PaymentSettings,amountDue,feeFor,intentLabel,intentTone,payTypeLabel,rateLabel,surchargeFor } from "@/lib/payments";
 import { ErrorBox } from "./operation-ui";
 import { Select } from "./form-controls";
+import { InfoTip } from "@/components/tooltip";
 
 type Data={settings:PaymentSettings;intents:AdminIntent[];date:string;time:string;timezone:string};
 type Form={enabled:boolean;environment:"sandbox"|"production";client_key:string;server_key:string;clear_server_key:boolean;mode:"full"|"dp";dp_percent:number;hold_minutes:number;note:string;fee_bearer:FeeBearer;vat_percent:number;channels:ChannelFee[]};
@@ -95,10 +96,10 @@ export function PaymentsPanel(){
             </Select>
             <small className="cms-hint">Sandbox memakai kunci berawalan SB-. Ganti ke produksi setelah alurnya terbukti.</small>
           </label>
-          <label className="cms-field"><span className="cms-label">Client key</span>
+          <label className="cms-field"><span className="cms-label">Client key<InfoTip text="Kunci publik untuk menampilkan halaman bayar Midtrans di browser pelanggan. Aman terlihat."/></span>
             <input value={form.client_key} maxLength={120} placeholder={sandbox?"SB-Mid-client-…":"Mid-client-…"} onChange={e=>set("client_key",e.target.value)}/>
           </label>
-          <label className="cms-field"><span className="cms-label">Server key</span>
+          <label className="cms-field"><span className="cms-label">Server key<InfoTip text="Kunci rahasia untuk membuat tagihan dan memeriksa notifikasi pembayaran. Disimpan terenkripsi dan tidak pernah ditampilkan lagi."/></span>
             <input type="password" autoComplete="off" maxLength={120} value={form.server_key} disabled={form.clear_server_key}
               placeholder={settings.server_key_set?"Tersimpan — isi hanya bila ingin mengganti":keyHint} onChange={e=>set("server_key",e.target.value)}/>
             <small className="cms-hint">{settings.key_source==="env"?"Saat ini server key diambil dari environment (MIDTRANS_SERVER_KEY) dan mengalahkan isian ini.":`Formatnya ${keyHint}`}</small>
@@ -110,7 +111,7 @@ export function PaymentsPanel(){
 
         <section className="cms-card">
           <header><h2>Cara menagih</h2><p>Berlaku untuk pemesanan online. Booking yang dibuat kasir tidak terpengaruh.</p></header>
-          <fieldset className="chip-field"><legend>Nominal yang dibayar online</legend>
+          <fieldset className="chip-field"><legend>Nominal yang dibayar online<InfoTip text="Bayar penuh: pelanggan melunasi saat memesan. DP sebagian: pelanggan membayar sebagian dulu, sisanya dilunasi di venue dan dicatat kasir."/></legend>
             <div className="chip-group">
               <button type="button" aria-pressed={form.mode==="full"} onClick={()=>set("mode","full")}>Bayar penuh</button>
               <button type="button" aria-pressed={form.mode==="dp"} onClick={()=>set("mode","dp")}>DP sebagian</button>
@@ -133,7 +134,7 @@ export function PaymentsPanel(){
 
         <section className="cms-card wide">
           <header><h2>Biaya admin Midtrans</h2><p>Midtrans memotong biaya setiap transaksi yang berhasil, besarnya berbeda per metode. Tarif awal mengikuti harga standar di midtrans.com/pricing; ubah bila kontrak venue Anda berbeda. Berlaku untuk booking online, link tagihan, member, dan kasir.</p></header>
-          <fieldset className="chip-field"><legend>Siapa yang menanggung</legend>
+          <fieldset className="chip-field"><legend>Siapa yang menanggung<InfoTip text="Venue: harga tetap, potongan Midtrans jadi biaya venue. Pelanggan: biaya ditambahkan ke tagihan sesuai metode yang dipilih, venue menerima harga penuh."/></legend>
             <div className="chip-group">
               <button type="button" aria-pressed={form.fee_bearer==="venue"} onClick={()=>set("fee_bearer","venue")}>Venue</button>
               <button type="button" aria-pressed={form.fee_bearer==="customer"} onClick={()=>set("fee_bearer","customer")}>Pelanggan</button>
@@ -144,7 +145,7 @@ export function PaymentsPanel(){
             :<>Contoh harga {money(sample)} lewat {qris.label}: pelanggan membayar {money(sample)}, Midtrans memotong {money(feeFor(qris,sample,form.vat_percent))}, dan venue menerima <b>{money(sample-feeFor(qris,sample,form.vat_percent))}</b>. Potongannya dicatat sebagai Biaya Bank &amp; Payment Gateway di laba rugi.</>}
           </p>}
           <div className="fee-scroll"><table className="fee-table">
-            <thead><tr><th>Metode</th><th>Persen</th><th>Biaya tetap</th><th>+PPN</th><th className="num">{form.fee_bearer==="customer"?`Biaya layanan dari ${money(sample)}`:`Potongan dari ${money(sample)}`}</th></tr></thead>
+            <thead><tr><th>Metode<InfoTip text="Centang untuk menampilkan metode ini di halaman bayar."/></th><th>Persen<InfoTip text="Biaya persen dari nominal transaksi, mis. 0,7 untuk QRIS."/></th><th>Biaya tetap<InfoTip text="Biaya rupiah per transaksi, mis. Rp4.000 untuk virtual account."/></th><th>+PPN<InfoTip text="Centang bila Midtrans menambahkan PPN di atas tarif metode ini."/></th><th className="num">{form.fee_bearer==="customer"?`Biaya layanan dari ${money(sample)}`:`Potongan dari ${money(sample)}`}</th></tr></thead>
             <tbody>{form.channels.map(channel=><tr key={channel.key} className={channel.enabled?"":"off"}>
               <td><label className="cms-check"><input type="checkbox" checked={channel.enabled} onChange={e=>setChannel(channel.key,{enabled:e.target.checked})}/> <span>{channel.label}<small>{channel.hint}</small></span></label></td>
               <td><input type="number" min={0} max={10} step={0.01} value={channel.percent} aria-label={`Persen ${channel.label}`} onChange={e=>setChannel(channel.key,{percent:Number(e.target.value)||0})}/></td>
@@ -180,7 +181,7 @@ export function PaymentsPanel(){
 
     <div className="ops-section-title"><div><h2>Transaksi terakhir</h2><p>Dari checkout pelanggan dan link tagihan kasir. Zona waktu venue: {data.timezone}.</p></div></div>
     <div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>Waktu</th><th>Pesanan</th><th>Jadwal</th><th>Nominal</th><th>Metode</th><th>Status</th><th>Aksi</th></tr></thead>
+      <thead><tr><th>Waktu</th><th>Pesanan<InfoTip text="Nomor order Midtrans. Satu pesanan online bisa berisi beberapa booking."/></th><th>Jadwal</th><th>Nominal</th><th>Metode</th><th>Status<InfoTip text="Menunggu: halaman bayar dibuka tapi belum dibayar. Lunas: uang diterima dan booking terkonfirmasi otomatis. Kedaluwarsa/Gagal: tidak ada uang masuk."/></th><th>Aksi</th></tr></thead>
       <tbody>{data.intents.map(intent=><tr key={intent.order_id}>
         <td data-label="Waktu">{new Date(intent.created_at).toLocaleString("id-ID",{dateStyle:"short",timeStyle:"short"})}<small className="table-description">{intent.environment==="production"?"Produksi":"Sandbox"}</small></td>
         <td className="wide" data-label="Pesanan"><b>{intent.customer}</b><small className="table-description">{intent.order_id} · {intent.kind==="tagihan"?"Link kasir":"Checkout online"}</small></td>
@@ -189,10 +190,10 @@ export function PaymentsPanel(){
         <td data-label="Metode">{intent.payment_type?payTypeLabel(intent.payment_type):"—"}</td>
         <td data-label="Status"><span className={`status-pill ${intentTone[intent.status]}`}>{intentLabel[intent.status]}</span></td>
         <td className="actions"><div className="row-actions">
-          <button onClick={()=>void recheck(intent.order_id)} disabled={!!busy} aria-label={`Periksa status ${intent.order_id}`} title="Tanya status ke Midtrans"><RefreshCw/></button>
+          <button onClick={()=>void recheck(intent.order_id)} disabled={!!busy} aria-label={`Periksa status ${intent.order_id}`} data-tip="Tanya status ke Midtrans"><RefreshCw/></button>
           {/* Halaman pesanan hanya ada untuk checkout online; link kasir dibuka lewat halaman Midtrans-nya. */}
-          {intent.kind==="booking"?<a href={`/pesanan/${intent.booking_id}`} target="_blank" rel="noopener" aria-label={`Buka halaman pesanan ${intent.order_id}`} title="Buka halaman pesanan pelanggan"><ExternalLink/></a>
-            :intent.status==="pending"&&intent.redirect_url?<a href={intent.redirect_url} target="_blank" rel="noopener" aria-label={`Buka link pembayaran ${intent.order_id}`} title="Buka link pembayaran Midtrans"><ExternalLink/></a>:null}
+          {intent.kind==="booking"?<a href={`/pesanan/${intent.booking_id}`} target="_blank" rel="noopener" aria-label={`Buka halaman pesanan ${intent.order_id}`} data-tip="Buka halaman pesanan pelanggan"><ExternalLink/></a>
+            :intent.status==="pending"&&intent.redirect_url?<a href={intent.redirect_url} target="_blank" rel="noopener" aria-label={`Buka link pembayaran ${intent.order_id}`} data-tip="Buka link pembayaran Midtrans"><ExternalLink/></a>:null}
         </div></td>
       </tr>)}</tbody>
     </table>{!data.intents.length&&<p className="empty-state">Belum ada transaksi online.</p>}</div>

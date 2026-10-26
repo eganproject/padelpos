@@ -6,6 +6,7 @@ import { type AddonOption, type AddonPricing, type BookingAddon, availabilityNot
 import { AddonThumb } from "./addon-icon";
 import { QtyStepper } from "./qty-stepper";
 import { MoneyInput } from "./form-controls";
+import { LabelTip } from "@/components/tooltip";
 
 /** Baris tambahan yang sedang disusun. `id` hanya ada untuk baris yang sudah tersimpan. */
 export type Draft = {
@@ -99,7 +100,7 @@ export function AddonLinesEditor({ options, drafts, onChange, duration, allowCus
       </ul>
       {allowCustom && (
         <div className="addon-custom">
-          <label>Biaya lain (di luar katalog)
+          <label><LabelTip tip="Untuk biaya sekali pakai yang tidak ada di katalog, mis. ganti grip atau denda kerusakan. Tidak mengurangi stok dan tidak mendapat diskon member.">Biaya lain (di luar katalog)</LabelTip>
             <input value={custom.name} maxLength={60} placeholder="Mis. Ganti grip raket rusak" onChange={event => setCustom({ ...custom, name: event.target.value })}
               onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); addCustom(); } }} />
           </label>

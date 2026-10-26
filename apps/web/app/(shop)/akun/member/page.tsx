@@ -10,6 +10,7 @@ import { type MemberInvoice, type PublicPlan, discountSummary, longDate, monthsL
 import { billOf } from "@/lib/bill";
 import { surchargeFor, type ChannelKey } from "@/lib/payments";
 import { ChannelPicker, cheapestChannel } from "@/components/channel-picker";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 /** Ke halaman bayar Midtrans; kembali ke halaman ini setelah selesai. */
 const goPay = (checkout: MemberCheckout) => { window.location.href = checkout.redirect_url; };
@@ -67,7 +68,7 @@ export default function MemberPage() {
           <dl>
             <div><dt>{membership.state === "expired" ? "Berakhir" : "Berlaku sampai"}</dt><dd>{membership.ends_on ? longDate(membership.ends_on) : "Menunggu persetujuan"}</dd></div>
             {membership.days_left !== null && <div><dt>Sisa</dt><dd>{membership.days_left} hari</dd></div>}
-            {data.totals && data.totals.saved > 0 && <div><dt>Sudah hemat</dt><dd>{money(data.totals.saved)}</dd></div>}
+            {data.totals && data.totals.saved > 0 && <div><dt>Sudah hemat<InfoTip text="Total potongan member yang Anda dapat dari booking dan belanja di kasir selama menjadi member."/></dt><dd>{money(data.totals.saved)}</dd></div>}
           </dl>
           <small>Sebutkan kode ini di kasir. Saat memesan online dari akun ini, harga member terpasang otomatis.</small>
         </section>
@@ -228,8 +229,8 @@ function Claim({ done }: { done: (data: MyMembership) => void }) {
       <p>Hubungkan kartu member Anda supaya harga member juga berlaku saat memesan online.</p>
       <form className="acct-form" onSubmit={submit}>
         <div className="member-claim-fields">
-          <label>Kode member<input required maxLength={20} value={code} placeholder="MBR-XXXXXX" autoCapitalize="characters" onChange={event => setCode(event.target.value)} /></label>
-          <label>Nomor HP saat daftar<input required inputMode="tel" maxLength={20} value={phone} placeholder="0812 3456 7890" onChange={event => setPhone(event.target.value)} /></label>
+          <label><LabelTip tip="Tertera di kartu atau nota member dari kasir, berawalan MBR-.">Kode member</LabelTip><input required maxLength={20} value={code} placeholder="MBR-XXXXXX" autoCapitalize="characters" onChange={event => setCode(event.target.value)} /></label>
+          <label><LabelTip tip="Nomor yang Anda berikan ke kasir waktu mendaftar member, untuk memastikan kartu ini milik Anda.">Nomor HP saat daftar</LabelTip><input required inputMode="tel" maxLength={20} value={phone} placeholder="0812 3456 7890" onChange={event => setPhone(event.target.value)} /></label>
         </div>
         {error && <p className="shop-note error" role="alert">{error}</p>}
         <button className="shop-btn outline wide" type="submit" disabled={busy || code.trim().length < 4 || !validPhone(phone)}>

@@ -7,6 +7,7 @@ import { formatDate, money, rangeLabel } from "@/lib/finance";
 import { row } from "@/lib/report-export";
 import { ReportHead } from "./finance-reports";
 import { ShareBar } from "./finance-ui";
+import { InfoTip } from "@/components/tooltip";
 
 type Range = { from:string; to:string };
 type FlowRow = { activity:string; account_id:string; code:string; name:string; inflow:number; outflow:number; net:number };
@@ -67,7 +68,7 @@ export function CashFlowReport({ range }: { range:Range }) {
         })}/>
       <div className="fin-result">
         <div><span>Saldo awal</span><strong>{money(data.opening)}</strong></div>
-        <div><span>Kenaikan / penurunan</span><strong className={data.net>=0?"plus":"minus"}>{signedMoney(data.net)}</strong></div>
+        <div><span>Kenaikan / penurunan<InfoTip text="Selisih uang masuk dan keluar pada periode ini. Pindah dana antar kas tidak dihitung karena uangnya tetap di venue."/></span><strong className={data.net>=0?"plus":"minus"}>{signedMoney(data.net)}</strong></div>
         <div className="fin-result-net"><span>Saldo akhir</span><strong>{money(data.closing)}</strong>
           <em className={data.difference===0?"plus":"minus"}>{data.difference===0?"Cocok dengan saldo kas & bank":`Selisih ${money(data.difference)}`}</em></div>
       </div>
@@ -76,7 +77,7 @@ export function CashFlowReport({ range }: { range:Range }) {
           <section key={section.key} className="fin-sheet">
             <header><h4>{section.label}</h4><span className={section.net<0?"minus":""}>{signedMoney(section.net)}</span></header>
             <table>
-              <thead><tr><th>Uraian</th><th/><th className="right">Masuk</th><th className="right">Keluar</th></tr></thead>
+              <thead><tr><th>Uraian<InfoTip text="Akun lawan dari setiap jurnal yang menyentuh kas atau bank, mis. Pendapatan Sewa Lapangan untuk uang booking."/></th><th/><th className="right">Masuk</th><th className="right">Keluar</th></tr></thead>
               <tbody>
                 {section.rows.map(item => (
                   <tr key={item.account_id}>
@@ -125,7 +126,7 @@ export function TrialBalanceReport({ range }: { range:Range }) {
         <span className={`fin-tag ${data.balanced?"ok":"warn"}`}>{data.balanced?<><Check size={13}/> Debit dan kredit seimbang</>:<><TriangleAlert size={13}/> Tidak seimbang</>}</span>
       </div>
       <div className="manage-table-card ops-table table-cards fin-trial"><table>
-        <thead><tr><th>Akun</th><th className="right">Saldo awal</th><th className="right">Mutasi debit</th><th className="right">Mutasi kredit</th><th className="right">Saldo akhir</th></tr></thead>
+        <thead><tr><th>Akun</th><th className="right">Saldo awal</th><th className="right">Mutasi debit<InfoTip text="Jumlah semua debit ke akun ini selama periode."/></th><th className="right">Mutasi kredit<InfoTip text="Jumlah semua kredit ke akun ini selama periode."/></th><th className="right">Saldo akhir</th></tr></thead>
         <tbody>
           {data.rows.map(item => (
             <tr key={item.id}>
@@ -184,9 +185,9 @@ export function OperationsReport({ range }: { range:Range }) {
           ],
         })}/>
       <div className="fin-result">
-        <div><span>Okupansi</span><strong>{s.occupancy.toLocaleString("id-ID")}%</strong><em>{s.booked_hours.toLocaleString("id-ID")} jam terisi</em></div>
+        <div><span>Okupansi<InfoTip text="Jam terisi booking dibagi jam buka semua lapangan aktif pada periode ini. Jam perawatan tidak ikut dihitung sebagai jam buka."/></span><strong>{s.occupancy.toLocaleString("id-ID")}%</strong><em>{s.booked_hours.toLocaleString("id-ID")} jam terisi</em></div>
         <div><span>Sesi main</span><strong>{s.sessions.toLocaleString("id-ID")}</strong></div>
-        <div><span>Pendapatan booking</span><strong>{money(s.revenue)}</strong><em>Sebelum pajak, setelah potongan</em></div>
+        <div><span>Pendapatan booking<InfoTip text="Sewa lapangan dan tambahan dari booking yang tidak dibatalkan, setelah potongan dan sebelum pajak."/></span><strong>{money(s.revenue)}</strong><em>Sebelum pajak, setelah potongan</em></div>
         <div><span>Voucher dipakai</span><strong>{s.voucher_uses}</strong><em>Potongan {money(s.voucher_discount)}</em></div>
       </div>
       <div className="fin-subtabs" role="tablist" aria-label="Bagian laporan operasional">
@@ -195,7 +196,7 @@ export function OperationsReport({ range }: { range:Range }) {
       </div>
       {tab==="lapangan" && <>
         <div className="manage-table-card ops-table table-cards"><table>
-          <thead><tr><th>Lapangan</th><th>Okupansi</th><th className="right">Sesi</th><th className="right">Jam terisi</th><th className="right">Sewa lapangan</th><th className="right">Tambahan</th><th className="right">Potongan</th><th className="right">Bersih</th></tr></thead>
+          <thead><tr><th>Lapangan</th><th>Okupansi<InfoTip text="Persentase jam buka lapangan ini yang terisi booking."/></th><th className="right">Sesi</th><th className="right">Jam terisi</th><th className="right">Sewa lapangan</th><th className="right">Tambahan</th><th className="right">Potongan<InfoTip text="Gabungan potongan manual, potongan member, dan voucher."/></th><th className="right">Bersih</th></tr></thead>
           <tbody>{data.courts.map(court=>(
             <tr key={court.id}>
               <td className="wide" data-label="Lapangan"><b>{court.name}</b><small className="table-description">dari {court.open_hours.toLocaleString("id-ID")} jam buka</small></td>
@@ -213,7 +214,7 @@ export function OperationsReport({ range }: { range:Range }) {
           <div className="heat-scroll"><table className="heatmap" aria-label="Persentase jam terisi per jam dan hari">
             <thead><tr><th/>{order.map(day=><th key={day}>{weekdays[day]}</th>)}</tr></thead>
             <tbody>{data.heat.map(line=>(
-              <tr key={line.hour}><th>{line.hour}</th>{order.map(day=>{const value=line.cells[day];return <td key={day} className={value===null?"none":`h${Math.min(5,Math.ceil(value/20))}`} title={value===null?"Tutup / tidak ada hari ini":`${weekdays[day]} ${line.hour}: ${value}% terisi`}>{value?value:""}</td>})}</tr>
+              <tr key={line.hour}><th>{line.hour}</th>{order.map(day=>{const value=line.cells[day];return <td key={day} className={value===null?"none":`h${Math.min(5,Math.ceil(value/20))}`} data-tip={value===null?"Tutup / tidak ada hari ini":`${weekdays[day]} ${line.hour}: ${value}% terisi`}>{value?value:""}</td>})}</tr>
             ))}</tbody>
           </table></div>
         </section>}
@@ -226,14 +227,14 @@ export function OperationsReport({ range }: { range:Range }) {
             <td data-label="Terakhir main">{formatDate(item.last_date)}</td><td className="right" data-label="Belanja"><b>{money(item.spend)}</b></td></tr>))}</tbody>
       </table>{!data.customers.length && <p className="empty-state">Belum ada booking pada periode ini.</p>}</div>}
       {tab==="voucher" && <div className="manage-table-card ops-table table-cards"><table>
-        <thead><tr><th>Voucher</th><th className="right">Dipakai</th><th className="right">Pelanggan</th><th className="right">Online</th><th className="right">Total potongan</th></tr></thead>
+        <thead><tr><th>Voucher</th><th className="right">Dipakai</th><th className="right">Pelanggan<InfoTip text="Jumlah pelanggan berbeda (dihitung dari nomor telepon) yang memakai voucher ini."/></th><th className="right">Online<InfoTip text="Berapa kali voucher dipakai pelanggan sendiri saat checkout di situs, bukan lewat kasir."/></th><th className="right">Total potongan</th></tr></thead>
         <tbody>{data.vouchers.map(item=>(
           <tr key={item.id}><td className="wide" data-label="Voucher"><b>{item.code}</b><small className="table-description">{item.name}{item.active?"":" · nonaktif"}</small></td>
             <td className="right" data-label="Dipakai">{item.uses}</td><td className="right" data-label="Pelanggan">{item.customers}</td>
             <td className="right" data-label="Online">{item.online} <small className="muted">/ kasir {item.uses-item.online}</small></td><td className="right" data-label="Total potongan"><b>{money(item.discount)}</b></td></tr>))}</tbody>
       </table>{!data.vouchers.length && <p className="empty-state">Belum ada voucher yang dipakai pada periode ini.</p>}</div>}
       {tab==="item" && <div className="manage-table-card ops-table table-cards"><table>
-        <thead><tr><th>Item</th><th>Jenis</th><th className="right">Qty</th><th className="right">Pendapatan</th><th className="right">Harga pokok</th><th className="right">Margin</th></tr></thead>
+        <thead><tr><th>Item</th><th>Jenis</th><th className="right">Qty</th><th className="right">Pendapatan</th><th className="right">Harga pokok<InfoTip text="HPP: harga beli rata-rata barang yang terjual. Hanya untuk barang jual yang harga belinya diisi."/></th><th className="right">Margin<InfoTip text="Pendapatan dikurangi harga pokok."/></th></tr></thead>
         <tbody>{data.items.map(item=>(
           <tr key={`${item.addon_id}-${item.name}`}><td className="wide" data-label="Item"><b>{item.name}</b></td><td data-label="Jenis">{typeName[item.type]??item.type}</td>
             <td className="right" data-label="Qty">{item.quantity.toLocaleString("id-ID")}</td><td className="right" data-label="Pendapatan">{money(item.revenue)}</td>

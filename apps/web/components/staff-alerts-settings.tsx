@@ -50,7 +50,7 @@ export function StaffAlertsSettings() {
             const allowed = role.allowed.includes(event);
             const need = data.event_menus[event].map(id => menuNames[id] ?? id).join(" atau ");
             return <td key={role.id} className="center" data-label={role.name}>
-              <label className="staff-alert-check" title={allowed ? undefined : `Butuh akses menu ${need}`}>
+              <label className="staff-alert-check" data-tip={allowed ? undefined : `Butuh akses menu ${need}`}>
                 <input type="checkbox" disabled={!allowed} checked={allowed && (draft[role.id] ?? []).includes(event)} onChange={e => toggle(role.id, event, e.target.checked)}
                   aria-label={`${staffEventLabels[event][0]} untuk ${role.name}`} />
                 {!allowed && <small>Tanpa akses</small>}

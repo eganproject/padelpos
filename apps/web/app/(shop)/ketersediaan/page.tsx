@@ -21,6 +21,7 @@ import {
   type Availability, type ShopCourt, type ShopSlot,
 } from "@/lib/shop";
 import { DateInput } from "@/components/form-controls";
+import { InfoTip } from "@/components/tooltip";
 
 /** Pilihan cepat di tombol; durasi yang lebih lama ada di daftar "Lebih lama". */
 const quickMax = 120;
@@ -283,7 +284,7 @@ function AvailabilityView() {
           <h1>Pilih jadwal main</h1>
           <p>{date ? formatDay(date) : "Memuat tanggal…"}{data ? ` · ${totalFree} slot kosong` : ""}</p>
         </div>
-        <button type="button" className="shop-icon-btn outline" onClick={() => date && void load(date, true)} disabled={!date || refreshing} aria-label="Perbarui jadwal" title="Perbarui jadwal">
+        <button type="button" className="shop-icon-btn outline" onClick={() => date && void load(date, true)} disabled={!date || refreshing} aria-label="Perbarui jadwal" data-tip="Perbarui jadwal">
           <RefreshCw size={18} className={refreshing ? "spin" : ""} aria-hidden="true" />
         </button>
       </header>
@@ -337,8 +338,8 @@ function AvailabilityView() {
             <span><i className="free" />Kosong</span>
             <span><i className="pick" />Pilihan Anda</span>
             <span><i className="busy" />Terisi</span>
-            {anySpecial && <span><i className="special" />Tarif khusus</span>}
-            {anyMember && <span><i className="member" />Khusus member</span>}
+            {anySpecial && <span><i className="special" />Tarif khusus<InfoTip text="Jam dengan harga berbeda dari biasanya, mis. jam sibuk atau akhir pekan."/></span>}
+            {anyMember && <span><i className="member" />Khusus member<InfoTip text="Jam ini hanya bisa dipesan member venue. Hubungkan kartu member di menu Akun > Member."/></span>}
             {cartToday.length > 0 && <span><i className="incart" />Di keranjang</span>}
             <button type="button" className="map-toggle" aria-expanded={mapOpen} aria-controls="denah-venue" onClick={() => setMapOpen(open => !open)}>
               <MapIcon size={16} aria-hidden="true" /> {mapOpen ? "Tutup denah" : "Lihat denah"}
@@ -420,7 +421,7 @@ function AvailabilityView() {
                               className={`slot ${state}${special ? " special" : ""}${exclusive ? " member" : ""}`}
                               disabled={!open || booked}
                               aria-pressed={chosen}
-                              title={[special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : "", exclusive ? `${slot.member_only}: khusus member` : ""].filter(Boolean).join(" · ") || undefined}
+                              data-tip={[special ? `Tarif ${slot.rule}: ${money(slot.rate)} per jam` : "", exclusive ? `${slot.member_only}: khusus member` : ""].filter(Boolean).join(" · ") || undefined}
                               aria-label={`${court.name} pukul ${slot.start}, ${label}${special ? `, tarif ${slot.rule}` : ""}${exclusive ? ", khusus member" : ""}`}
                               onClick={() => pick(court.id, slots, slot)}
                             >
@@ -452,7 +453,7 @@ function AvailabilityView() {
                 <h2>{pickedCourt.name}</h2>
                 <p className="when">{picked.start}{end ? ` – ${end}` : ""} <span>· {effective ? durationLabel(effective) : ""}</span></p>
               </div>
-              <button type="button" className="shop-icon-btn soft" onClick={() => setPicked(null)} aria-label="Batalkan pilihan"><X size={18} aria-hidden="true" /></button>
+              <button type="button" className="shop-icon-btn soft" onClick={() => setPicked(null)} aria-label="Batalkan pilihan" data-tip="Batalkan pilihan"><X size={18} aria-hidden="true" /></button>
             </div>
 
             <DurationPicker full label="Durasi untuk jam ini" value={effective ?? duration} options={durations} allowed={value => available.includes(value)} onChange={chooseDuration} />
@@ -487,7 +488,7 @@ function AvailabilityView() {
                 <Link className="shop-btn primary" href="/keranjang"><ShoppingBag size={18} aria-hidden="true" /> Sudah di keranjang</Link>
               ) : (
                 <div className="sheet-actions">
-                  <button className="shop-btn outline" type="button" onClick={() => addPickedToCart(false)} disabled={!effective} title="Simpan di keranjang lalu pilih jam lain">
+                  <button className="shop-btn outline" type="button" onClick={() => addPickedToCart(false)} disabled={!effective} data-tip="Simpan di keranjang lalu pilih jam lain">
                     <ShoppingBag size={18} aria-hidden="true" /> + Keranjang
                   </button>
                   <button className="shop-btn primary" type="button" onClick={() => addPickedToCart(true)} disabled={!effective}>

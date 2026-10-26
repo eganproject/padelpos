@@ -4,6 +4,7 @@ import { ChevronDown, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { DateInput, Select } from "./form-controls";
 import { ErrorBox } from "./operation-ui";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 type Entry = { id:number; action:string; target_id:string; created_at:string; actor_id:string; actor_name:string; actor_kind:"staff"|"customer"|"system"|"unknown"; detail:Record<string,unknown>|null };
 type Filters = { actions:string[]; staff:{id:string;name:string}[]; today:string };
@@ -74,18 +75,18 @@ export function AuditPanel() {
       <label>Cari<input value={query} onChange={e => setQuery(e.target.value)} placeholder="Kode data atau isi rincian, mis. nomor jurnal"/></label>
       <label>Dari<DateInput value={from} max={to || undefined} onChange={e => setFrom(e.target.value)}/></label>
       <label>Sampai<DateInput value={to} min={from || undefined} onChange={e => setTo(e.target.value)}/></label>
-      <label>Pelaku<Select value={actor} onChange={e => setActor(e.target.value)}><option value="">Semua</option>{filters?.staff.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}<option value="sistem">Sistem</option><option value="midtrans">Midtrans</option></Select></label>
+      <label><LabelTip tip="Staf yang melakukan perubahan. Sistem = proses otomatis seperti penyusutan dan pembatalan hold; Midtrans = notifikasi pembayaran.">Pelaku</LabelTip><Select value={actor} onChange={e => setActor(e.target.value)}><option value="">Semua</option>{filters?.staff.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}<option value="sistem">Sistem</option><option value="midtrans">Midtrans</option></Select></label>
       <label>Jenis<Select value={action} onChange={e => setAction(e.target.value)}><option value="">Semua aksi</option>{groups.map(group => <option key={group} value={group}>{groupLabels[group] ?? group}</option>)}</Select></label>
       <button className="ops-secondary" onClick={() => { setFrom(""); setTo(""); setActor(""); setAction(""); setQuery(""); }}>Reset</button>
-      <button className="ops-secondary" onClick={() => void load()} disabled={busy} aria-label="Muat ulang"><RefreshCw size={14}/></button>
+      <button className="ops-secondary" onClick={() => void load()} disabled={busy} aria-label="Muat ulang" data-tip="Muat ulang"><RefreshCw size={14}/></button>
     </div>
     <div className="manage-table-card ops-table table-cards"><table>
-      <thead><tr><th>Waktu</th><th>Pelaku</th><th>Aksi</th><th>Data</th><th>Rincian</th></tr></thead>
+      <thead><tr><th>Waktu</th><th>Pelaku</th><th>Aksi</th><th>Data<InfoTip text="Kode data yang diubah, mis. kode booking, nomor jurnal, atau nama pengaturan."/></th><th>Rincian<InfoTip text="Nilai yang berubah pada aksi tersebut, mis. nominal, alasan, atau isi pengaturan sebelum dan sesudah."/></th></tr></thead>
       <tbody>{entries.map(entry => <tr key={entry.id}>
         <td data-label="Waktu">{new Date(entry.created_at).toLocaleString("id-ID", { dateStyle:"medium", timeStyle:"short" })}</td>
         <td data-label="Pelaku"><b>{entry.actor_name}</b><small className="table-description">{entry.actor_kind === "staff" ? "Staf" : entry.actor_kind === "customer" ? "Pelanggan" : entry.actor_kind === "system" ? "Otomatis" : entry.actor_id.slice(0, 8)}</small></td>
         <td data-label="Aksi">{labelFor(entry.action)}</td>
-        <td className="wide" data-label="Data"><code className="audit-target" title={entry.target_id}>{/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(entry.target_id) ? entry.target_id.slice(0, 8).toUpperCase() : entry.target_id}</code></td>
+        <td className="wide" data-label="Data"><code className="audit-target" data-tip={entry.target_id}>{/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(entry.target_id) ? entry.target_id.slice(0, 8).toUpperCase() : entry.target_id}</code></td>
         <td data-label="Rincian">{entry.detail ? <>
           <button className="ops-link-button" onClick={() => setOpen(open === entry.id ? null : entry.id)} aria-expanded={open === entry.id}>{open === entry.id ? "Tutup" : "Lihat"} <ChevronDown size={14}/></button>
           {open === entry.id && <Detail detail={entry.detail}/>}

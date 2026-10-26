@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatShortDay } from "@/lib/shop";
 import { ErrorBox } from "./operation-ui";
+import { InfoTip } from "@/components/tooltip";
 
 type Settings = {
   enabled: boolean; api_key: string; auth_domain: string; project_id: string; app_id: string; updated_at: string | null;
@@ -95,7 +96,7 @@ function AccountsTab({ accounts, ready }: { accounts: AccountRow[]; ready: boole
       </div>
       <div className="manage-table-card table-cards">
         <table>
-          <thead><tr><th>Pelanggan</th><th>WhatsApp</th><th>Booking</th><th>Terakhir main</th><th>Terakhir masuk</th></tr></thead>
+          <thead><tr><th>Pelanggan</th><th>WhatsApp<InfoTip text="Nomor yang diisi pelanggan sendiri di profilnya. Dipakai untuk tagihan dan pengingat WhatsApp."/></th><th>Booking<InfoTip text="Jumlah booking yang terhubung ke akun ini, dari situs maupun yang dihubungkan kasir."/></th><th>Terakhir main</th><th>Terakhir masuk<InfoTip text="Terakhir kali pelanggan masuk ke situs dengan akun Google-nya."/></th></tr></thead>
           <tbody>
             {shown.map(row => (
               <tr key={row.id}>
@@ -239,7 +240,7 @@ function LoginTab({ settings, saved }: { settings: Settings; saved: (settings: S
             <label className="cms-field"><span className="cms-label">API key</span>
               <input value={form.api_key} maxLength={80} placeholder="AIza…" spellCheck={false} onChange={event => set("api_key", event.target.value.trim())} />
             </label>
-            <label className="cms-field"><span className="cms-label">Auth domain</span>
+            <label className="cms-field"><span className="cms-label">Auth domain<InfoTip text="Biasanya nama-proyek.firebaseapp.com. Domain situs venue juga harus ditambahkan di Firebase: Authentication → Settings → Authorized domains."/></span>
               <input value={form.auth_domain} maxLength={120} placeholder="nama-proyek.firebaseapp.com" spellCheck={false} onChange={event => set("auth_domain", event.target.value.trim())} />
             </label>
             <label className="cms-field"><span className="cms-label">Project ID</span>

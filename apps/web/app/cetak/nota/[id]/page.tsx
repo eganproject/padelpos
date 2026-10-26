@@ -75,7 +75,7 @@ function ReceiptPrint() {
         <Link className="receipt-btn ghost" href={shift ? "/admin/bookings?tab=tutup-kasir" : counter ? "/admin/bookings?tab=kasir" : "/admin/bookings"}><ArrowLeft size={16} aria-hidden="true" /> Booking</Link>
         <div className="receipt-papers" role="radiogroup" aria-label="Ukuran kertas">
           {paperOptions.map(option => (
-            <button key={option.value} type="button" role="radio" aria-checked={paper === option.value} className={paper === option.value ? "active" : ""} title={option.hint} onClick={() => setPaper(option.value)}>{option.label}</button>
+            <button key={option.value} type="button" role="radio" aria-checked={paper === option.value} className={paper === option.value ? "active" : ""} data-tip={option.hint} onClick={() => setPaper(option.value)}>{option.label}</button>
           ))}
         </div>
         {paper === "custom" && <label className="receipt-width">Lebar <input type="number" min={40} max={216} value={width} onChange={event => setWidth(Math.min(216, Math.max(40, Number(event.target.value) || 40)))} /> mm</label>}

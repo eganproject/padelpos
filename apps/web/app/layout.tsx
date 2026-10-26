@@ -3,6 +3,7 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import { Toaster } from "sonner";
 import { RouteProgress } from "@/components/route-progress";
 import { BrandProvider } from "@/components/brand-provider";
+import { TooltipLayer } from "@/components/tooltip";
 import { brandInfo } from "@/lib/server-data";
 import { assetUrl, brandCss, brandName, emptyBrand } from "@/lib/brand";
 /* Panel staf lebih dulu, lalu situs pelanggan. Urutan ini disengaja: aturan
@@ -67,6 +68,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <RouteProgress />
         <BrandProvider brand={brand}>{children}</BrandProvider>
+        <TooltipLayer />
         <Toaster theme="dark" richColors position="top-right" closeButton />
       </body>
     </html>

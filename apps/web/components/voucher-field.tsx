@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { TicketPercent, X } from "lucide-react";
 import { money } from "@/lib/api";
 import { checkVoucher, type VoucherCheck } from "@/lib/vouchers";
+import { LabelTip } from "@/components/tooltip";
 
 /**
  * Isian kode voucher untuk formulir kasir (booking baru dan transaksi kasir). Potongannya diperiksa
@@ -41,7 +42,7 @@ export function VoucherField({ court = 0, extras, subtotal, cap, phone, value, o
   return (
     <div>
       <div className="voucher-line">
-        <label>Kode voucher (opsional)<input value={input} maxLength={32} autoComplete="off" spellCheck={false} disabled={disabled} placeholder="Mis. MAINPAGI"
+        <label><LabelTip tip="Kode promo dari menu Voucher & Promo. Sistem memeriksa masa berlaku, kuota, minimal belanja, dan batas per pelanggan (dari nomor HP).">Kode voucher (opsional)</LabelTip><input value={input} maxLength={32} autoComplete="off" spellCheck={false} disabled={disabled} placeholder="Mis. MAINPAGI"
           onChange={event => setInput(event.target.value.toUpperCase().replace(/\s+/g, ""))}
           onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); apply(); } }} /></label>
         <button type="button" className="ops-secondary" disabled={disabled || busy || !input.trim()} onClick={apply}>{busy ? "Memeriksa…" : "Pakai"}</button>

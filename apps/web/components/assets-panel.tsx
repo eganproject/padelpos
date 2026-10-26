@@ -7,6 +7,7 @@ import { type Account, type Partner, formatDate, money } from "@/lib/finance";
 import { ErrorBox, Modal } from "./operation-ui";
 import { AmountField, Empty, StatCard } from "./finance-ui";
 import { DateInput, Select } from "./form-controls";
+import { InfoTip } from "@/components/tooltip";
 
 type Asset = {
   id:string; number:string; name:string; category:string; acquired_on:string; cost:number; salvage:number; life_months:number; depreciate_from:string;
@@ -60,9 +61,9 @@ export function AssetsPanel() {
     <div className="fin">
       <div className="fin-stats">
         <StatCard label="Aset aktif" value={String(s.count)} hint={disposedCount?`${disposedCount} sudah dilepas`:undefined}/>
-        <StatCard label="Harga perolehan" value={money(s.cost)}/>
-        <StatCard label="Akumulasi penyusutan" value={money(s.accumulated)}/>
-        <StatCard label="Nilai buku" value={money(s.book_value)} hint={`Penyusutan ${money(s.monthly)} per bulan`}/>
+        <StatCard label="Harga perolehan" value={money(s.cost)} tip="Total harga beli semua aset aktif, termasuk ongkos kirim dan pemasangan."/>
+        <StatCard label="Akumulasi penyusutan" value={money(s.accumulated)} tip="Total nilai aset yang sudah dicatat sebagai biaya penyusutan sejak dibeli. Dicatat otomatis tiap bulan."/>
+        <StatCard label="Nilai buku" tip="Harga perolehan dikurangi akumulasi penyusutan. Angka ini yang tampil di Neraca sebagai aset tetap." value={money(s.book_value)} hint={`Penyusutan ${money(s.monthly)} per bulan`}/>
       </div>
       <div className="fin-toolbar asset-toolbar">
         <p className="fin-note"><CalendarClock size={14}/> Penyusutan bulan lalu dicatat otomatis tiap awal bulan. Bulan di periode yang dikunci dilewati.</p>
@@ -73,7 +74,7 @@ export function AssetsPanel() {
         </div>
       </div>
       {list.length ? <div className="manage-table-card ops-table table-cards"><table>
-        <thead><tr><th>Aset</th><th>Perolehan</th><th>Umur</th><th className="right">Per bulan</th><th className="right">Akumulasi</th><th className="right">Nilai buku</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Aset</th><th>Perolehan</th><th>Umur<InfoTip text="Umur manfaat: berapa lama aset diperkirakan bisa dipakai. Penyusutan dibagi rata selama umur ini."/></th><th className="right">Per bulan<InfoTip text="Biaya penyusutan yang dicatat otomatis setiap bulan: (harga − nilai sisa) ÷ umur."/></th><th className="right">Akumulasi</th><th className="right">Nilai buku</th><th>Aksi</th></tr></thead>
         <tbody>{list.map(asset => (
           <tr key={asset.id} className={asset.status==="dilepas"?"muted-row":""}>
             <td className="wide" data-label="Aset"><b>{asset.name}</b><small className="table-description">{asset.number}{asset.category?` · ${asset.category}`:""}{asset.status==="dilepas"?` · dilepas ${formatDate(asset.disposed_on??"")}${asset.disposal_amount?` seharga ${money(asset.disposal_amount)}`:""}`:""}</small></td>
@@ -83,11 +84,11 @@ export function AssetsPanel() {
             <td className="right" data-label="Akumulasi">{money(asset.accumulated+asset.prior)}{asset.prior>0&&<small className="table-description">{money(asset.prior)} sebelum dicatat</small>}</td>
             <td className="right" data-label="Nilai buku"><b>{money(asset.book_value)}</b><span className="asset-bar" aria-hidden="true"><i style={{width:`${Math.max(0,Math.min(100,Math.round(asset.book_value/asset.cost*100)))}%`}}/></span></td>
             <td className="actions"><div className="ops-row-buttons asset-actions">
-              <button type="button" className="ops-secondary" onClick={()=>setSchedule(asset)} title="Jadwal penyusutan"><ListOrdered size={14}/> Jadwal</button>
+              <button type="button" className="ops-secondary" onClick={()=>setSchedule(asset)} data-tip="Jadwal penyusutan"><ListOrdered size={14}/> Jadwal</button>
               {asset.status==="aktif" ? <>
-                <button type="button" className="ops-secondary" onClick={()=>setEditing(asset)} aria-label={`Ubah ${asset.name}`}><Pencil size={14}/></button>
+                <button type="button" className="ops-secondary" onClick={()=>setEditing(asset)} aria-label={`Ubah ${asset.name}`} data-tip={`Ubah ${asset.name}`}><Pencil size={14}/></button>
                 <button type="button" className="ops-secondary" onClick={()=>setDisposing(asset)}>Lepas</button>
-                <button type="button" className="ops-danger" onClick={()=>void remove(asset)} aria-label={`Hapus ${asset.name}`}><Trash2 size={14}/></button>
+                <button type="button" className="ops-danger" onClick={()=>void remove(asset)} aria-label={`Hapus ${asset.name}`} data-tip={`Hapus ${asset.name}`}><Trash2 size={14}/></button>
               </> : <button type="button" className="ops-secondary" onClick={()=>void undo(asset)}><Undo2 size={14}/> Batalkan pelepasan</button>}
             </div></td>
           </tr>
@@ -136,9 +137,9 @@ function AssetForm({ data, asset, close, saved }: { data:Overview; asset:Asset|n
         <fieldset className="fin-fieldset" disabled={started}>
           <div className="fin-form-grid">
             <label className="fin-field"><span className="fin-label">Tanggal perolehan</span><DateInput required value={form.acquired_on} onChange={e=>e.target.value&&set("acquired_on",e.target.value)}/></label>
-            <AmountField label="Harga perolehan" value={form.cost} onChange={value=>set("cost",value)}/>
+            <AmountField label="Harga perolehan" tip="Harga beli ditambah biaya sampai aset siap dipakai, mis. ongkos kirim dan pemasangan." value={form.cost} onChange={value=>set("cost",value)}/>
           </div>
-          <div className="fin-field"><span className="fin-label">Umur manfaat</span>
+          <div className="fin-field"><span className="fin-label">Umur manfaat<InfoTip text="Perkiraan lama aset bisa dipakai. Contoh umum: raket 1–2 tahun, lampu 4–5 tahun, karpet lapangan 4–8 tahun."/></span>
             <div className="fin-chips" role="group" aria-label="Umur manfaat">{lifePresets.map(months=><button type="button" key={months} aria-pressed={form.life_months===months} onClick={()=>set("life_months",months)}>{months/12} tahun</button>)}
               <label className="asset-life"><input type="number" min={1} max={600} required value={form.life_months||""} onChange={e=>set("life_months",Number(e.target.value))} aria-label="Umur manfaat dalam bulan"/> bulan</label></div>
           </div>
@@ -149,7 +150,7 @@ function AssetForm({ data, asset, close, saved }: { data:Overview; asset:Asset|n
           {pastStart && <label className="fin-field"><span className="fin-label">Mulai dicatat dari bulan (opsional)</span>
             <input type="month" value={form.depreciate_from} min={form.acquired_on.slice(0,7)} max={data.date.slice(0,7)} onChange={e=>set("depreciate_from",e.target.value)}/>
             <small className="fin-hint">Untuk aset lama yang penyusutan sebelumnya sudah ada di saldo awal Akumulasi Penyusutan. Kosongkan agar dicatat sejak bulan perolehan.</small></label>}
-          <details className="fin-advanced"><summary>Akun pembukuan</summary>
+          <details className="fin-advanced"><summary>Akun pembukuan<InfoTip text="Akun tempat aset, akumulasi penyusutan, dan biaya penyusutan dicatat. Pilihan bawaan sudah sesuai untuk kebanyakan venue."/></summary>
             <div className="fin-form-grid">
               <label className="fin-field"><span className="fin-label">Akun aset</span><Select value={form.asset_account_id} onChange={e=>set("asset_account_id",e.target.value)}>{o.asset_accounts.map(account=><option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}</Select></label>
               <label className="fin-field"><span className="fin-label">Akun akumulasi</span><Select value={form.accumulated_account_id} onChange={e=>set("accumulated_account_id",e.target.value)}>{o.accumulated_accounts.map(account=><option key={account.id} value={account.id}>{account.code} — {account.name}</option>)}</Select></label>
@@ -221,7 +222,7 @@ function ScheduleModal({ asset, close }: { asset:Asset; close:()=>void }) {
       <div className="fin-form">
         <p className="fin-note">{asset.number} · {money(asset.cost)} · {lifeText(asset.life_months)} · {money(asset.monthly)} per bulan</p>
         {!data ? <p className="empty-state">Memuat…</p> : <div className="asset-schedule"><table>
-          <thead><tr><th>Bulan</th><th className="right">Penyusutan</th><th className="right">Nilai buku</th><th>Status</th></tr></thead>
+          <thead><tr><th>Bulan</th><th className="right">Penyusutan</th><th className="right">Nilai buku</th><th>Status<InfoTip text="Tercatat: jurnal penyusutan bulan itu sudah dibuat otomatis. Terjadwal: dicatat otomatis saat bulannya tiba. Sebelum dicatat: bulan sebelum pencatatan dimulai, biasanya sudah masuk saldo awal."/></th></tr></thead>
           <tbody>{data.rows.map(item=><tr key={item.period} className={item.state}><td>{monthLabel(item.period)}</td><td className="right">{money(item.amount)}</td><td className="right">{money(item.book_value)}</td><td><span className={`status-pill ${item.state==="tercatat"?"on":item.state==="terjadwal"?"wait":"off"}`}>{stateLabel[item.state]}</span></td></tr>)}</tbody>
         </table></div>}
       </div>

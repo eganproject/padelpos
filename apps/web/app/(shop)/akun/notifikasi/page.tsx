@@ -94,7 +94,7 @@ export default function NotificationsPage() {
       <div className="acct-section-head">
         <h2>Notifikasi{unread > 0 ? <span className="acct-inbox-count">{unread} baru</span> : null}</h2>
         <div className="acct-inbox-tools">
-          <button type="button" className="shop-icon-btn outline" onClick={() => void load()} disabled={!!busy} aria-label="Muat ulang">
+          <button type="button" className="shop-icon-btn outline" onClick={() => void load()} disabled={!!busy} aria-label="Muat ulang" data-tip="Muat ulang">
             <RefreshCw size={15} aria-hidden="true" />
           </button>
           {unread > 0 && (

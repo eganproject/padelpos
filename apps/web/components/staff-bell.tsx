@@ -120,7 +120,7 @@ export function StaffBell({ canConfigure }: { canConfigure: boolean }) {
   return (
     <div className="desk-bell" ref={box}>
       <button type="button" className="desk-icon-btn desk-bell-btn" onClick={() => setOpen(value => !value)} aria-haspopup="dialog" aria-expanded={open}
-        aria-label={unread ? `Notifikasi, ${unread} belum dibaca` : "Notifikasi"} title="Notifikasi">
+        aria-label={unread ? `Notifikasi, ${unread} belum dibaca` : "Notifikasi"} data-tip="Notifikasi">
         <Bell />{unread > 0 && <span className="desk-bell-count" aria-hidden="true">{badge}</span>}
       </button>
       {open && <div className="desk-dropdown desk-bell-panel" role="dialog" aria-label="Notifikasi staf">

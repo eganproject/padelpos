@@ -18,7 +18,7 @@ export function Modal({title,close,children}:{title:string;close:()=>void;childr
     }
     document.addEventListener("keydown",key);return()=>{document.body.style.overflow=bodyOverflow;document.removeEventListener("keydown",key);previous?.focus()};
   },[close]);
-  return <div className="modal-backdrop"><div className="crud-modal ops-modal" role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}><div className="modal-head"><h2>{title}</h2><button type="button" aria-label="Tutup dialog" onClick={close}><X/></button></div>{children}</div></div>;
+  return <div className="modal-backdrop"><div className="crud-modal ops-modal" role="dialog" aria-modal="true" aria-label={title} ref={ref} tabIndex={-1}><div className="modal-head"><h2>{title}</h2><button type="button" aria-label="Tutup dialog" data-tip="Tutup dialog" onClick={close}><X/></button></div>{children}</div></div>;
 }
 export function ErrorBox({message,retry}:{message:string;retry?:()=>void}){return <div className="ops-error" role="alert">{message}{retry&&<button type="button" onClick={retry}>Coba lagi</button>}</div>}
 /** Tombol simpan. `disabled` menonaktifkan tanpa mengganti teksnya menjadi "Menyimpan…". */

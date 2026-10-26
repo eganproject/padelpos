@@ -7,6 +7,7 @@ import { type Shift, type ShiftOverview, differenceLabel, shiftSources } from "@
 import { methodName } from "@/lib/counter";
 import { ErrorBox } from "./operation-ui";
 import { MoneyInput } from "./form-controls";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 const printShift = (id: string) => window.open(`/cetak/nota/${id}?jenis=shift&cetak=1`, "_blank", "noopener");
 const time = (value: string) => new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
@@ -46,7 +47,7 @@ function OpenShift({ opened }: { opened: () => void }) {
   return <form className="settings-card shift-open" onSubmit={submit}>
     <div className="settings-title"><Wallet aria-hidden="true" /><div><h2>Belum ada shift yang dibuka</h2><p>Hitung uang tunai di laci sebelum mulai melayani. Angka ini menjadi modal awal shift.</p></div></div>
     {error && <ErrorBox message={error} />}
-    <div className="field-grid"><label>Modal awal di laci<MoneyInput autoFocus min={0} max={1000000000} value={cash} onChange={e => setCash(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>Catatan (opsional)<input maxLength={200} value={note} onChange={e => setNote(e.target.value)} placeholder="Mis. shift pagi" /></label></div>
+    <div className="field-grid"><label><LabelTip tip="Uang tunai di laci saat shift dibuka, biasanya untuk kembalian. Tidak dicatat sebagai pemasukan.">Modal awal di laci</LabelTip><MoneyInput autoFocus min={0} max={1000000000} value={cash} onChange={e => setCash(e.target.value === "" ? "" : Number(e.target.value))} /></label><label>Catatan (opsional)<input maxLength={200} value={note} onChange={e => setNote(e.target.value)} placeholder="Mis. shift pagi" /></label></div>
     <div><button className="ops-primary" disabled={busy}>{busy ? "Membuka…" : "Buka shift"}</button></div>
   </form>;
 }
@@ -71,7 +72,7 @@ function CurrentShift({ shift, reload }: { shift: Shift; reload: () => void }) {
   </div>;
   return <>
     <div className="metric-grid metric-grid-3 shift-metrics">
-      <article className="metric-card lime"><div className="metric-top"><span><Banknote /></span></div><p>Uang tunai seharusnya</p><h2>{money(shift.expected_cash)}</h2><small>Modal {money(shift.opening_cash)} {shift.summary.cash_net < 0 ? "−" : "+"} tunai bersih {money(Math.abs(shift.summary.cash_net))}</small></article>
+      <article className="metric-card lime"><div className="metric-top"><span><Banknote /></span></div><p>Uang tunai seharusnya<InfoTip text="Modal awal + semua pembayaran tunai yang Anda catat selama shift − pengembalian tunai."/></p><h2>{money(shift.expected_cash)}</h2><small>Modal {money(shift.opening_cash)} {shift.summary.cash_net < 0 ? "−" : "+"} tunai bersih {money(Math.abs(shift.summary.cash_net))}</small></article>
       <article className="metric-card violet"><div className="metric-top"><span><Wallet /></span></div><p>Non-tunai</p><h2>{money(nonCash)}</h2><small>Transfer dan QRIS manual yang Anda catat</small></article>
       <article className="metric-card cyan"><div className="metric-top"><span><RefreshCw /></span></div><p>Shift {shift.number}</p><h2 className="shift-since">{new Date(shift.opened_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</h2><small>Dibuka {time(shift.opened_at)}{shift.open_note ? ` · ${shift.open_note}` : ""}</small></article>
     </div>
@@ -80,7 +81,7 @@ function CurrentShift({ shift, reload }: { shift: Shift; reload: () => void }) {
       <div className="settings-title"><Scale aria-hidden="true" /><div><h2>Tutup shift</h2><p>Hitung semua uang tunai di laci, termasuk modal awal, lalu masukkan jumlahnya.</p></div></div>
       {error && <ErrorBox message={error} />}
       <div className="field-grid">
-        <label>Uang tunai dihitung<MoneyInput required min={0} max={1000000000} value={counted} onChange={e => setCounted(e.target.value === "" ? "" : Number(e.target.value))} /></label>
+        <label><LabelTip tip="Hitung fisik semua uang di laci, termasuk modal awal. Selisih dengan angka seharusnya dicatat ke akun Selisih Kas.">Uang tunai dihitung</LabelTip><MoneyInput required min={0} max={1000000000} value={counted} onChange={e => setCounted(e.target.value === "" ? "" : Number(e.target.value))} /></label>
         <div className={`shift-diff${difference === null ? "" : difference === 0 ? " ok" : difference < 0 ? " short" : " over"}`} aria-live="polite"><small>Selisih</small><b>{difference === null ? "–" : differenceLabel(difference)}</b></div>
       </div>
       <label>Catatan{difference ? " (wajib, jelaskan selisihnya)" : " (opsional)"}<textarea rows={2} maxLength={300} required={!!difference} minLength={difference ? 3 : undefined} value={note} onChange={e => setNote(e.target.value)} placeholder={difference ? "Mis. kembalian salah ke pelanggan" : "Mis. uang disetor ke pemilik"} /></label>
@@ -93,7 +94,7 @@ export function ShiftBreakdown({ shift }: { shift: Shift }) {
   const { summary } = shift;
   const sources = shiftSources(summary).filter(row => row.amount);
   return <div className="shift-breakdown">
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Metode</th><th>Masuk</th><th>Keluar</th><th>Bersih</th><th>Transaksi</th></tr></thead><tbody>
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Metode</th><th>Masuk</th><th>Keluar<InfoTip text="Pengembalian dana (refund) yang dibayarkan selama shift."/></th><th>Bersih</th><th>Transaksi</th></tr></thead><tbody>
       {summary.methods.map(row => <tr key={row.method}><td className="wide" data-label="Metode"><b>{methodName[row.method] ?? row.method}</b></td><td data-label="Masuk">{money(row.received)}</td><td data-label="Keluar">{row.returned ? `−${money(row.returned)}` : money(0)}</td><td data-label="Bersih"><b>{money(row.net)}</b></td><td data-label="Transaksi">{row.count}</td></tr>)}
     </tbody></table>{!summary.methods.length && <p className="empty-state">Belum ada transaksi yang Anda catat di shift ini.</p>}</div>
     {sources.length > 0 && <ul className="shift-sources">{sources.map(row => <li key={row.label}><span>{row.label}</span><b>{row.sign < 0 ? "−" : ""}{money(row.amount)}</b></li>)}</ul>}
@@ -104,7 +105,7 @@ function History({ data }: { data: ShiftOverview }) {
   const closed = data.shifts.filter(shift => shift.closed_at);
   return <>
     <div className="ops-section-title"><div><h2>Riwayat shift</h2><p>{data.all_staff ? "Shift semua staf, 30 terakhir." : "Shift Anda, 30 terakhir."}</p></div></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Shift</th><th>Modal</th><th>Seharusnya</th><th>Dihitung</th><th>Selisih</th><th>Aksi</th></tr></thead><tbody>{data.shifts.map(shift => <tr key={shift.id}>
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Shift</th><th>Modal</th><th>Seharusnya<InfoTip text="Modal + tunai masuk − tunai keluar menurut catatan sistem."/></th><th>Dihitung<InfoTip text="Uang tunai yang dihitung kasir saat menutup shift."/></th><th>Selisih<InfoTip text="Dihitung − seharusnya. Minus berarti uang kurang, plus berarti lebih. Dicatat otomatis ke akun Selisih Kas."/></th><th>Aksi</th></tr></thead><tbody>{data.shifts.map(shift => <tr key={shift.id}>
       <td className="wide" data-label="Shift"><b>{shift.number}{data.all_staff ? ` · ${shift.user_name}` : ""}</b><small className="table-description">{time(shift.opened_at)} – {shift.closed_at ? time(shift.closed_at) : "masih buka"}</small>{shift.close_note && <small className="table-description">{shift.close_note}</small>}</td>
       <td data-label="Modal">{money(shift.opening_cash)}</td>
       <td data-label="Seharusnya">{money(shift.expected_cash)}</td>
