@@ -8,6 +8,7 @@ import { type Member, type MemberDetail, type MemberSettings, type MemberSlot, t
 import { type PriceRule, dayShort, formatDays, timeSlots, weekOrder } from "@/lib/operations";
 import { ErrorBox, Modal, Submit } from "./operation-ui";
 import { DateInput, MoneyInput, Select } from "./form-controls";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 type CourtBrief = { id: string; name: string; hourly_rate: number; active: number };
 type Data = {
@@ -49,10 +50,10 @@ export function MembersPanel() {
   if (!data) return error ? <ErrorBox message={error} retry={() => void load()} /> : <p className="empty-state">Memuat data member…</p>;
   const { stats } = data, activePlans = data.plans.filter(plan => plan.active);
   const metrics = [
-    { label: "Member aktif", value: String(stats.active), hint: stats.frozen ? `${stats.frozen} sedang dibekukan` : `${stats.joined} bergabung bulan ini`, Icon: BadgeCheck, tone: "violet" },
-    { label: "Segera berakhir", value: String(stats.expiring), hint: stats.waiting ? `${stats.waiting} pendaftar belum selesai` : `Dalam ${Math.max(data.settings.reminder_days, 7)} hari ke depan`, Icon: Hourglass, tone: "orange" },
-    { label: "Pendapatan member", value: money(stats.revenue), hint: `Diakui bulan ini · uang masuk ${money(stats.collected)}`, Icon: CircleDollarSign, tone: "lime" },
-    { label: "Potongan member", value: money(stats.discount), hint: "Booking yang main dan transaksi kasir bulan ini", Icon: Tags, tone: "cyan" },
+    { label: "Member aktif", tip: "Member yang masa berlakunya sedang berjalan dan sudah lunas. Member yang dibekukan tidak dihitung.", value: String(stats.active), hint: stats.frozen ? `${stats.frozen} sedang dibekukan` : `${stats.joined} bergabung bulan ini`, Icon: BadgeCheck, tone: "violet" },
+    { label: "Segera berakhir", tip: "Member aktif yang masa berlakunya habis dalam beberapa hari ke depan. Tawarkan perpanjangan.", value: String(stats.expiring), hint: stats.waiting ? `${stats.waiting} pendaftar belum selesai` : `Dalam ${Math.max(data.settings.reminder_days, 7)} hari ke depan`, Icon: Hourglass, tone: "orange" },
+    { label: "Pendapatan member", tip: "Iuran dicatat dulu sebagai pendapatan diterima di muka, lalu diakui sebagai pendapatan sedikit demi sedikit setiap bulan selama masa berlaku.", value: money(stats.revenue), hint: `Diakui bulan ini · uang masuk ${money(stats.collected)}`, Icon: CircleDollarSign, tone: "lime" },
+    { label: "Potongan member", tip: "Total diskon yang dinikmati member. Tercatat di laporan sebagai Potongan Member, mengurangi pendapatan.", value: money(stats.discount), hint: "Booking yang main dan transaksi kasir bulan ini", Icon: Tags, tone: "cyan" },
   ];
 
   return (
@@ -69,9 +70,9 @@ export function MembersPanel() {
       <div role="tabpanel" id="panel-member" aria-labelledby="tab-member" hidden={tab !== "member"}>
         <div className="ops-actions">
           <p>Member mendapat potongan otomatis saat booking selama masa berlakunya. Daftarkan di kasir, atau biarkan pelanggan mendaftar sendiri dari akunnya.</p>
-          <button className="ops-primary" disabled={!activePlans.length} title={activePlans.length ? undefined : "Buat paket member terlebih dahulu"} onClick={() => setRegistering(true)}><UserPlus size={16} /> Daftarkan member</button>
+          <button className="ops-primary" disabled={!activePlans.length} data-tip={activePlans.length ? undefined : "Buat paket member terlebih dahulu"} onClick={() => setRegistering(true)}><UserPlus size={16} /> Daftarkan member</button>
         </div>
-        <div className="metric-grid addon-metrics">{metrics.map(({ label, value, hint, Icon, tone }) => <article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon /></span></div><p>{label}</p><h2>{value}</h2><small>{hint}</small></article>)}</div>
+        <div className="metric-grid addon-metrics">{metrics.map(({ label, tip, value, hint, Icon, tone }) => <article key={label} className={`metric-card ${tone}`}><div className="metric-top"><span><Icon /></span></div><p><span className="metric-label">{label}</span><InfoTip text={tip} /></p><h2>{value}</h2><small>{hint}</small></article>)}</div>
         {!data.plans.length ? (
           <div className="ops-empty">
             <h2>Belum ada paket member</h2>
@@ -85,7 +86,7 @@ export function MembersPanel() {
           </div>
           <div className="manage-table-card ops-table table-cards">
             <table>
-              <thead><tr><th>Member</th><th>Paket</th><th>Masa berlaku</th><th>Status</th><th>Aksi</th></tr></thead>
+              <thead><tr><th>Member</th><th>Paket</th><th>Masa berlaku</th><th>Status<InfoTip text="Aktif: harga member berlaku. Belum bayar / Menunggu persetujuan: belum aktif. Dibekukan: masa berlaku dijeda. Berakhir: perlu diperpanjang."/></th><th>Aksi</th></tr></thead>
               <tbody>{data.members.map(member => (
                 <tr key={member.id}>
                   <td className="wide" data-label="Member"><b>{member.name}</b><small className="table-description">{member.code} · {member.phone}{member.account ? " · akun terhubung" : ""}</small></td>
@@ -119,7 +120,7 @@ export function MembersPanel() {
 
 function MethodField({ value, onChange, allowLater = false }: { value: Method | ""; onChange: (value: Method | "") => void; allowLater?: boolean }) {
   return (
-    <fieldset className="chip-field"><legend>Pembayaran</legend>
+    <fieldset className="chip-field"><legend>Pembayaran<InfoTip text="Uang iuran yang diterima di kasir. Pilih Bayar nanti bila belum dibayar; member baru aktif setelah tagihannya dilunasi."/></legend>
       <div className="chip-group">
         {(["cash", "transfer", "qris"] as Method[]).map(method => <button type="button" key={method} aria-pressed={value === method} onClick={() => onChange(method)}>{methodName[method]}</button>)}
         {allowLater && <button type="button" aria-pressed={value === ""} onClick={() => onChange("")}>Bayar nanti</button>}
@@ -244,7 +245,7 @@ function MemberModal({ id, plans, today, close, changed }: { id: string; plans: 
             <div className="booking-account-row"><div><b>{member.account.name}</b><small>{member.account.email}</small></div>{member.state !== "cancelled" && <button type="button" className="ops-link-button" disabled={busy} onClick={() => void run("", { name: member.name, phone: member.phone, email: member.email, notes: member.notes, account_id: null }, "Kaitan akun dilepas")}>Lepas kaitan</button>}</div>
           </section>}
 
-          <h3>Tagihan & iuran</h3>
+          <h3>Tagihan & iuran<InfoTip text="Setiap pendaftaran dan perpanjangan membuat satu tagihan iuran. Iuran diakui sebagai pendapatan per bulan sepanjang masa berlaku."/></h3>
           {data.invoices.map(invoice => (
             <div className="ops-history" key={invoice.id}>
               <div><b>{invoice.kind === "daftar" ? "Pendaftaran" : "Perpanjangan"} · {invoice.plan_name} {monthsLabel(invoice.months)}</b>
@@ -310,7 +311,7 @@ function CancelForm({ detail, busy, submit }: { detail: MemberDetail; busy: bool
       <p className="ops-muted">Iuran yang belum terpakai: <b>{money(detail.unearned)}</b>. Boleh dikembalikan sebagian atau seluruhnya; sisanya diakui sebagai pendapatan. Biaya pendaftaran tidak dikembalikan.</p>
       <label>Alasan<input required minLength={3} maxLength={200} value={reason} onChange={event => setReason(event.target.value)} placeholder="Mis. pindah kota" /></label>
       <div className="field-grid">
-        <label>Dikembalikan<MoneyInput min={0} max={detail.unearned} value={refund} onChange={event => setRefund(Number(event.target.value) || 0)} /></label>
+        <label><LabelTip tip="Maksimal sebesar iuran yang belum terpakai (sisa bulan). Sisanya yang tidak dikembalikan langsung diakui sebagai pendapatan.">Dikembalikan</LabelTip><MoneyInput min={0} max={detail.unearned} value={refund} onChange={event => setRefund(Number(event.target.value) || 0)} /></label>
         {refund > 0 && <label>Lewat<Select value={method} onChange={event => setMethod(event.target.value as Method)}><option value="cash">Tunai</option><option value="transfer">Transfer</option><option value="qris">QRIS</option></Select></label>}
       </div>
       <button type="submit" className="ops-danger" disabled={busy || reason.trim().length < 3 || refund > detail.unearned}>Batalkan keanggotaan</button>
@@ -363,7 +364,7 @@ function PlansTab({ plans, rules, courts, hasSlots, changed }: { plans: Plan[]; 
     </div>
     <div className="manage-table-card ops-table table-cards">
       <table>
-        <thead><tr><th>Paket</th><th>Iuran</th><th>Harga member</th><th>Member</th><th>Status</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Paket</th><th>Iuran<InfoTip text="Harga paket untuk satu masa berlaku. Biaya pendaftaran ditagih terpisah, sekali saja."/></th><th>Harga member<InfoTip text="Diskon persen atau tarif tetap per jam yang didapat member saat booking dan di kasir."/></th><th>Member<InfoTip text="Jumlah member yang memakai paket ini. Paket yang masih dipakai tidak bisa dihapus, cukup hentikan penjualannya."/></th><th>Status</th><th>Aksi</th></tr></thead>
         <tbody>{plans.map(plan => {
           const fixed = plan.rates.filter(rate => names.has(rate.rule_key)), quota = quotaSummary(plan);
           return (
@@ -378,8 +379,8 @@ function PlansTab({ plans, rules, courts, hasSlots, changed }: { plans: Plan[]; 
               <td data-label="Member">{plan.members}</td>
               <td data-label="Status"><span className={`status-pill ${plan.active ? "on" : "off"}`}>{plan.active ? "Dijual" : "Tidak dijual"}</span><small className="table-description">{!plan.active ? "Member lama tetap berlaku" : plan.online ? "Kasir & online" : "Khusus kasir"}</small></td>
               <td className="actions"><div className="row-actions">
-                <button onClick={() => setEditing(plan)} aria-label={`Ubah ${plan.name}`}><Pencil /></button>
-                <button className="delete" disabled={plan.members > 0} onClick={() => void remove(plan)} aria-label={`Hapus ${plan.name}`} title={plan.members ? "Masih dipakai member. Hentikan penjualannya saja." : "Hapus"}><Trash2 /></button>
+                <button onClick={() => setEditing(plan)} aria-label={`Ubah ${plan.name}`} data-tip={`Ubah ${plan.name}`}><Pencil /></button>
+                <button className="delete" disabled={plan.members > 0} onClick={() => void remove(plan)} aria-label={`Hapus ${plan.name}`} data-tip={plan.members ? "Masih dipakai member. Hentikan penjualannya saja." : "Hapus"}><Trash2 /></button>
               </div></td>
             </tr>
           );
@@ -414,14 +415,14 @@ function PlanModal({ plan, rules, courts, close, done }: { plan: Plan | null; ru
           <label>Nama paket<input autoFocus required minLength={2} maxLength={60} value={form.name} onChange={event => set("name", event.target.value)} placeholder="Mis. Member Bulanan" /></label>
           <label>Deskripsi untuk pelanggan (opsional)<textarea rows={2} maxLength={400} value={form.description} onChange={event => set("description", event.target.value)} placeholder="Mis. Cocok untuk yang main tiap minggu." /></label>
           <div className="field-grid">
-            <label>Iuran<MoneyInput required min={1000} max={100000000} value={form.price} onChange={event => set("price", Number(event.target.value) || 0)} /></label>
+            <label><LabelTip tip="Harga paket untuk satu masa berlaku. Di pembukuan, iuran diakui sebagai pendapatan rata per bulan, bukan sekaligus.">Iuran</LabelTip><MoneyInput required min={1000} max={100000000} value={form.price} onChange={event => set("price", Number(event.target.value) || 0)} /></label>
             <label>Masa berlaku<Select value={String(form.duration_months)} onChange={event => set("duration_months", Number(event.target.value))}>{[1, 3, 6, 12, 24].map(months => <option key={months} value={months}>{monthsLabel(months)}</option>)}</Select></label>
           </div>
           <label>Biaya pendaftaran (opsional)<MoneyInput min={0} max={100000000} value={form.registration_fee} onChange={event => set("registration_fee", Number(event.target.value) || 0)} /><small className="field-hint">Ditagih sekali saat mendaftar, tidak saat perpanjangan.</small></label>
           <h3 className="modal-subhead">Harga member</h3>
           <div className="field-grid">
-            <label>Diskon sewa lapangan (%)<input type="number" required min={0} max={100} step={0.5} value={form.court_discount} onChange={event => set("court_discount", Number(event.target.value))} /></label>
-            <label>Diskon raket & tambahan (%)<input type="number" min={0} max={100} step={0.5} value={form.addon_discount} onChange={event => set("addon_discount", Number(event.target.value))} /></label>
+            <label><LabelTip tip="Persen potongan dari tarif lapangan normal, termasuk tarif khusus jam sibuk. Isi 0 bila paket tidak memberi diskon lapangan.">Diskon sewa lapangan (%)</LabelTip><input type="number" required min={0} max={100} step={0.5} value={form.court_discount} onChange={event => set("court_discount", Number(event.target.value))} /></label>
+            <label><LabelTip tip="Potongan untuk barang di katalog Sewa & Tambahan, baik di booking maupun transaksi kasir.">Diskon raket & tambahan (%)</LabelTip><input type="number" min={0} max={100} step={0.5} value={form.addon_discount} onChange={event => set("addon_discount", Number(event.target.value))} /></label>
           </div>
           <p className="ops-muted">Contoh: sewa {money(200000)} menjadi <b>{money(200000 - example)}</b> untuk member. Diskon tambahan juga berlaku di transaksi kasir. Biaya lain yang diketik manual tidak didiskon.</p>
           {!showRates ? <button type="button" className="ops-link-button" onClick={() => setShowRates(true)}><Plus size={13} aria-hidden="true" /> Tarif tetap per jam untuk tarif tertentu</button> : (
@@ -439,13 +440,13 @@ function PlanModal({ plan, rules, courts, close, done }: { plan: Plan | null; ru
           )}
           <h3 className="modal-subhead">Batas & akses</h3>
           <div className="field-grid">
-            <label>Maks jam harga member per hari<input type="number" min={0} max={24} step={0.5} value={form.daily_hours} onChange={event => set("daily_hours", Number(event.target.value))} /></label>
-            <label>Maks jam per bulan<input type="number" min={0} max={744} step={0.5} value={form.monthly_hours} onChange={event => set("monthly_hours", Number(event.target.value))} /></label>
+            <label><LabelTip tip="Kuota jam main dengan harga member per hari. Lewat kuota, booking tetap bisa dibuat dengan harga normal. Isi 0 untuk tanpa batas.">Maks jam harga member per hari</LabelTip><input type="number" min={0} max={24} step={0.5} value={form.daily_hours} onChange={event => set("daily_hours", Number(event.target.value))} /></label>
+            <label><LabelTip tip="Kuota jam harga member per bulan kalender. Isi 0 untuk tanpa batas.">Maks jam per bulan</LabelTip><input type="number" min={0} max={744} step={0.5} value={form.monthly_hours} onChange={event => set("monthly_hours", Number(event.target.value))} /></label>
           </div>
           <p className="ops-muted">Isi 0 untuk tanpa batas. Lewat batas, member tetap bisa booking dengan harga lapangan normal. Mencegah harga member dipakai untuk memesan atas nama orang lain.</p>
-          <label className="switch-field"><input type="checkbox" checked={form.member_slots} onChange={event => set("member_slots", event.target.checked)} /> Boleh memesan jam khusus member</label>
-          <label className="switch-field"><input type="checkbox" checked={form.active} onChange={event => set("active", event.target.checked)} /> Paket dijual</label>
-          <label className="switch-field"><input type="checkbox" checked={form.online && form.active} disabled={!form.active} onChange={event => set("online", event.target.checked)} /> Bisa dibeli pelanggan lewat situs</label>
+          <label className="switch-field"><input type="checkbox" checked={form.member_slots} onChange={event => set("member_slots", event.target.checked)} /> Boleh memesan jam khusus member<InfoTip text="Jam khusus diatur di tab Jam khusus member. Hanya member dengan paket yang mencentang ini yang bisa memesannya."/></label>
+          <label className="switch-field"><input type="checkbox" checked={form.active} onChange={event => set("active", event.target.checked)} /> Paket dijual<InfoTip text="Matikan untuk berhenti menjual paket ini. Member yang sudah ada tetap berlaku sampai masa berlakunya habis."/></label>
+          <label className="switch-field"><input type="checkbox" checked={form.online && form.active} disabled={!form.active} onChange={event => set("online", event.target.checked)} /> Bisa dibeli pelanggan lewat situs<InfoTip text="Paket muncul di halaman Member pada akun pelanggan dan dibayar lewat Midtrans. Butuh pendaftaran online aktif di tab Pengaturan."/></label>
         </div>
         <div className="modal-actions"><button type="button" onClick={close} disabled={busy}>Batal</button><Submit busy={busy} /></div>
       </form>
@@ -471,7 +472,7 @@ function SlotsTab({ slots, courts, plans, saved }: { slots: MemberSlot[]; courts
     </div>
     <div className="manage-table-card ops-table table-cards">
       <table>
-        <thead><tr><th>Nama</th><th>Hari</th><th>Jam</th><th>Lapangan</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Nama</th><th>Hari</th><th>Jam</th><th>Lapangan<InfoTip text="Lapangan yang hanya bisa dipesan member pada jam ini. Kosong berarti semua lapangan."/></th><th>Aksi</th></tr></thead>
         <tbody>{slots.map(slot => (
           <tr key={slot.id}>
             <td data-label="Nama"><b>{slot.label}</b></td>
@@ -479,8 +480,8 @@ function SlotsTab({ slots, courts, plans, saved }: { slots: MemberSlot[]; courts
             <td data-label="Jam">{slot.start_time} – {slot.end_time}</td>
             <td className="wide" data-label="Lapangan">{slot.court_ids.length ? slot.court_ids.map(courtName).join(", ") : "Semua lapangan"}</td>
             <td className="actions"><div className="row-actions">
-              <button onClick={() => setEditing(slot)} aria-label={`Ubah ${slot.label}`}><Pencil /></button>
-              <button className="delete" onClick={() => void remove(slot)} aria-label={`Hapus ${slot.label}`}><Trash2 /></button>
+              <button onClick={() => setEditing(slot)} aria-label={`Ubah ${slot.label}`} data-tip={`Ubah ${slot.label}`}><Pencil /></button>
+              <button className="delete" onClick={() => void remove(slot)} aria-label={`Hapus ${slot.label}`} data-tip={`Hapus ${slot.label}`}><Trash2 /></button>
             </div></td>
           </tr>
         ))}</tbody>
@@ -541,9 +542,9 @@ function SettingsTab({ settings, saved }: { settings: MemberSettings; saved: (se
       <section className="settings-card member-settings">
         <h2>Pendaftaran online</h2>
         <label className="switch-field"><input type="checkbox" checked={form.enabled} onChange={event => setForm({ ...form, enabled: event.target.checked })} /> Pelanggan dapat mendaftar dan memperpanjang dari akunnya</label>
-        <label className="switch-field"><input type="checkbox" checked={form.approval} disabled={!form.enabled} onChange={event => setForm({ ...form, approval: event.target.checked })} /> Pendaftar baru perlu disetujui admin setelah membayar</label>
+        <label className="switch-field"><input type="checkbox" checked={form.approval} disabled={!form.enabled} onChange={event => setForm({ ...form, approval: event.target.checked })} /> Pendaftar baru perlu disetujui admin setelah membayar<InfoTip text="Member online baru berstatus Menunggu persetujuan setelah membayar. Admin menyetujui dari detail member."/></label>
         <p className="ops-muted">Pendaftaran online memakai pembayaran Midtrans dan login Google pelanggan. Member yang didaftarkan kasir selalu langsung aktif.</p>
-        <label>Pengingat masa berlaku<Select value={String(form.reminder_days)} onChange={event => setForm({ ...form, reminder_days: Number(event.target.value) })}><option value="0">Tidak ada pengingat</option>{[3, 7, 14, 30].map(days => <option key={days} value={days}>{days} hari sebelum berakhir</option>)}</Select></label>
+        <label><LabelTip tip="Member menerima pengingat lewat email/WhatsApp sebelum masa berlakunya habis, sesuai pengaturan Notifikasi.">Pengingat masa berlaku</LabelTip><Select value={String(form.reminder_days)} onChange={event => setForm({ ...form, reminder_days: Number(event.target.value) })}><option value="0">Tidak ada pengingat</option>{[3, 7, 14, 30].map(days => <option key={days} value={days}>{days} hari sebelum berakhir</option>)}</Select></label>
         <label>Syarat & ketentuan member<textarea rows={8} maxLength={3000} value={form.terms} onChange={event => setForm({ ...form, terms: event.target.value })} placeholder={"Mis.\n1. Kartu member hanya untuk pemilik nama.\n2. Iuran tidak dapat dikembalikan setelah masa berlaku dimulai.\n3. Harga member berlaku untuk booking selama masa aktif."} /><small className="field-hint">Ditampilkan di halaman pendaftaran dan wajib disetujui pelanggan.</small></label>
       </section>
       <div><Submit busy={busy}>Simpan pengaturan</Submit></div>

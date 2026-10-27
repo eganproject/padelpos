@@ -94,7 +94,7 @@ export function VenueMap({ venue, floors = [], courts, features = [], selected, 
       )}
       <div id={planId} className="venue-map" role={levels.length > 1 ? "tabpanel" : undefined} style={{ aspectRatio: `${floor.width} / ${floor.height}` }} aria-label={floor.name ? `Denah ${floor.name}` : undefined}>
         {features.filter(item => floorOf(item.floor_id) === floor.id).map(item => (
-          <div key={item.id} className={`venue-map-feature kind-${item.kind}`} style={place(item)} title={featureName(item)}>
+          <div key={item.id} className={`venue-map-feature kind-${item.kind}`} style={place(item)} data-tip={featureName(item)}>
             <span>{featureName(item)}</span>
           </div>
         ))}
@@ -109,7 +109,7 @@ export function VenueMap({ venue, floors = [], courts, features = [], selected, 
               className={`venue-map-court ${tone}${selected === court.id ? " selected" : ""}`}
               style={place(court.layout)}
               onClick={() => onSelect?.(court.id)}
-              title={`${court.name} · ${status}`}
+              data-tip={`${court.name} · ${status}`}
               aria-label={`${court.name}${floor.name && levels.length > 1 ? `, ${floor.name}` : ""}, ${status}. Lihat jadwalnya.`}
             >
               <span className="net" aria-hidden="true" />

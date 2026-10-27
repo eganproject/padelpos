@@ -10,6 +10,7 @@ import { assetUrl, contrast, copyrightLine, defaultBrandName, isHex, type BrandA
 import { formatWhatsapp } from "@/lib/venue-info";
 import { ErrorBox } from "./operation-ui";
 import { Field, SaveBar } from "./venue-info-panel";
+import { InfoTip } from "@/components/tooltip";
 
 type Contact = { name: string; tagline: string; whatsapp: string; phone: string; email: string; instagram: string; tiktok: string; facebook: string; youtube: string; website: string };
 type BrandResponse = { brand: PublicBrand; contact: Contact };
@@ -100,12 +101,12 @@ function BrandForm({ data, setData }: { data: BrandResponse; setData: (data: Bra
           <Field label="Tagline" counter={`${form.tagline.length}/120`} hint="Satu kalimat pendek. Dipakai juga sebagai deskripsi di hasil pencarian Google.">
             <input maxLength={120} value={form.tagline} onChange={event => set("tagline")(event.target.value)} placeholder="Mis. Tiga lapangan padel di tengah kota, buka setiap hari." />
           </Field>
-          <label className="cms-check"><input type="checkbox" checked={form.show_name} onChange={event => set("show_name")(event.target.checked)} /> Tampilkan nama di samping logo</label>
+          <label className="cms-check"><input type="checkbox" checked={form.show_name} onChange={event => set("show_name")(event.target.checked)} /> Tampilkan nama di samping logo<InfoTip text="Matikan bila logo sudah memuat tulisan nama venue, supaya nama tidak tampil dua kali."/></label>
           <small className="cms-hint">Matikan bila logo sudah berisi tulisan nama brand.</small>
         </section>
 
         <section className="cms-card">
-          <header><h2>Warna</h2><p>Warna utama untuk tombol, kepala halaman, dan kaki halaman situs pelanggan; aksen untuk sorotan.</p></header>
+          <header><h2>Warna<InfoTip text="Dipakai di situs pelanggan. Panel admin tetap memakai tema netral. Kosongkan untuk kembali ke warna bawaan."/></h2><p>Warna utama untuk tombol, kepala halaman, dan kaki halaman situs pelanggan; aksen untuk sorotan.</p></header>
           <div className="cms-row">
             <ColorField label="Warna utama" value={form.primary_color} fallback={defaults.primary} onChange={set("primary_color")} />
             <ColorField label="Warna aksen" value={form.accent_color} fallback={defaults.accent} onChange={set("accent_color")} />
@@ -114,7 +115,7 @@ function BrandForm({ data, setData }: { data: BrandResponse; setData: (data: Bra
           <div className="brand-presets" role="group" aria-label="Pilihan warna siap pakai">
             {presets.map(preset => (
               <button key={preset.name} type="button" onClick={() => setForm(previous => ({ ...previous, primary_color: preset.primary, accent_color: preset.accent }))}
-                aria-pressed={primary === preset.primary && accent === preset.accent} title={preset.name}>
+                aria-pressed={primary === preset.primary && accent === preset.accent} data-tip={preset.name}>
                 <i style={{ background: preset.primary }} /><i style={{ background: preset.accent }} /><span>{preset.name}</span>
               </button>
             ))}

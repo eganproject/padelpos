@@ -11,6 +11,7 @@ import {
 import { Modal } from "./operation-ui";
 import { AmountField, Empty } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
+import { InfoTip } from "@/components/tooltip";
 
 type Data = { records:FinanceRecord[]; count:number; expense:number; income:number; unsettled:number };
 type Range = { from:string; to:string };
@@ -92,7 +93,7 @@ export function RecordsTab({ setup, range, today, initial=null, onChanged }: { s
 
       <div className="manage-table-card ops-table table-cards">
         <table>
-          <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori</th><th>Cara bayar</th><th className="right">Jumlah</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Kategori<InfoTip text="Akun pendapatan atau biaya tempat catatan ini masuk di laporan Laba Rugi."/></th><th>Cara bayar<InfoTip text="Lunas: uang sudah keluar/masuk dari kas atau bank. Belum dibayar: tercatat sebagai utang ke pemasok atau tagihan (piutang) ke pihak lain."/></th><th className="right">Jumlah</th><th>Aksi</th></tr></thead>
           <tbody>{(data?.records??[]).map(record => (
             <tr key={record.id}>
               <td data-label="Tanggal">{formatDate(record.date)}<small className="table-description">{record.number}</small></td>
@@ -111,15 +112,15 @@ export function RecordsTab({ setup, range, today, initial=null, onChanged }: { s
               <td className="right" data-label="Jumlah"><b className={record.kind==="pengeluaran"?"minus":"plus"}>{record.kind==="pengeluaran"?"−":"+"}{money(record.amount)}</b></td>
               <td className="actions">
                 <div className="row-actions">
-                  <button type="button" onClick={()=>setViewing(record)} aria-label={`Rincian ${record.number}`} title="Rincian & bukti"><Receipt/></button>
+                  <button type="button" onClick={()=>setViewing(record)} aria-label={`Rincian ${record.number}`} data-tip="Rincian & bukti"><Receipt/></button>
                   {record.settle==="tempo" && !record.settled_at && (
-                    <button type="button" onClick={()=>setSettling(record)} aria-label={`Tandai lunas ${record.number}`} title="Tandai sudah dibayar"><Check/></button>
+                    <button type="button" onClick={()=>setSettling(record)} aria-label={`Tandai lunas ${record.number}`} data-tip="Tandai sudah dibayar"><Check/></button>
                   )}
                   {record.settled_at && (
-                    <button type="button" disabled={busy===record.id} onClick={()=>void unsettle(record)} aria-label={`Batalkan lunas ${record.number}`} title="Batalkan status lunas"><Undo2/></button>
+                    <button type="button" disabled={busy===record.id} onClick={()=>void unsettle(record)} aria-label={`Batalkan lunas ${record.number}`} data-tip="Batalkan status lunas"><Undo2/></button>
                   )}
-                  <button type="button" onClick={()=>setEditing(record)} aria-label={`Ubah ${record.number}`} title="Ubah"><Pencil/></button>
-                  <button type="button" className="delete" disabled={busy===record.id} onClick={()=>void remove(record)} aria-label={`Hapus ${record.number}`} title="Hapus"><Trash2/></button>
+                  <button type="button" onClick={()=>setEditing(record)} aria-label={`Ubah ${record.number}`} data-tip="Ubah"><Pencil/></button>
+                  <button type="button" className="delete" disabled={busy===record.id} onClick={()=>void remove(record)} aria-label={`Hapus ${record.number}`} data-tip="Hapus"><Trash2/></button>
                 </div>
               </td>
             </tr>
@@ -226,7 +227,7 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
           </label>
           <AmountField label="Jumlah" value={form.amount} onChange={value=>set("amount",value)} autoFocus={!record}/>
         </div>
-        <label className="fin-field"><span className="fin-label">{expense ? "Untuk apa uangnya?" : "Dari apa uangnya?"}</span>
+        <label className="fin-field"><span className="fin-label">{expense ? "Untuk apa uangnya?" : "Dari apa uangnya?"}<InfoTip text={expense?"Kategori biaya. Menentukan baris pengeluaran di laporan Laba Rugi, mis. Listrik, Gaji, Perawatan.":"Kategori pendapatan. Menentukan baris pemasukan di laporan Laba Rugi."}/></span>
           <Select value={form.account_id} onChange={e=>set("account_id",e.target.value)} required>
             <option value="">Pilih kategori…</option>
             {groups.map(group => (
@@ -244,13 +245,13 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
         </label>
 
         <fieldset className="fin-fieldset">
-          <legend>{expense ? "Sudah dibayar?" : "Sudah diterima?"}</legend>
+          <legend>{expense ? "Sudah dibayar?" : "Sudah diterima?"}<InfoTip text={expense?"Pilih Belum bila tagihan dibayar nanti. Biaya tetap masuk laba rugi hari ini, dan sisanya tercatat sebagai utang sampai ditandai lunas.":"Pilih Belum bila uang diterima nanti. Pendapatan tetap diakui hari ini, dan sisanya tercatat sebagai piutang sampai ditandai lunas."}/></legend>
           <div className="fin-chips wide">
             <button type="button" aria-pressed={form.settle==="tunai"} onClick={()=>set("settle","tunai")}>{expense?"Sudah dibayar":"Sudah diterima"}</button>
             <button type="button" aria-pressed={form.settle==="tempo"} onClick={()=>set("settle","tempo")}>{expense?"Belum — jadi utang":"Belum — jadi tagihan"}</button>
           </div>
           {form.settle==="tunai" ? (
-            <label className="fin-field"><span className="fin-label">{expense ? "Uangnya diambil dari" : "Uangnya masuk ke"}</span>
+            <label className="fin-field"><span className="fin-label">{expense ? "Uangnya diambil dari" : "Uangnya masuk ke"}<InfoTip text="Akun kas atau bank yang saldonya berubah, mis. Kas Laci Kasir atau rekening BCA."/></span>
               <Select value={form.cash_account_id} onChange={e=>set("cash_account_id",e.target.value)} required>
                 {cash.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}
               </Select>
@@ -264,7 +265,7 @@ export function RecordForm({ setup, today, kind, record, close, saved }: { setup
                 </Select>
                 <small className="fin-hint">Dipakai untuk buku besar pembantu {expense?"utang":"piutang"}.</small>
               </label>
-              <label className="fin-field"><span className="fin-label">Jatuh tempo <em>(opsional)</em></span>
+              <label className="fin-field"><span className="fin-label">Jatuh tempo <em>(opsional)</em><InfoTip text="Tanggal batas bayar. Catatan yang mendekati jatuh tempo muncul di Ringkasan Keuangan bagian Tagihan menunggu."/></span>
                 <DateInput value={form.due_date} min={form.date} onChange={e=>set("due_date",e.target.value)}/>
               </label>
             </div>
@@ -417,10 +418,10 @@ export function TransferForm({ setup, today, close, saved }: { setup:Setup; toda
           <AmountField label="Jumlah" value={form.amount} onChange={amount=>setForm({...form,amount})} autoFocus/>
         </div>
         <div className="fin-form-grid">
-          <label className="fin-field"><span className="fin-label">Dari</span>
+          <label className="fin-field"><span className="fin-label">Dari<InfoTip text="Akun kas atau bank yang saldonya berkurang."/></span>
             <Select value={form.from_account_id} onChange={e=>setForm({...form,from_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select>
           </label>
-          <label className="fin-field"><span className="fin-label">Ke</span>
+          <label className="fin-field"><span className="fin-label">Ke<InfoTip text="Akun kas atau bank yang saldonya bertambah."/></span>
             <Select value={form.to_account_id} onChange={e=>setForm({...form,to_account_id:e.target.value})}>{cash.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</Select>
           </label>
         </div>

@@ -12,6 +12,7 @@ import { Modal } from "./operation-ui";
 import { Empty } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
 import { ClosingView } from "./finance-closing";
+import { InfoTip } from "@/components/tooltip";
 
 const typeOrder: AccountType[] = ["aset","liabilitas","ekuitas","pendapatan","beban"];
 const subtypesFor: Record<AccountType,AccountSubtype[]> = {
@@ -62,8 +63,8 @@ function AccountsView({ setup, reload }: { setup:Setup; reload:()=>void }) {
                 {account.description && <small className="fin-account-note">{account.description}</small>}
               </td>
               <td className="actions"><div className="row-actions">
-                <button type="button" onClick={()=>setEditing(account)} aria-label={`Ubah ${account.name}`} title="Ubah"><Pencil/></button>
-                <button type="button" className="delete" disabled={!!account.system_key} onClick={()=>void remove(account)} aria-label={`Hapus ${account.name}`} title={account.system_key?"Akun bawaan tidak dapat dihapus":"Hapus"}><Trash2/></button>
+                <button type="button" onClick={()=>setEditing(account)} aria-label={`Ubah ${account.name}`} data-tip="Ubah"><Pencil/></button>
+                <button type="button" className="delete" disabled={!!account.system_key} onClick={()=>void remove(account)} aria-label={`Hapus ${account.name}`} data-tip={account.system_key?"Akun bawaan tidak dapat dihapus":"Hapus"}><Trash2/></button>
               </div></td>
             </tr>
           ))}</tbody></table>
@@ -102,19 +103,19 @@ function AccountForm({ account, close, saved }: { account?:Account|null; close:(
           </label>
         </div>
         <div className="fin-form-grid">
-          <label className="fin-field"><span className="fin-label">Jenis</span>
+          <label className="fin-field"><span className="fin-label">Jenis<InfoTip text="Harta dan kewajiban/modal tampil di Neraca; pendapatan dan biaya tampil di Laba Rugi. Tidak bisa diubah pada akun bawaan."/></span>
             <Select value={form.type} disabled={locked} onChange={e=>{ const type=e.target.value as AccountType; setForm({...form,type,subtype:subtypesFor[type][0]}) }}>
               {typeOrder.map(type => <option key={type} value={type}>{typeLabel[type]}</option>)}
             </Select>
           </label>
-          <label className="fin-field"><span className="fin-label">Kelompok</span>
+          <label className="fin-field"><span className="fin-label">Kelompok<InfoTip text="Sub-bagian di laporan, mis. Kas & bank, Piutang, Biaya operasional. Akun Kas & bank otomatis jadi pilihan sumber dana di formulir."/></span>
             <Select value={form.subtype} disabled={locked} onChange={e=>setForm({...form,subtype:e.target.value as AccountSubtype})}>
               {subtypesFor[form.type].map(subtype => <option key={subtype} value={subtype}>{subtypeLabel[subtype]}</option>)}
             </Select>
           </label>
         </div>
         {form.subtype==="kas_bank" && <p className="fin-note">Akun kas &amp; bank otomatis muncul sebagai pilihan sumber dana pada formulir catatan.</p>}
-        <label className="fin-field"><span className="fin-label">Penjelasan <em>(opsional)</em></span>
+        <label className="fin-field"><span className="fin-label">Penjelasan <em>(opsional)</em><InfoTip text="Muncul di bawah pilihan kategori saat staf mencatat transaksi, supaya tidak salah pilih akun."/></span>
           <input value={form.description} maxLength={200} placeholder="Bantu staf memilih akun yang tepat" onChange={e=>setForm({...form,description:e.target.value})}/>
         </label>
         <label className="fin-check"><input type="checkbox" checked={form.active} disabled={locked} onChange={e=>setForm({...form,active:e.target.checked})}/> Akun aktif</label>
@@ -140,7 +141,7 @@ function PartnersView({ setup, reload }: { setup:Setup; reload:()=>void }) {
       </div>
       <div className="manage-table-card ops-table table-cards">
         <table>
-          <thead><tr><th>Nama</th><th>Jenis</th><th>Telepon</th><th>Catatan</th><th>Aksi</th></tr></thead>
+          <thead><tr><th>Nama</th><th>Jenis<InfoTip text="Pemasok untuk pembelian, atau pihak lain seperti penyewa acara yang punya tagihan ke venue."/></th><th>Telepon</th><th>Catatan</th><th>Aksi</th></tr></thead>
           <tbody>{setup.partners.map(partner => (
             <tr key={partner.id}>
               <td className="wide" data-label="Nama"><b>{partner.name}</b>{!partner.active && <small className="table-description">Nonaktif</small>}</td>
@@ -148,8 +149,8 @@ function PartnersView({ setup, reload }: { setup:Setup; reload:()=>void }) {
               <td data-label="Telepon">{partner.phone||"—"}</td>
               <td data-label="Catatan">{partner.note||"—"}</td>
               <td className="actions"><div className="row-actions">
-                <button type="button" onClick={()=>setEditing(partner)} aria-label={`Ubah ${partner.name}`} title="Ubah"><Pencil/></button>
-                <button type="button" className="delete" onClick={()=>void remove(partner)} aria-label={`Hapus ${partner.name}`} title="Hapus"><Trash2/></button>
+                <button type="button" onClick={()=>setEditing(partner)} aria-label={`Ubah ${partner.name}`} data-tip="Ubah"><Pencil/></button>
+                <button type="button" className="delete" onClick={()=>void remove(partner)} aria-label={`Hapus ${partner.name}`} data-tip="Hapus"><Trash2/></button>
               </div></td>
             </tr>
           ))}</tbody>
@@ -227,7 +228,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
     <form className="fin-report" onSubmit={submit}>
       <div className="fin-report-head"><div><h3>Kas &amp; penguncian</h3><p>Menentukan ke rekening mana setiap pembayaran pelanggan dicatat, dan sampai kapan pembukuan lama dibekukan.</p></div></div>
       <section className="fin-sheet">
-        <header><h4>Uang pelanggan masuk ke mana</h4></header>
+        <header><h4>Uang pelanggan masuk ke mana<InfoTip text="Setiap pembayaran booking dan kasir dicatat otomatis ke akun kas atau bank sesuai metodenya, mis. tunai ke Kas Laci Kasir, QRIS ke rekening bank."/></h4></header>
         <div className="fin-method-grid">
           {methodLabels.map(method => (
             <label className="fin-field" key={method.key}><span className="fin-label">{method.label}</span>
@@ -246,7 +247,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
         </label>
       </section>
       <section className="fin-sheet">
-        <header><h4>Pajak pada tagihan booking</h4></header>
+        <header><h4>Pajak pada tagihan booking<InfoTip text="Pajak dihitung dari harga setelah potongan. Uangnya dicatat ke Utang Pajak sampai disetor, bukan sebagai pendapatan."/></h4></header>
         <label className="fin-check"><input type="checkbox" checked={form.tax.enabled} onChange={e=>setForm({...form,tax:{...form.tax,enabled:e.target.checked}})}/> Tagih pajak pada booking baru</label>
         {form.tax.enabled && (
           <>
@@ -254,7 +255,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
               <label className="fin-field"><span className="fin-label">Nama pajak</span>
                 <input value={form.tax.label} required minLength={2} maxLength={20} placeholder="PB1 atau PPN" onChange={e=>setForm({...form,tax:{...form.tax,label:e.target.value}})}/>
               </label>
-              <label className="fin-field"><span className="fin-label">Tarif (%)</span>
+              <label className="fin-field"><span className="fin-label">Tarif (%)<InfoTip text="Persentase pajak, mis. 10 untuk PB1 10%. Boleh desimal, mis. 11 atau 0,5."/></span>
                 <input type="number" required min={0.01} max={100} step={0.01} value={form.tax.rate||""} onChange={e=>setForm({...form,tax:{...form.tax,rate:Number(e.target.value)}})}/>
               </label>
             </div>
@@ -277,7 +278,7 @@ function CashView({ setup, reload }: { setup:Setup; reload:()=>void }) {
       </section>
       <section className="fin-sheet">
         <header><h4><Lock size={15}/> Kunci pembukuan</h4></header>
-        <label className="fin-field"><span className="fin-label">Bekukan catatan sampai tanggal</span>
+        <label className="fin-field"><span className="fin-label">Bekukan catatan sampai tanggal<InfoTip text="Semua catatan pada atau sebelum tanggal ini, manual maupun otomatis, tidak bisa diubah atau dihapus. Kosongkan untuk membuka kunci."/></span>
           <DateInput value={form.locked_until} onChange={e=>setForm({...form,locked_until:e.target.value})}/>
           <small className="fin-hint">
             {form.locked_until

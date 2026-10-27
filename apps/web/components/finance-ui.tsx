@@ -1,6 +1,7 @@
 "use client";
 import { presetRange } from "@/lib/finance";
 import { DateInput, MoneyInput } from "./form-controls";
+import { InfoTip } from "@/components/tooltip";
 
 /** Pemilih periode: pilihan cepat untuk sehari-hari, dua kolom tanggal untuk rentang bebas. */
 export function PeriodPicker({ from, to, today, onChange }: { from:string; to:string; today:string; onChange:(range:{from:string;to:string})=>void }) {
@@ -22,20 +23,20 @@ export function PeriodPicker({ from, to, today, onChange }: { from:string; to:st
 }
 
 /** Isian rupiah dengan label keuangan: titik ribuan muncul sendiri saat mengetik. */
-export function AmountField({ label, value, onChange, hint, autoFocus=false }: { label:string; value:number; onChange:(value:number)=>void; hint?:string; autoFocus?:boolean }) {
+export function AmountField({ label, value, onChange, hint, tip, autoFocus=false }: { label:string; value:number; onChange:(value:number)=>void; hint?:string; tip?:string; autoFocus?:boolean }) {
   return (
     <label className="fin-field">
-      <span className="fin-label">{label}</span>
+      <span className="fin-label">{label}{tip && <InfoTip text={tip}/>}</span>
       <MoneyInput value={value || ""} autoFocus={autoFocus} aria-label={label} max={999_999_999_999} onChange={e=>onChange(Number(e.target.value)||0)}/>
       {hint && <small className="fin-hint">{hint}</small>}
     </label>
   );
 }
 
-export function StatCard({ label, value, hint, tone="", change }: { label:string; value:string; hint?:string; tone?:string; change?:React.ReactNode }) {
+export function StatCard({ label, value, hint, tip, tone="", change }: { label:string; value:string; hint?:string; tip?:string; tone?:string; change?:React.ReactNode }) {
   return (
     <div className={`fin-stat ${tone}`}>
-      <span className="fin-stat-label">{label}</span>
+      <span className="fin-stat-label">{label}{tip && <InfoTip text={tip}/>}</span>
       <strong>{value}</strong>
       <div className="fin-stat-foot">{change}{hint && <small>{hint}</small>}</div>
     </div>

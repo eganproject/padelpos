@@ -12,18 +12,27 @@ import { Modal } from "./operation-ui";
 import { AmountField, Empty, PeriodPicker, ShareBar } from "./finance-ui";
 import { Select, DateInput } from "./form-controls";
 import { CashFlowReport, OperationsReport, TrialBalanceReport } from "./finance-statements";
+import { InfoTip } from "@/components/tooltip";
 
 type Range = { from:string; to:string };
 export type ReportView = "laba-rugi" | "neraca" | "arus-kas" | "neraca-saldo" | "buku-besar" | "pembantu" | "operasional";
-const views: [ReportView,string][] = [["laba-rugi","Laba rugi"],["neraca","Neraca"],["arus-kas","Arus kas"],["neraca-saldo","Neraca saldo"],["buku-besar","Buku besar"],["pembantu","Buku besar pembantu"],["operasional","Operasional"]];
+const views: [ReportView,string,string][] = [
+  ["laba-rugi","Laba rugi","Pendapatan dikurangi biaya pada periode terpilih: untung atau rugi."],
+  ["neraca","Neraca","Posisi harta, kewajiban, dan modal pada satu tanggal."],
+  ["arus-kas","Arus kas","Uang yang benar-benar masuk dan keluar dari kas dan bank, beserta asalnya."],
+  ["neraca-saldo","Neraca saldo","Saldo semua akun. Total debit dan kredit harus sama; dipakai untuk memeriksa pembukuan."],
+  ["buku-besar","Buku besar","Rincian setiap mutasi satu akun beserta saldo berjalannya."],
+  ["pembantu","Buku besar pembantu","Rincian piutang, utang, uang muka, dan kas per pelanggan, pemasok, atau akun."],
+  ["operasional","Operasional","Angka non-keuangan: okupansi lapangan, jam sibuk, pelanggan teratas, voucher, dan item terlaris."],
+];
 
 export function ReportsTab({ setup, range, today, onRange }: { setup:Setup; range:Range; today:string; onRange:(range:Range)=>void }) {
   const [view,setView] = useState<ReportView>("laba-rugi");
   return (
     <div className="fin-reports">
       <div className="fin-subtabs" role="tablist" aria-label="Jenis laporan">
-        {views.map(([key,label]) => (
-          <button key={key} type="button" role="tab" aria-selected={view===key} onClick={()=>setView(key)}>{label}</button>
+        {views.map(([key,label,about]) => (
+          <button key={key} type="button" role="tab" aria-selected={view===key} onClick={()=>setView(key)} data-tip={about}>{label}</button>
         ))}
       </div>
       {view!=="neraca" && <PeriodPicker from={range.from} to={range.to} today={today} onChange={onRange}/>}
@@ -58,11 +67,11 @@ export function ReportHead({ title, subtitle, build }: { title:string; subtitle:
     <div className="fin-report-head">
       <div><h3>{title}</h3><p>{subtitle}</p></div>
       <div className="fin-report-actions" role="group" aria-label="Unduh laporan">
-        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("xlsx")} title="Unduh sebagai file Excel (.xlsx)">
+        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("xlsx")} data-tip="Unduh sebagai file Excel (.xlsx)">
           <FileSpreadsheet size={14}/> {label("xlsx","Excel")}</button>
-        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("pdf")} title="Unduh sebagai file PDF">
+        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("pdf")} data-tip="Unduh sebagai file PDF">
           <FileText size={14}/> {label("pdf","PDF")}</button>
-        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("csv")} title="Unduh sebagai CSV">
+        <button type="button" className="ops-secondary" disabled={busy!==null} onClick={()=>void download("csv")} data-tip="Unduh sebagai CSV">
           <Download size={14}/> {label("csv","CSV")}</button>
         <button type="button" className="ops-secondary" onClick={()=>window.print()}><Printer size={14}/> Cetak</button>
       </div>
@@ -119,7 +128,7 @@ function ProfitLossReport({ range }: { range:Range }) {
           notes:["Periode sebelumnya memiliki panjang hari yang sama dengan periode ini.","Pendapatan booking dihitung pada tanggal sesi bermain, bukan tanggal pemesanan."],
         })}/>
       <div className="fin-result">
-        <div><span>Pendapatan</span><strong className="plus">{money(data.income)}</strong></div>
+        <div><span>Pendapatan<InfoTip text="Pendapatan booking diakui pada tanggal sesi dimainkan, bukan tanggal pemesanan atau pembayaran."/></span><strong className="plus">{money(data.income)}</strong></div>
         <div><span>Biaya</span><strong className="minus">{money(data.expense)}</strong></div>
         <div className="fin-result-net"><span>{data.net>=0?"Laba bersih":"Rugi bersih"}</span>
           <strong className={data.net>=0?"plus":"minus"}>{money(data.net)}</strong>
@@ -181,14 +190,14 @@ function BalanceReport({ today }: { today:string }) {
           notes:data.advances>0?[`Kewajiban termasuk ${money(data.advances)} uang pelanggan untuk sesi yang belum dimainkan.`]:[],
         })}/>
       <div className="fin-balance-toolbar">
-        <label className="fin-inline-field"><span>Posisi tanggal</span><DateInput value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
+        <label className="fin-inline-field"><span>Posisi tanggal<InfoTip text="Neraca menunjukkan saldo pada akhir hari tanggal ini, bukan selama periode."/></span><DateInput value={asOf} onChange={e=>e.target.value&&setAsOf(e.target.value)}/></label>
         <span className={`fin-tag ${data.difference===0?"ok":"warn"}`}>
           {data.difference===0 ? <><Check size={13}/> Seimbang</> : <><TriangleAlert size={13}/> Selisih {money(data.difference)}</>}
         </span>
       </div>
       <div className="fin-sheet-grid">
         <section className="fin-sheet">
-          <header><h4>Harta</h4><span>{money(data.total_assets)}</span></header>
+          <header><h4>Harta<InfoTip text="Apa yang dimiliki venue: kas dan bank, piutang, persediaan, dan aset tetap setelah penyusutan."/></h4><span>{money(data.total_assets)}</span></header>
           {data.asset_groups.map(group => (
             <table key={group.label}>
               <thead><tr><th colSpan={2}>{group.label}</th></tr></thead>
@@ -199,7 +208,7 @@ function BalanceReport({ today }: { today:string }) {
           <footer><span>Total harta</span><strong>{money(data.total_assets)}</strong></footer>
         </section>
         <section className="fin-sheet">
-          <header><h4>Kewajiban & modal</h4><span>{money(data.total_liabilities+data.total_equity)}</span></header>
+          <header><h4>Kewajiban & modal<InfoTip text="Asal dana harta: utang ke pihak lain (termasuk uang pelanggan untuk sesi yang belum main) dan modal pemilik ditambah laba yang ditahan."/></h4><span>{money(data.total_liabilities+data.total_equity)}</span></header>
           <table><thead><tr><th colSpan={2}>Kewajiban</th></tr></thead>
             <tbody>{data.liabilities.length?rows(data.liabilities):<tr><td className="muted" colSpan={2}>Tidak ada kewajiban.</td></tr>}</tbody></table>
           <table><thead><tr><th colSpan={2}>Modal</th></tr></thead>
@@ -245,14 +254,14 @@ function LedgerReport({ setup, range }: { setup:Setup; range:Range }) {
       {!data ? <p className="empty-state">Memuat buku besar…</p> : (
         <>
           <div className="fin-result">
-            <div><span>Saldo awal</span><strong>{money(data.opening)}</strong></div>
-            <div><span>Debit</span><strong className="plus">{money(data.debit)}</strong></div>
+            <div><span>Saldo awal<InfoTip text="Saldo akun sebelum tanggal awal periode."/></span><strong>{money(data.opening)}</strong></div>
+            <div><span>Debit<InfoTip text="Untuk akun harta dan biaya, debit menambah saldo. Untuk akun kewajiban, modal, dan pendapatan, debit mengurangi saldo."/></span><strong className="plus">{money(data.debit)}</strong></div>
             <div><span>Kredit</span><strong className="minus">{money(data.credit)}</strong></div>
             <div className="fin-result-net"><span>Saldo akhir</span><strong>{money(data.closing)}</strong></div>
           </div>
           <div className="manage-table-card ops-table table-cards">
             <table>
-              <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Lawan akun</th><th className="right">Debit</th><th className="right">Kredit</th><th className="right">Saldo</th></tr></thead>
+              <thead><tr><th>Tanggal</th><th>Keterangan</th><th>Lawan akun<InfoTip text="Akun pasangan dalam jurnal yang sama, mis. Kas untuk penjualan tunai."/></th><th className="right">Debit</th><th className="right">Kredit</th><th className="right">Saldo</th></tr></thead>
               <tbody>{data.rows.map((row,index) => (
                 <tr key={`${row.entry_id}-${index}`}>
                   <td data-label="Tanggal">{formatDate(row.date)}<small className="table-description">{row.number}</small></td>
@@ -390,14 +399,14 @@ export function JournalReport({ setup, range, today, onChanged }: { setup:Setup;
         <label className="fin-search"><Search size={15} aria-hidden="true"/>
           <input value={term} onChange={e=>setTerm(e.target.value)} placeholder="Cari keterangan atau nomor jurnal…" aria-label="Cari jurnal"/>
         </label>
-        <label className="fin-inline-field"><span>Sumber</span>
+        <label className="fin-inline-field"><span>Sumber<InfoTip text="Asal jurnal: manual dicatat staf, lainnya dibuat otomatis dari booking, kasir, pembayaran, member, persediaan, atau penyusutan."/></span>
           <Select value={source} onChange={e=>setSource(e.target.value)}>
             <option value="">Semua sumber</option>
             {Object.entries(sourceLabel).map(([key,label]) => <option key={key} value={key}>{label}</option>)}
           </Select>
         </label>
         <div className="fin-toolbar-actions">
-          <button type="button" className="ops-primary" onClick={()=>setCreating(true)}><Plus size={14}/> Jurnal manual</button>
+          <button type="button" className="ops-primary" onClick={()=>setCreating(true)} data-tip="Untuk pencatatan yang tidak punya formulir sendiri, mis. koreksi saldo awal. Total debit harus sama dengan kredit."><Plus size={14}/> Jurnal manual</button>
         </div>
       </div>
       {!entries ? <p className="empty-state">Memuat jurnal…</p> : !entries.length ? (
@@ -413,8 +422,8 @@ export function JournalReport({ setup, range, today, onChanged }: { setup:Setup;
                   <strong>{money(debit)}</strong>
                   {entry.source==="manual" && (
                     <>
-                      <button type="button" onClick={()=>setEditing(entry)} aria-label={`Ubah ${entry.number}`} title="Ubah"><Pencil size={15}/></button>
-                      <button type="button" className="delete" onClick={()=>void remove(entry)} aria-label={`Hapus ${entry.number}`} title="Hapus"><Trash2 size={15}/></button>
+                      <button type="button" onClick={()=>setEditing(entry)} aria-label={`Ubah ${entry.number}`} data-tip="Ubah"><Pencil size={15}/></button>
+                      <button type="button" className="delete" onClick={()=>void remove(entry)} aria-label={`Hapus ${entry.number}`} data-tip="Hapus"><Trash2 size={15}/></button>
                     </>
                   )}
                 </div>
@@ -480,7 +489,7 @@ function JournalForm({ setup, today, entry, close, saved }: { setup:Setup; today
               </Select>
               <AmountField label="Debit" value={line.debit} onChange={value=>update(index,{debit:value,credit:value?0:line.credit})}/>
               <AmountField label="Kredit" value={line.credit} onChange={value=>update(index,{credit:value,debit:value?0:line.debit})}/>
-              <button type="button" className="ops-danger" disabled={lines.length<=2} aria-label={`Hapus baris ${index+1}`}
+              <button type="button" className="ops-danger" disabled={lines.length<=2} aria-label={`Hapus baris ${index+1}`} data-tip={`Hapus baris ${index+1}`}
                 onClick={()=>setLines(current=>current.filter((_,position)=>position!==index))}><Trash2 size={14}/></button>
             </div>
           ))}

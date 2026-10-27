@@ -92,7 +92,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
         <div className="desk-navbar-inner">
           <button type="button" className="desk-icon-btn desk-sidebar-toggle" onClick={toggleSidebar}
             aria-label={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : drawerOpen ? "Tutup menu" : "Buka menu"}
-            aria-expanded={wide ? !compact : drawerOpen} title={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : undefined}><Menu /></button>
+            aria-expanded={wide ? !compact : drawerOpen} data-tip={wide ? (compact ? "Lebarkan menu" : "Ringkas menu") : undefined}><Menu /></button>
           <Link href="/admin" className="desk-logo" aria-label={`${brandName(brand)}, ke ringkasan`}><Brand /></Link>
           <nav className="desk-breadcrumbs" aria-label="Lokasi halaman">
             {current && <>
@@ -112,7 +112,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
       <div className="desk-body">
         <button type="button" className={`desk-backdrop${drawerOpen ? " open" : ""}`} aria-label="Tutup navigasi" tabIndex={drawerOpen ? 0 : -1} onClick={() => setDrawerOpen(false)} />
         <aside className={`desk-sidebar${drawerOpen ? " open" : ""}`} aria-label="Navigasi admin" inert={!wide && !drawerOpen ? true : undefined}>
-          <div className="desk-drawer-head"><Brand /><button type="button" className="desk-icon-btn" onClick={() => setDrawerOpen(false)} aria-label="Tutup menu"><X /></button></div>
+          <div className="desk-drawer-head"><Brand /><button type="button" className="desk-icon-btn" onClick={() => setDrawerOpen(false)} aria-label="Tutup menu" data-tip="Tutup menu"><X /></button></div>
           <div className="desk-sidebar-scroll">
             {loading && !menus.length ? <div className="desk-sidebar-skeleton" aria-hidden="true">{Array.from({ length: 8 }, (_, i) => <i key={i} />)}</div> : <AdminNavigation menus={menus} compact={compact} onNavigate={() => setDrawerOpen(false)} />}
           </div>
@@ -121,7 +121,7 @@ export function AdminSectionShell({ children }: { children: React.ReactNode }) {
               <span className="desk-avatar" aria-hidden="true"><StaffAvatar user={user}/></span>
               <span className="desk-sidebar-user-text"><b>{user?.name || "Admin"}</b><small>{role.name || user?.email || "Staf"}</small></span>
             </Link>
-            <button type="button" className="desk-icon-btn desk-collapse-btn" onClick={toggleSidebar} aria-label={compact ? "Lebarkan menu" : "Ringkas menu"} title={compact ? "Lebarkan menu" : "Ringkas menu"}>
+            <button type="button" className="desk-icon-btn desk-collapse-btn" onClick={toggleSidebar} aria-label={compact ? "Lebarkan menu" : "Ringkas menu"} data-tip={compact ? "Lebarkan menu" : "Ringkas menu"}>
               {compact ? <PanelLeftOpen /> : <PanelLeftClose />}
             </button>
           </div>
@@ -173,12 +173,12 @@ function DeskSearch({ menus }: { menus: NavigationMenu[] }) {
 
   return (
     <div className={`desk-search${expanded ? " expanded" : ""}`} ref={box}>
-      <button type="button" className="desk-icon-btn desk-search-open" onClick={() => { setExpanded(true); requestAnimationFrame(() => input.current?.focus()); }} aria-label="Cari menu"><Search /></button>
+      <button type="button" className="desk-icon-btn desk-search-open" onClick={() => { setExpanded(true); requestAnimationFrame(() => input.current?.focus()); }} aria-label="Cari menu" data-tip="Cari menu"><Search /></button>
       <div className="desk-search-field">
         <Search className="desk-search-icon" aria-hidden="true" />
         <input ref={input} value={query} onChange={event => { setQuery(event.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={onKeyDown}
           placeholder="Cari atau ketik perintah (Ctrl + G)" aria-label="Cari menu" role="combobox" aria-expanded={open} aria-controls="desk-search-results" aria-autocomplete="list" />
-        <button type="button" className="desk-icon-btn desk-search-close" onClick={() => { setExpanded(false); setOpen(false); }} aria-label="Tutup pencarian"><X /></button>
+        <button type="button" className="desk-icon-btn desk-search-close" onClick={() => { setExpanded(false); setOpen(false); }} aria-label="Tutup pencarian" data-tip="Tutup pencarian"><X /></button>
       </div>
       {open && <ul className="desk-dropdown desk-search-results" id="desk-search-results" role="listbox">
         {results.length ? results.map((menu, index) => {
@@ -209,7 +209,7 @@ function UserMenu({ user, roleName, canSettings, theme, toggleTheme, logout }: {
   }, [open]);
   return (
     <div className="desk-user" ref={box}>
-      <button type="button" className="desk-avatar" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open} aria-label="Menu akun" title={user?.name}><StaffAvatar user={user}/></button>
+      <button type="button" className="desk-avatar" onClick={() => setOpen(value => !value)} aria-haspopup="menu" aria-expanded={open} aria-label="Menu akun" data-tip={user?.name}><StaffAvatar user={user}/></button>
       {open && <div className="desk-dropdown desk-user-menu" role="menu">
         <div className="desk-user-head"><span className="desk-avatar large" aria-hidden="true"><StaffAvatar user={user}/></span><div><b>{user?.name || "Admin"}</b><small>{roleName || user?.email}</small></div></div>
         <Link role="menuitem" href="/admin/profile"><UserRound aria-hidden="true" /> Profil saya</Link>

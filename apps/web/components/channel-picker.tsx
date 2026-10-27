@@ -19,7 +19,7 @@ export function ChannelPicker({ fees, base, value, onChange, name = "metode-baya
           <label key={channel.key} className={value === channel.key ? "on" : ""}>
             <input type="radio" name={name} value={channel.key} checked={value === channel.key} onChange={() => onChange(channel.key)} />
             <span className="what"><b>{channel.label}</b><small>{channel.hint}</small></span>
-            <span className="cost" title={`Tarif Midtrans ${rateLabel(channel)}`}>{base > 0 ? `+${money(surcharge)}` : rateLabel(channel)}</span>
+            <span className="cost" data-tip={`Tarif Midtrans ${rateLabel(channel)}`}>{base > 0 ? `+${money(surcharge)}` : rateLabel(channel)}</span>
           </label>
         );
       })}

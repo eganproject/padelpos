@@ -4,6 +4,7 @@ import { BadgeCheck, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { type LookupMember, discountSummary, stateLabel } from "@/lib/members";
 import { formatShortDay } from "@/lib/shop";
+import { LabelTip } from "@/components/tooltip";
 
 /**
  * Cari member untuk booking kasir: nama, kode, atau nomor HP. Member yang tidak berlaku pada
@@ -43,7 +44,7 @@ export function MemberPicker({ date, value, onChange, disabled = false }: { date
   );
   return (
     <div className="member-picker">
-      <label>Member (opsional)<span className="member-search"><Search size={14} aria-hidden="true" /><input value={query} disabled={disabled} onChange={event => setQuery(event.target.value)} placeholder="Cari nama, kode member, atau nomor HP" /></span></label>
+      <label><LabelTip tip="Pilih member aktif untuk memberi harga member sesuai paketnya. Kuota jam harian/bulanan dan jam khusus member ikut diperiksa.">Member (opsional)</LabelTip><span className="member-search"><Search size={14} aria-hidden="true" /><input value={query} disabled={disabled} onChange={event => setQuery(event.target.value)} placeholder="Cari nama, kode member, atau nomor HP" /></span></label>
       {error && <small className="member-invalid">{error}</small>}
       {results && (results.length ? <ul className="member-results">{results.map(member => (
         <li key={member.id}><button type="button" disabled={!member.valid || disabled} onClick={() => { onChange(member); setQuery(""); setResults(null); }}>

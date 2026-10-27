@@ -52,7 +52,7 @@ export function PhotoLightbox({ name, photos, close, start = 0 }: { name: string
       onClick={event => { if (event.target === event.currentTarget) close(); }}>
       <div className="lightbox-bar">
         <span><b>{name}</b> · {index + 1} dari {photos.length}</span>
-        <button type="button" onClick={close} aria-label="Tutup galeri"><X size={20} aria-hidden="true" /></button>
+        <button type="button" onClick={close} aria-label="Tutup galeri" data-tip="Tutup galeri"><X size={20} aria-hidden="true" /></button>
       </div>
       <figure className="lightbox-stage"
         onClick={event => { if (event.target === event.currentTarget) close(); }}
@@ -68,8 +68,8 @@ export function PhotoLightbox({ name, photos, close, start = 0 }: { name: string
       </figure>
       {photos.length > 1 && (
         <>
-          <button type="button" className="lightbox-nav prev" onClick={() => step(-1)} aria-label="Foto sebelumnya"><ChevronLeft size={26} aria-hidden="true" /></button>
-          <button type="button" className="lightbox-nav next" onClick={() => step(1)} aria-label="Foto berikutnya"><ChevronRight size={26} aria-hidden="true" /></button>
+          <button type="button" className="lightbox-nav prev" onClick={() => step(-1)} aria-label="Foto sebelumnya" data-tip="Foto sebelumnya"><ChevronLeft size={26} aria-hidden="true" /></button>
+          <button type="button" className="lightbox-nav next" onClick={() => step(1)} aria-label="Foto berikutnya" data-tip="Foto berikutnya"><ChevronRight size={26} aria-hidden="true" /></button>
           <div className="lightbox-thumbs">
             {photos.map((id, position) => (
               <button type="button" key={id} aria-current={position === index} onClick={() => setIndex(position)} aria-label={`Foto ${position + 1}`}>

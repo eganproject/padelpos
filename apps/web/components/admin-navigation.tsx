@@ -106,7 +106,7 @@ export function AdminNavigation({ menus, onNavigate, compact = false }: { menus:
           <div className={`desk-nav-section${single ? " single" : ""}`} key={group}>
             {single ? (compact ? <span className="desk-nav-divider" aria-hidden="true" /> : null) : compact
               ? <span className="desk-nav-divider" aria-hidden="true" />
-              : <button type="button" className="desk-nav-label" aria-expanded={open} aria-controls={id} onClick={() => toggle(group)} disabled={hasActive} title={hasActive ? undefined : open ? `Lipat ${group}` : `Buka ${group}`}>
+              : <button type="button" className="desk-nav-label" aria-expanded={open} aria-controls={id} onClick={() => toggle(group)} disabled={hasActive} data-tip={hasActive ? undefined : open ? `Lipat ${group}` : `Buka ${group}`}>
                   <span>{group}</span><ChevronDown aria-hidden="true" />
                 </button>}
             {(open || single) && <div className="desk-nav-items" id={id} role="list">

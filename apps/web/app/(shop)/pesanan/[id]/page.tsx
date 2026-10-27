@@ -15,6 +15,7 @@ import { OrderProgress } from "@/components/order-progress";
 import { channelName, countdown, fetchOrder, intentLabel, methodLabel, payTypeLabel, refreshOrder, type OrderView } from "@/lib/payments";
 import { taxName } from "@/lib/bill";
 import { loadSnap } from "@/lib/snap";
+import { InfoTip } from "@/components/tooltip";
 
 const statusCopy: Record<string, { title: string; tone: string; note: string; icon: typeof CheckCircle2 }> = {
   pending: { title: "Menunggu pembayaran", tone: "wait", note: "Selesaikan pembayaran sebelum waktu habis agar slot tidak dilepas.", icon: Hourglass },
@@ -233,7 +234,7 @@ export default function OrderPage() {
             </ul>
             <dl className="bill">
               <div className="total"><dt>Total{active.length && active.length < order.sessions.length ? " sesi aktif" : ""}</dt><dd>{money(billTotal)}</dd></div>
-              <div><dt>Sudah dibayar</dt><dd>{money(order.paid)}</dd></div>
+              <div><dt>Sudah dibayar<InfoTip text="Total pembayaran yang sudah diterima venue untuk pesanan ini, online maupun di kasir."/></dt><dd>{money(order.paid)}</dd></div>
               {remaining > 0 && (
                 <div className={order.status === "pending" ? "due" : "now"}><dt>{order.status === "pending" ? "Belum dibayar" : "Sisa, dibayar di venue"}</dt><dd>{money(remaining)}</dd></div>
               )}

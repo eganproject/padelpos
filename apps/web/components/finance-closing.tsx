@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { formatDate, money } from "@/lib/finance";
 import { ErrorBox } from "./operation-ui";
+import { InfoTip } from "@/components/tooltip";
 
 type Closing = {
   closings:{ year:number; net_income:number; closed_at:string; entry_number:string; closed_by_name:string; stale:boolean; current_net:number; can_undo:boolean }[];
@@ -35,7 +36,7 @@ export function ClosingView({ reload }: { reload:()=>void }) {
       <div className="fin-report-head"><div><h3>Tutup buku tahunan</h3><p>Memindahkan laba atau rugi setahun ke akun Laba Ditahan lewat jurnal penutup tanggal 31 Desember, lalu mengunci pembukuan tahun itu. Laporan laba rugi tahun itu tetap bisa dibuka seperti biasa.</p></div></div>
       <section className="fin-sheet">
         <header><h4>Belum ditutup</h4>{data.locked_until && <span className="fin-locked"><Lock size={13}/> Terkunci s.d. {formatDate(data.locked_until)}</span>}</header>
-        {data.open.length ? <table><thead><tr><th>Tahun</th><th className="right">Pendapatan</th><th className="right">Biaya</th><th className="right">Laba bersih</th><th/></tr></thead><tbody>
+        {data.open.length ? <table><thead><tr><th>Tahun</th><th className="right">Pendapatan</th><th className="right">Biaya</th><th className="right">Laba bersih<InfoTip text="Laba atau rugi tahun itu yang akan dipindahkan ke akun Laba Ditahan saat tutup buku."/></th><th/></tr></thead><tbody>
           {data.open.map(item => (
             <tr key={item.year}>
               <td className="fin-cell-name"><b>{item.year}</b><small>1 Jan – 31 Des {item.year}</small></td>
@@ -50,7 +51,7 @@ export function ClosingView({ reload }: { reload:()=>void }) {
       </section>
       <section className="fin-sheet">
         <header><h4>Riwayat tutup buku</h4></header>
-        {data.closings.length ? <table><thead><tr><th>Tahun</th><th className="right">Laba ditutup</th><th>Jurnal</th><th/></tr></thead><tbody>
+        {data.closings.length ? <table><thead><tr><th>Tahun</th><th className="right">Laba ditutup</th><th>Jurnal<InfoTip text="Jurnal penutup bertanggal 31 Desember. Batalkan tutup buku untuk menghapusnya dan membuka kembali kunci tahun itu."/></th><th/></tr></thead><tbody>
           {data.closings.map(item => (
             <tr key={item.year}>
               <td className="fin-cell-name"><b>{item.year}</b><small>{new Date(item.closed_at).toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"})}{item.closed_by_name?` · ${item.closed_by_name}`:""}</small>

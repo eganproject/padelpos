@@ -495,7 +495,7 @@ export function VenueLayoutPanel() {
           <MetreField label={multiFloor ? "Lebar lantai" : "Lebar venue"} value={area.width} min={Math.max(minVenue, bounds.w)} max={maxVenue} step={grid * 5} onStart={remember} onChange={units => setAreaSide("width", units)} />
           <span className="venue-times">×</span>
           <MetreField label={multiFloor ? "Panjang lantai" : "Panjang venue"} value={area.height} min={Math.max(minVenue, bounds.h)} max={maxVenue} step={grid * 5} onStart={remember} onChange={units => setAreaSide("height", units)} />
-          <button type="button" className="venue-tool" onClick={fitToContent} disabled={!floorCourts.length && !floorFeatures.length} title="Geser isi ke pojok kiri atas dan rapatkan area lantai">
+          <button type="button" className="venue-tool" onClick={fitToContent} disabled={!floorCourts.length && !floorFeatures.length} data-tip="Geser isi ke pojok kiri atas dan rapatkan area lantai">
             <Shrink size={15} /> Pas ke isi
           </button>
         </div>
@@ -507,12 +507,12 @@ export function VenueLayoutPanel() {
           </Select>
         </label>
         <div className="venue-history">
-          <button type="button" className="venue-tool icon" onClick={undo} disabled={!history.current.past.length} aria-label="Batalkan langkah" title="Batalkan langkah (Ctrl+Z)"><Undo2 size={16} /></button>
-          <button type="button" className="venue-tool icon" onClick={redo} disabled={!history.current.future.length} aria-label="Ulangi langkah" title="Ulangi langkah (Ctrl+Y)"><Redo2 size={16} /></button>
+          <button type="button" className="venue-tool icon" onClick={undo} disabled={!history.current.past.length} aria-label="Batalkan langkah" data-tip="Batalkan langkah (Ctrl+Z)"><Undo2 size={16} /></button>
+          <button type="button" className="venue-tool icon" onClick={redo} disabled={!history.current.future.length} aria-label="Ulangi langkah" data-tip="Ulangi langkah (Ctrl+Y)"><Redo2 size={16} /></button>
         </div>
         <div className="grow">
           {dirty && <span className="venue-dirty">Belum disimpan</span>}
-          <button type="button" className="ops-secondary" disabled={!dirty || saving} title="Kembalikan ke denah yang terakhir disimpan (bisa dibatalkan dengan Ctrl+Z)"
+          <button type="button" className="ops-secondary" disabled={!dirty || saving} data-tip="Kembalikan ke denah yang terakhir disimpan (bisa dibatalkan dengan Ctrl+Z)"
             onClick={() => { if (saved) { remember(); restore(saved); setSelected(null); } }}>
             <RotateCcw size={15} /> Buang
           </button>
@@ -528,18 +528,18 @@ export function VenueLayoutPanel() {
                 <Layers size={15} aria-hidden="true" />
                 <span>{item.name || "Tanpa nama"}</span>
                 <small>{courts.filter(c => c.floor_id === item.id).length} lap.</small>
-                {problems.floorsWithIssue.has(item.id) && <i className="venue-floor-warn" title="Ada lapangan yang menimpa atau keluar area" />}
+                {problems.floorsWithIssue.has(item.id) && <i className="venue-floor-warn" data-tip="Ada lapangan yang menimpa atau keluar area" />}
               </button>
             ))}
-            <button type="button" className="venue-floor-add" onClick={addFloor} disabled={floors.length >= maxFloors} title={floors.length >= maxFloors ? `Maksimal ${maxFloors} lantai` : "Tambah lantai baru"}>
+            <button type="button" className="venue-floor-add" onClick={addFloor} disabled={floors.length >= maxFloors} data-tip={floors.length >= maxFloors ? `Maksimal ${maxFloors} lantai` : "Tambah lantai baru"}>
               <Plus size={14} aria-hidden="true" /> Tambah lantai
             </button>
           </div>
           <div className="venue-stagebar">
             <div className="venue-zoom" role="group" aria-label="Perbesaran tampilan denah">
-              <button type="button" onClick={() => setZoom(value => [...zoomLevels].reverse().find(level => level < value - 0.001) ?? zoomLevels[0])} disabled={zoom <= zoomLevels[0]} aria-label="Perkecil tampilan" title="Perkecil (Ctrl + gulir)"><ZoomOut size={15} /></button>
-              <button type="button" className="pct" onClick={() => setZoom(1)} title="Tampilkan seluruh lantai">{Math.round(zoom * 100)}%</button>
-              <button type="button" onClick={() => setZoom(value => zoomLevels.find(level => level > value + 0.001) ?? zoomLevels[zoomLevels.length - 1])} disabled={zoom >= zoomLevels[zoomLevels.length - 1]} aria-label="Perbesar tampilan" title="Perbesar (Ctrl + gulir)"><ZoomIn size={15} /></button>
+              <button type="button" onClick={() => setZoom(value => [...zoomLevels].reverse().find(level => level < value - 0.001) ?? zoomLevels[0])} disabled={zoom <= zoomLevels[0]} aria-label="Perkecil tampilan" data-tip="Perkecil (Ctrl + gulir)"><ZoomOut size={15} /></button>
+              <button type="button" className="pct" onClick={() => setZoom(1)} data-tip="Tampilkan seluruh lantai">{Math.round(zoom * 100)}%</button>
+              <button type="button" onClick={() => setZoom(value => zoomLevels.find(level => level > value + 0.001) ?? zoomLevels[zoomLevels.length - 1])} disabled={zoom >= zoomLevels[zoomLevels.length - 1]} aria-label="Perbesar tampilan" data-tip="Perbesar (Ctrl + gulir)"><ZoomIn size={15} /></button>
             </div>
             <p className="venue-status">
               {selectedBox
@@ -547,15 +547,15 @@ export function VenueLayoutPanel() {
                 : "Klik kotak untuk memilih, lalu tarik titik di tepinya untuk mengubah ukuran."}
             </p>
             {(floorClash || floorOutside.length > 0) && (
-              <span className="venue-warn" title={floorClash ? "Geser lapangan yang saling menimpa sebelum menyimpan." : `Di luar area: ${floorOutside.map(item => item.name).join(", ")}`}>
+              <span className="venue-warn" data-tip={floorClash ? "Geser lapangan yang saling menimpa sebelum menyimpan." : `Di luar area: ${floorOutside.map(item => item.name).join(", ")}`}>
                 <AlertTriangle size={14} aria-hidden="true" /> {floorClash ? "Lapangan saling menimpa" : "Ada yang di luar area"}
               </span>
             )}
             {selectedBox && (
               <div className="venue-quick">
-                <button type="button" className="venue-tool icon" onClick={rotate} aria-label={`Putar ${selectedName}`} title="Putar 90° (R)"><RotateCw size={15} /></button>
-                {feature && <button type="button" className="venue-tool icon" onClick={duplicate} aria-label={`Gandakan ${selectedName}`} title="Gandakan (Ctrl+D)"><Copy size={15} /></button>}
-                <button type="button" className="venue-tool icon danger" onClick={removeSelected} aria-label={`Hapus ${selectedName}`} title="Hapus (Delete)"><Trash2 size={15} /></button>
+                <button type="button" className="venue-tool icon" onClick={rotate} aria-label={`Putar ${selectedName}`} data-tip="Putar 90° (R)"><RotateCw size={15} /></button>
+                {feature && <button type="button" className="venue-tool icon" onClick={duplicate} aria-label={`Gandakan ${selectedName}`} data-tip="Gandakan (Ctrl+D)"><Copy size={15} /></button>}
+                <button type="button" className="venue-tool icon danger" onClick={removeSelected} aria-label={`Hapus ${selectedName}`} data-tip="Hapus (Delete)"><Trash2 size={15} /></button>
               </div>
             )}
           </div>
@@ -617,7 +617,7 @@ export function VenueLayoutPanel() {
                   onPointerDown={event => startAreaResize(event, edge)}
                   onKeyDown={event => resizeAreaByKey(event, edge)}
                   aria-label={edge === "e" ? `Ubah lebar ${area.name}` : edge === "s" ? `Ubah panjang ${area.name}` : `Ubah lebar dan panjang ${area.name}`}
-                  title="Seret untuk mengubah ukuran area"
+                  data-tip="Seret untuk mengubah ukuran area"
                 ><i /></button>
               ))}
             </div>
@@ -697,9 +697,9 @@ export function VenueLayoutPanel() {
             <p className="hint">{floorCourts.length} lapangan · {floorFeatures.length} elemen · {metre(area.width)} × {metre(area.height)} m</p>
             {multiFloor && (
               <div className="row-buttons">
-                <button type="button" onClick={() => moveFloor(-1)} disabled={floorIndex === 0} title="Pindahkan tab lantai ke kiri"><ArrowLeft size={14} /> Geser</button>
-                <button type="button" onClick={() => moveFloor(1)} disabled={floorIndex === floors.length - 1} title="Pindahkan tab lantai ke kanan">Geser <ArrowRight size={14} /></button>
-                <button type="button" className="danger" onClick={removeFloor} disabled={itemCount(area.id) > 0} title={itemCount(area.id) > 0 ? "Pindahkan atau hapus isi lantai ini terlebih dahulu" : "Hapus lantai kosong ini"}><Trash2 size={14} /> Hapus</button>
+                <button type="button" onClick={() => moveFloor(-1)} disabled={floorIndex === 0} data-tip="Pindahkan tab lantai ke kiri"><ArrowLeft size={14} /> Geser</button>
+                <button type="button" onClick={() => moveFloor(1)} disabled={floorIndex === floors.length - 1} data-tip="Pindahkan tab lantai ke kanan">Geser <ArrowRight size={14} /></button>
+                <button type="button" className="danger" onClick={removeFloor} disabled={itemCount(area.id) > 0} data-tip={itemCount(area.id) > 0 ? "Pindahkan atau hapus isi lantai ini terlebih dahulu" : "Hapus lantai kosong ini"}><Trash2 size={14} /> Hapus</button>
               </div>
             )}
             {multiFloor && itemCount(area.id) > 0 && <p className="hint">Lantai yang masih berisi tidak dapat dihapus.</p>}
@@ -775,7 +775,7 @@ function MetreField({ label, value, min, max, step, onChange, onStart }: {
     <div className="venue-field">
       <label htmlFor={id}>{label}</label>
       <div className="venue-stepper">
-        <button type="button" tabIndex={-1} aria-label={`Kurangi ${label.toLowerCase()}`} disabled={value <= min} onClick={() => { onStart(); apply(value - step); }}><Minus size={13} /></button>
+        <button type="button" tabIndex={-1} aria-label={`Kurangi ${label.toLowerCase()}`} data-tip={`Kurangi ${label.toLowerCase()}`} disabled={value <= min} onClick={() => { onStart(); apply(value - step); }}><Minus size={13} /></button>
         <input
           id={id}
           inputMode="decimal"
@@ -796,7 +796,7 @@ function MetreField({ label, value, min, max, step, onChange, onStart }: {
           }}
         />
         <span className="unit" aria-hidden="true">m</span>
-        <button type="button" tabIndex={-1} aria-label={`Tambah ${label.toLowerCase()}`} disabled={value >= max} onClick={() => { onStart(); apply(value + step); }}><Plus size={13} /></button>
+        <button type="button" tabIndex={-1} aria-label={`Tambah ${label.toLowerCase()}`} data-tip={`Tambah ${label.toLowerCase()}`} disabled={value >= max} onClick={() => { onStart(); apply(value + step); }}><Plus size={13} /></button>
       </div>
     </div>
   );

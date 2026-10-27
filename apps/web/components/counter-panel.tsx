@@ -19,6 +19,7 @@ import { type LookupMember, percentLabel } from "@/lib/members";
 import { VoucherField } from "./voucher-field";
 import { type VoucherCheck } from "@/lib/vouchers";
 import { DateInput, MoneyInput, Select } from "./form-controls";
+import { InfoTip, LabelTip } from "@/components/tooltip";
 
 const printSale = (id: string) => window.open(`/cetak/nota/${id}?jenis=kasir&cetak=1`, "_blank", "noopener");
 
@@ -53,7 +54,7 @@ export function CounterPanel({ changed }: { changed: () => void }) {
       <article className="metric-card cyan"><div className="metric-top"><span><PackageCheck /></span></div><p>Sewa belum kembali</p><h2>{data.sales.filter(sale => sale.open_rentals > 0).length}</h2><small>Transaksi pada tanggal ini</small></article>
     </div>}
     <div className="ops-filters"><label>Cari transaksi<input value={query} onChange={e => setQuery(e.target.value)} placeholder="Nama, telepon, atau nomor KSR" /></label><label>Tanggal<DateInput value={date || data?.date || ""} onChange={e => setDate(e.target.value)} /></label><button className="ops-secondary" onClick={() => { setDate(""); setQuery(""); }}>Hari ini</button></div>
-    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Transaksi</th><th>Barang</th><th>Status</th><th>Total</th><th>Aksi</th></tr></thead><tbody>{data?.sales.map(sale => <tr key={sale.id} className={sale.status === "void" || sale.status === "expired" ? "inactive" : ""}>
+    <div className="manage-table-card ops-table table-cards"><table><thead><tr><th>Transaksi<InfoTip text="Nomor KSR: transaksi sewa atau jual langsung di kasir, terpisah dari tagihan booking lapangan."/></th><th>Barang</th><th>Status<InfoTip text="Lunas: uang sudah diterima. Menunggu bayar: QR Midtrans belum dibayar. Kedaluwarsa: QR tidak dibayar sampai batas waktu. Dibatalkan: transaksi dibatalkan dan stok kembali."/></th><th>Total</th><th>Aksi</th></tr></thead><tbody>{data?.sales.map(sale => <tr key={sale.id} className={sale.status === "void" || sale.status === "expired" ? "inactive" : ""}>
       <td className="wide" data-label="Transaksi"><b>{sale.customer}</b><small className="table-description">{sale.number} · {new Date(sale.created_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}{sale.phone ? ` · ${sale.phone}` : ""}</small>{sale.booking_court && <small className="table-description counter-booking-tag"><CalendarDays size={12} aria-hidden="true" /> {bookingLabel({ court_name: sale.booking_court, start_time: sale.booking_start!, end_time: sale.booking_end! })}</small>}</td>
       <td className="wide" data-label="Barang">{sale.items}{sale.open_rentals > 0 && sale.status === "paid" && <small className="table-description addon-overdue">Sewa sampai {sale.end_time}, belum kembali</small>}</td>
       <td data-label="Status"><span className={`status-pill ${saleStatus[sale.status].pill}`}>{saleStatus[sale.status].label}</span><small className="table-description">{methodName[sale.method] ?? sale.method}{sale.status === "paid" && sale.pay_order_id ? " · Midtrans" : ""}</small></td>
@@ -157,7 +158,7 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     <h3 className="modal-subhead">Pelanggan <small>dari riwayat, atau ketik nama baru</small></h3>
     <label>Nama pelanggan{renting ? "" : " (opsional)"}<CustomerSelect value={customer} onChange={chooseCustomer} required={renting} placeholder={renting ? "Wajib untuk barang sewa · cari atau ketik nama baru" : `Cari riwayat, ketik nama baru, atau kosongkan untuk "${walkInName}"`} /></label>
     {customer?.isNew && <label>Nomor WhatsApp (opsional)<input maxLength={18} inputMode="tel" value={form.phone} placeholder="0812…" onChange={e => set("phone", e.target.value)} /><small className="ops-muted">Diisi: pelanggan disimpan ke daftar Pelanggan dan muncul sebagai rekomendasi berikutnya.</small></label>}
-    <label>Hubungkan ke booking lapangan (opsional)<Select value={form.booking_id} onChange={e => chooseBooking(e.target.value)}>
+    <label><LabelTip tip="Barang sewa ikut jam main booking itu dan transaksinya tampil di detail booking. Pembayarannya tetap terpisah dari tagihan booking.">Hubungkan ke booking lapangan (opsional)</LabelTip><Select value={form.booking_id} onChange={e => chooseBooking(e.target.value)}>
       <option value="">Tanpa booking · datang langsung</option>
       {options?.bookings.map(entry => <option key={entry.id} value={entry.id}>{`${bookingLabel(entry)} · ${entry.customer} · ${entry.code}`}</option>)}
     </Select></label>
@@ -169,7 +170,7 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     <h3 className="modal-subhead">Barang <small>sewa, beli, atau layanan</small></h3>
     <AddonLinesEditor options={options?.addons ?? null} drafts={drafts} onChange={setDrafts} duration={duration} allowCustom walkIn />
     {!followsBooking && <div className="field-grid">
-      <label>Lama sewa<Select value={String(form.duration)} onChange={e => set("duration", Number(e.target.value))}>{durations.map(value => <option key={value} value={String(value)}>{durationLabel(value)}</option>)}</Select></label>
+      <label><LabelTip tip="Berlaku untuk barang sewa dan harga per jam. Stok raket dihitung bersama booking lapangan pada jam yang sama.">Lama sewa</LabelTip><Select value={String(form.duration)} onChange={e => set("duration", Number(e.target.value))}>{durations.map(value => <option key={value} value={String(value)}>{durationLabel(value)}</option>)}</Select></label>
       <p className="ops-muted counter-window">{options ? `Mulai ${options.window.start}, kembali paling lambat ${options.window.end}.` : "Memeriksa stok…"} {timed ? "Stok raket dihitung bersama booking lapangan." : "Hanya berpengaruh untuk barang sewa dan harga per jam."}</p>
     </div>}
     {followsBooking && timed && options && <p className="ops-muted">Sewa {options.window.start}–{options.window.end} ({durationLabel(windowMinutes)}), mengikuti booking.</p>}
@@ -186,16 +187,16 @@ function SaleForm({ close, done }: { close: () => void; done: (id: string) => vo
     {voucherCut > 0 && <div className="ops-total"><span>Voucher · {voucher!.code}</span><strong>−{money(voucherCut)}</strong></div>}
     {bill.tax > 0 && options?.tax && <div className="ops-total"><span>{taxName(options.tax)}</span><strong>{money(bill.tax)}</strong></div>}
     {surcharge > 0 && <div className="ops-total"><span>Biaya layanan {channel?.label}</span><strong>{money(surcharge)}</strong></div>}
-    <div className="ops-total counter-grand"><span>Total bayar</span><strong>{money(charge)}</strong></div>
+    <div className="ops-total counter-grand"><span>Total bayar<InfoTip text="Subtotal − potongan member, potongan manual, dan voucher + pajak + biaya layanan Midtrans bila ditanggung pelanggan."/></span><strong>{money(charge)}</strong></div>
 
-    <fieldset className="chip-field"><legend>Metode bayar</legend><div className="chip-group">{saleMethods.map(method => <button type="button" key={method.value} aria-pressed={form.method === method.value} disabled={method.value === "midtrans" && options !== null && !options.midtrans.enabled} onClick={() => set("method", method.value)}>{method.value === "midtrans" && <QrCode size={13} aria-hidden="true" />}{method.label}</button>)}</div>
+    <fieldset className="chip-field"><legend>Metode bayar<InfoTip text="Tunai, transfer, dan QRIS statis dicatat lunas saat disimpan. Midtrans menampilkan QR tagihan dan lunas otomatis setelah pelanggan membayar."/></legend><div className="chip-group">{saleMethods.map(method => <button type="button" key={method.value} aria-pressed={form.method === method.value} disabled={method.value === "midtrans" && options !== null && !options.midtrans.enabled} onClick={() => set("method", method.value)}>{method.value === "midtrans" && <QrCode size={13} aria-hidden="true" />}{method.label}</button>)}</div>
       {options && !options.midtrans.enabled && <small className="ops-muted">Midtrans belum aktif. Admin dapat mengaktifkannya di menu Pembayaran.</small>}
       {customerPays && <ChannelPicker compact fees={fees} base={bill.total} value={channel?.key ?? null} onChange={key => set("channel", key)} name="metode-kasir" />}
       {midtrans && <small className="ops-muted">Setelah disimpan, layar menampilkan QR tagihan. Pelanggan memindainya dengan ponsel dan {customerPays ? `membayar lewat ${channel?.label ?? "metode yang dipilih"}; biaya admin Midtrans ditanggung pelanggan` : "memilih QRIS, e-wallet, virtual account, atau kartu"}. Lunas otomatis begitu pembayaran masuk; tidak dibayar dalam {options?.midtrans.minutes ?? 15} menit berarti batal dan stok kembali.</small>}
       {form.method === "qris" && <small className="ops-muted">QRIS statis venue (dicek manual). Pilih Midtrans untuk QRIS yang terkonfirmasi otomatis.</small>}
     </fieldset>
     {form.method === "cash" && bill.total > 0 && <div className="counter-cash">
-      <label>Uang diterima (opsional)<MoneyInput min={0} value={form.tendered} onChange={e => set("tendered", e.target.value === "" ? "" : Number(e.target.value))} /></label>
+      <label><LabelTip tip="Isi uang yang diserahkan pelanggan untuk menghitung kembalian. Tidak memengaruhi pembukuan.">Uang diterima (opsional)</LabelTip><MoneyInput min={0} value={form.tendered} onChange={e => set("tendered", e.target.value === "" ? "" : Number(e.target.value))} /></label>
       <div className="chip-group">{cashPresets(bill.total).map(value => <button type="button" key={value} aria-pressed={tendered === value} onClick={() => set("tendered", value)}>{value === bill.total ? "Uang pas" : money(value)}</button>)}</div>
       {tendered !== null && <p className={`counter-change${change < 0 ? " short" : ""}`}>{change < 0 ? `Kurang ${money(-change)}` : `Kembalian ${money(change)}`}</p>}
     </div>}
